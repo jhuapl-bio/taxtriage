@@ -17,11 +17,11 @@ Before contributing, check the [Troubleshooting](troubleshooting.md) page. For q
 
 ### 1. Check for Existing Issues
 
-Search [existing issues](https://github.com/nf-core/taxtriage/issues) to avoid duplicating work. If no issue exists, create one so others know you're working on it.
+Search [existing issues](https://github.com/jhuapl-bio/taxtriage/issues) to avoid duplicating work. If no issue exists, create one so others know you're working on it.
 
 ### 2. Fork and Branch
 
-[Fork](https://help.github.com/en/github/getting-started-with-github/fork-a-repo) the [nf-core/taxtriage repository](https://github.com/nf-core/taxtriage) to your GitHub account, then create a feature branch from `dev`.
+[Fork](https://help.github.com/en/github/getting-started-with-github/fork-a-repo) the [jhuapl-bio/taxtriage repository](https://github.com/jhuapl-bio/taxtriage) to your GitHub account, then create a feature branch from `dev`.
 
 ### 3. Make Changes
 

@@ -12,7 +12,7 @@ TaxTriage requires two primary dependencies:
 Follow instructions at [nf-co.re/docs/usage/installation](https://nf-co.re/docs/usage/installation) or run the following in a WSL2, native Linux, or macOS terminal:
 
 ```bash
-# Verify Java v11+ is installed
+# Verify Java 17+ is installed (required by Nextflow 24+)
 java -version
 
 # Download and install Nextflow

@@ -20,6 +20,7 @@ Usage:
     python scripts/inline_boot_json.py --check  # validate only, don't write
 """
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -45,6 +46,63 @@ const patched = src.replace('window.HEATMAP_BOOT', 'globalThis.HEATMAP_BOOT');
 new Function(patched)();
 process.stdout.write(JSON.stringify(globalThis.HEATMAP_BOOT));
 """
+
+
+# ── Demo sample-QC rules ───────────────────────────────────────────────────
+# The published demo is the only place most people ever see the report, so it
+# ships with the Sample QC panel doing something rather than sitting empty.
+# Both rules use action "flag": a visitor must never find samples missing from
+# a demo they did not configure.
+#
+# Thresholds are tuned to the committed example dataset (6 samples, 9-35k
+# reads each) so each rule actually catches something and the per-rule hit
+# counter in the dialog is non-zero. If assets/pages.js is ever replaced,
+# re-tune these — a rule that catches nothing makes the panel look broken.
+DEMO_SAMPLE_FLAGS = {
+    "enabled": True,
+    "logic": "any",
+    "missing_fails": False,
+    "hide_all": False,
+    "rules": [
+        # Shallow libraries: catches the single lowest-depth demo sample.
+        {
+            "on": True,
+            "source": "meta",
+            "field": "total_reads",
+            "op": "<",
+            "value": "10000",
+            "action": "flag",
+        },
+        # Thin high-confidence evidence: fewer than 4 distinct organisms
+        # clearing TASS 99.
+        {
+            "on": True,
+            "source": "derived",
+            "field": "unique_taxids_above_tass",
+            "op": "<",
+            "value": "4",
+            "tass": 99,
+            "action": "flag",
+        },
+    ],
+}
+
+
+def inject_demo_sample_flags(json_text: str) -> str:
+    """Add DEMO_SAMPLE_FLAGS to the bootstrap payload.
+
+    A dataset that already carries its own `sample_flags` (e.g. a pages.js
+    exported from a real pipeline run with --report_flag_* set) wins — we only
+    fill the gap, never overwrite a deliberate configuration.
+    """
+    payload = json.loads(json_text)
+    if payload.get("sample_flags"):
+        print("  sample_flags: already present in the dataset; leaving it alone")
+        return json_text
+    payload["sample_flags"] = DEMO_SAMPLE_FLAGS
+    n = len(DEMO_SAMPLE_FLAGS["rules"])
+    print(f"  sample_flags: injected {n} demo rule(s) for the Sample QC panel")
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def extract_json_from_boot_js(path: Path) -> str:
@@ -170,6 +228,7 @@ def main():
         )
 
     json_text = extract_json_from_boot_js(source)
+    json_text = inject_demo_sample_flags(json_text)
     print(f"  JSON size: {len(json_text):,} chars")
 
     print(f"Building {INDEX_HTML.relative_to(REPO_ROOT)} from {TEMPLATE.relative_to(REPO_ROOT)}")

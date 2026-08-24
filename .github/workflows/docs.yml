@@ -5,19 +5,26 @@ name: Docs
 # Version scheme (managed by `mike`, which commits the *rendered site only* to
 # the gh-pages branch — no source ever lands there):
 #
-#   3.3, 3.2, …    one entry per minor series. Releasing v3.3.9 overwrites the
-#                  "3.3" docs, so the selector stays short.
-#   latest         alias pointing at the most recent release. This is the
-#                  default, so the site root redirects here.
-#   bleeding-edge  built from main on every push.
+#   latest             built from main on every push. This is the default, so
+#                      the site root redirects here.
+#   3.3.9, 3.3.8, …    one entry per release, cut from the release tag. Exact
+#                      patch versions only — no minor-series aliases.
+#
+# NOTE: `latest` is a real version here, not an alias, because it tracks main.
+# mike keeps versions and aliases in one namespace, so releases must not also
+# claim `latest`.
 #
 # Branch model: work happens on `dev` via PRs, then `dev` merges into `main`.
-# Merging to main refreshes bleeding-edge; publishing a GitHub Release cuts a
-# versioned copy.
+# Merging to main refreshes `latest`; publishing a GitHub Release cuts a
+# numbered copy.
 
 on:
+  # `edited` matters as much as `published`: retargeting a release at a newer
+  # commit fires `edited`, and the docs for that version must be rebuilt from
+  # the tag's new commit. mike overwrites the existing version directory, so
+  # re-running simply replaces it.
   release:
-    types: [published]
+    types: [published, edited]
   push:
     branches: [main]
     # Only rebuild when something that affects the site changes.
@@ -36,7 +43,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version label to deploy (blank = bleeding-edge)"
+        description: "Version to (re)deploy, e.g. 3.3.9. Blank = latest, built from main."
+        required: false
+        default: ""
+      ref:
+        description: "Git ref to build from. Blank = v<version> for a version, else main."
         required: false
         default: ""
 
@@ -57,36 +68,51 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # mike needs the gh-pages branch and tag history.
-          fetch-depth: 0
-
-      - name: Resolve version, alias and data ref
+      # Resolved before checkout so the checkout can target the tag directly.
+      # Uses only event context, so it needs no repository contents.
+      - name: Resolve version and data ref
         id: v
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "release" ]; then
             TAG="${{ github.event.release.tag_name }}"
-            # v3.3.8 -> 3.3   (minor series; patches update in place)
-            VERSION="$(echo "$TAG" | sed -E 's/^v//; s/^([0-9]+)\.([0-9]+).*/\1.\2/')"
-            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+$'; then
-              echo "::error::Could not derive a minor version from tag '$TAG' (expected vX.Y.Z)"
-              exit 1
-            fi
-            ALIAS="latest"
+            # v3.3.9 -> 3.3.9 (exact patch; no minor alias)
+            VERSION="${TAG#v}"
             REF="$TAG"
           else
             VERSION="${{ github.event.inputs.version }}"
-            VERSION="${VERSION:-bleeding-edge}"
-            ALIAS=""
-            REF="main"
+            VERSION="${VERSION:-latest}"
+            REF="${{ github.event.inputs.ref }}"
+            if [ -z "$REF" ]; then
+              # Rebuilding a numbered version manually must build from that
+              # version's tag, not from main.
+              if [ "$VERSION" = "latest" ]; then REF="main"; else REF="v$VERSION"; fi
+            fi
           fi
+
+          if [ "$VERSION" != "latest" ]; then
+            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
+              echo "::error::'$VERSION' is not X.Y.Z; refusing to publish docs for it."
+              exit 1
+            fi
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            echo "::error::Refusing to publish a release as 'latest'; that name tracks main."
+            exit 1
+          fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "alias=$ALIAS"     >> "$GITHUB_OUTPUT"
           echo "ref=$REF"         >> "$GITHUB_OUTPUT"
-          echo "Deploying docs version '$VERSION' (alias '${ALIAS:-none}') reading data from '$REF'"
+          echo "Deploying docs version '$VERSION' built from '$REF'"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Build the ref itself, so retargeting a release at a newer commit
+          # rebuilds from that commit rather than from whatever the event
+          # happened to point at. fetch-depth 0 also gives mike the gh-pages
+          # branch and full tag history.
+          ref: ${{ steps.v.outputs.ref }}
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -108,9 +134,21 @@ jobs:
             --ref "${{ steps.v.outputs.ref }}" \
             --version "${{ steps.v.outputs.version }}"
 
+      # Only the Demo Report is latest-only: copying its ~4.5 MB dist into every
+      # release would bloat gh-pages. A versioned build replaces it with a
+      # redirect, so the tab and the URL keep working.
+      #
+      # The Pathogen Sheet ships in every version, pinned above to this
+      # version's ref, so each release documents the sheet it actually shipped.
+      - name: Redirect demo tab to latest
+        if: steps.v.outputs.version != 'latest'
+        run: python scripts/docs_release_stub.py
+
       # Same dist the pipeline's own Pages job produced: heatmap.html with its
       # CSS/JS folded inline and the bootstrap data embedded, as one file.
+      # Only needed for `latest`, where the real Demo Report tab lives.
       - name: Build interactive report dist
+        if: steps.v.outputs.version == 'latest'
         run: |
           python scripts/inline_boot_json.py
           test -s _site/index.html
@@ -118,12 +156,28 @@ jobs:
           cp _site/index.html docs/demo/index.html
           echo "dist size: $(du -h docs/demo/index.html | cut -f1)"
 
-      # Runs the real table widget in jsdom against this ref's actual CSV, so an
-      # upstream schema change fails here rather than in the browser.
+      # Runs the real table widget in jsdom against this ref's actual CSV, so a
+      # schema change fails here rather than in the browser. Runs for every
+      # version, since every version ships the table pinned to its own ref.
       - name: Test pathogen sheet table
         run: |
           npm install --no-fund --no-audit --no-save jsdom
           node scripts/test_pathogen_table.js
+
+      # MkDocs serves extra_javascript/extra_css at stable filenames, so a
+      # browser will reuse the previous deploy's copy and readers see stale
+      # behaviour. Stamp them with the commit so each deploy is a fresh URL.
+      - name: Stamp assets for cache busting
+        run: |
+          set -euo pipefail
+          V="${GITHUB_SHA::12}"
+          {
+            echo "DOCS_JS_REF=javascripts/docs_ref.js?v=$V"
+            echo "DOCS_JS_TABLE=javascripts/pathogen_table.js?v=$V"
+            echo "DOCS_CSS_EXTRA=stylesheets/extra.css?v=$V"
+            echo "DOCS_CSS_TABLE=stylesheets/pathogen_table.css?v=$V"
+          } >> "$GITHUB_ENV"
+          echo "Assets stamped with ?v=$V"
 
       - name: Build site
         run: mkdocs build --strict
@@ -140,18 +194,34 @@ jobs:
 
       - name: Deploy version
         run: |
-          set -euo pipefail
-          ARGS=(--push --branch "$PAGES_BRANCH" --update-aliases "${{ steps.v.outputs.version }}")
-          if [ -n "${{ steps.v.outputs.alias }}" ]; then
-            ARGS+=("${{ steps.v.outputs.alias }}")
-          fi
-          mike deploy "${ARGS[@]}"
+          mike deploy --push --branch "$PAGES_BRANCH" --update-aliases \
+            "${{ steps.v.outputs.version }}"
 
-      # The root of the site redirects here. Only releases move it, so pushing
-      # to main never makes bleeding-edge the landing page.
+      # The site root redirects here. Without this the root 404s. Idempotent, so
+      # it is safe to reassert on every main push; releases never move it.
       - name: Point default at latest
-        if: github.event_name == 'release'
+        if: steps.v.outputs.version == 'latest'
         run: mike set-default --push --branch "$PAGES_BRANCH" latest
+
+      # Prune entries left over from earlier versioning schemes:
+      #   bleeding-edge  predates the switch to `latest`
+      #   X.Y            minor-series entries from before exact patch versions
+      # Matching on the X.Y shape (rather than a hard-coded list) means this
+      # keeps working if another stale minor entry turns up. X.Y.Z is never
+      # matched, so real release docs are safe.
+      - name: Prune retired docs versions
+        run: |
+          set -euo pipefail
+          RETIRED="$(mike list --branch "$PAGES_BRANCH" 2>/dev/null \
+            | sed -E 's/ \[.*//' \
+            | grep -xE 'bleeding-edge|[0-9]+\.[0-9]+' || true)"
+          if [ -z "$RETIRED" ]; then
+            echo "No retired versions present; nothing to prune."
+            exit 0
+          fi
+          echo "Pruning: $(echo "$RETIRED" | tr '\n' ' ')"
+          # shellcheck disable=SC2086
+          mike delete --push --branch "$PAGES_BRANCH" $RETIRED
 
       - name: Summary
         run: |
@@ -159,7 +229,6 @@ jobs:
             echo "### Docs deployed"
             echo ""
             echo "- **Version:** \`${{ steps.v.outputs.version }}\`"
-            echo "- **Alias:** \`${{ steps.v.outputs.alias || 'none' }}\`"
             echo "- **Data ref:** \`${{ steps.v.outputs.ref }}\`"
             echo "- **URL:** https://jhuapl-bio.github.io/taxtriage/${{ steps.v.outputs.version }}/"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -60,6 +60,9 @@ process CREATE_COMPARISON_REPORT {
     // report either downloads the libs at build time (params.offline_report) or
     // leaves them as CDN links (default). Single input.
     path(offline_report_files)
+    // Optional JSON file holding a full sample-QC rule list (params.report_flag_rules).
+    // Replaces every report_flag_* param when supplied. NO_FILE placeholder to skip.
+    path(flag_rules_json)
 
     output:
         path "versions.yml"           , emit: versions
@@ -156,12 +159,38 @@ process CREATE_COMPARISON_REPORT {
         offline_arg = "--offline_report"
     }
 
+    // ── Sample-QC flag defaults ───────────────────────────────────────────────
+    // params.report_flag_* seed the report's whole-sample rule set. Nothing here
+    // filters the RUN — make_report.py just bakes the rules into the HTML so the
+    // report opens with them applied (and the user can edit them live).
+    def flag_bits = []
+    def has_flag_rules_file = flag_rules_json && !flag_rules_json.name.startsWith('NO_FILE') && !flag_rules_json.name.startsWith('~')
+    if (has_flag_rules_file) {
+        flag_bits << "--flag-rules ${flag_rules_json}"
+    } else {
+        if (params.report_flag_min_reads != null)         flag_bits << "--flag-min-reads ${params.report_flag_min_reads}"
+        if (params.report_flag_min_aligned_reads != null) flag_bits << "--flag-min-aligned-reads ${params.report_flag_min_aligned_reads}"
+        if (params.report_flag_min_organisms != null)     flag_bits << "--flag-min-organisms ${params.report_flag_min_organisms}"
+        if (params.report_flag_organism_tass != null)     flag_bits << "--flag-organism-tass ${params.report_flag_organism_tass}"
+        if (params.report_flag_min_detections != null)    flag_bits << "--flag-min-detections ${params.report_flag_min_detections}"
+        if (params.report_flag_metadata)                  flag_bits << "--flag-metadata '${params.report_flag_metadata}'"
+    }
+    // Only meaningful alongside a criterion; emitting them on their own made a
+    // run with NO rules look configured in .command.sh.
+    if (flag_bits) {
+        if (params.report_flag_logic)  flag_bits << "--flag-logic ${params.report_flag_logic}"
+        if (params.report_flag_action) flag_bits << "--flag-action ${params.report_flag_action}"
+        if (params.report_flag_missing) flag_bits << "--flag-missing"
+    }
+    def flag_arg = flag_bits.join(' ')
+
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
         -o ${output_html} \\
         ${prot_arg} ${pident} ${mintass} ${min_conf_arg} \\
-        ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg} ${offline_arg}
+        ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg} ${offline_arg} \\
+        ${flag_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

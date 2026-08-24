@@ -12,11 +12,13 @@ on:
       - "assets/heatmap.html"
       - "assets/src/**"
       - "bin/report_template.py"
+      - "scripts/test_sample_flags.js"
   pull_request:
     paths:
       - "assets/heatmap.html"
       - "assets/src/**"
       - "bin/report_template.py"
+      - "scripts/test_sample_flags.js"
   workflow_dispatch:
 
 jobs:
@@ -39,3 +41,9 @@ jobs:
           for f in assets/src/js/*.js; do
             node --check "$f"
           done
+
+      # Unit-tests the sample QC rule engine against a fixture dataset. Runs
+      # here because this workflow already fires on every assets/src/** change,
+      # which is exactly when the engine can break.
+      - name: Sample QC rule engine tests
+        run: node scripts/test_sample_flags.js

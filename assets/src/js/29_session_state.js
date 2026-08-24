@@ -175,6 +175,11 @@
       app.watchlist = Array.from(watchlist || []);
       app.watchFilterMode = watchFilterMode;
     } catch (e) {}
+    // Sample QC rules — live edits must survive a save → reload round-trip,
+    // otherwise a reloaded session silently reverts to the pipeline defaults.
+    try {
+      if (typeof ttFlagCaptureConfig === "function") app.sampleFlags = ttFlagCaptureConfig();
+    } catch (e) {}
     try {
       app.sortCol = sortCol;
       app.sortAsc = sortAsc;
@@ -220,6 +225,17 @@
     try {
       sortCol = app.sortCol != null ? app.sortCol : null;
       sortAsc = app.sortAsc !== false;
+    } catch (e) {}
+    // Restore sample QC rules. app.sampleHidden above already carries whatever
+    // the rules had hidden at export time, so re-applying here is idempotent —
+    // but it re-populates _flagAutoHidden so the rules stay reversible.
+    try {
+      if (typeof ttFlagLoadConfig === "function") {
+        ttFlagLoadConfig(app.sampleFlags || (BOOT && BOOT.sample_flags) || null);
+        ttFlagInvalidate();
+        ttFlagApplyHide();
+        if (typeof ttFlagRenderSummary === "function") ttFlagRenderSummary();
+      }
     } catch (e) {}
     // Restore before the first redraw so the map draws with group colours on
     // the very first paint rather than flashing per-sample colours first.

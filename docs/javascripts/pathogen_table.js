@@ -1,9 +1,9 @@
 /* Interactive browser for assets/pathogen_sheet.csv.
  *
- * Data is fetched once as docs/data/pathogen_sheet.json (columnar arrays) and
- * everything after that is client side: full-text search, multi-select facets,
- * a dependent taxonomy drilldown, sorting, pagination and CSV export of the
- * current selection.
+ * The CSV is fetched once from the pipeline repository on GitHub at page load
+ * (see REF below) and everything after that is client side: full-text search,
+ * multi-select facets, a dependent taxonomy drilldown, sorting, pagination and
+ * CSV export of the current selection.
  *
  * Facet counts are computed "excluding self" — the counts shown next to the
  * options of facet X reflect every active filter *except* X. That is what makes
@@ -17,18 +17,169 @@
   // The sheet is read from the repository at page load rather than bundled into
   // the site, so it is never a stale copy. The ref is pinned per docs version
   // by scripts/write_docs_ref.py (a release tag for versioned docs, `main` for
-  // bleeding-edge), so the 3.1 docs show the 3.1 sheet.
+  // `latest`), so the 3.1 docs show the 3.1 sheet.
   // raw.githubusercontent.com sends Access-Control-Allow-Origin: *, so this is
   // a plain cross-origin GET with no proxy needed.
   var REF = (window.TAXTRIAGE_DOCS && window.TAXTRIAGE_DOCS.ref) || "main";
   var CSV_URL =
-    "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/" +
-    encodeURIComponent(REF) +
-    "/assets/pathogen_sheet.csv";
+    "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/" + encodeURIComponent(REF) + "/assets/pathogen_sheet.csv";
   var CSV_HUMAN_URL =
-    "https://github.com/jhuapl-bio/taxtriage/blob/" +
-    encodeURIComponent(REF) +
-    "/assets/pathogen_sheet.csv";
+    "https://github.com/jhuapl-bio/taxtriage/blob/" + encodeURIComponent(REF) + "/assets/pathogen_sheet.csv";
+
+  // Requesting an organism only makes sense against the current sheet, so the
+  // call to action is hidden in frozen release docs. Anything that is not a
+  // numbered X.Y.Z version — `latest`, PR previews, local `mkdocs serve` — is
+  // treated as current and shows it.
+  var DOCS_VERSION = (window.TAXTRIAGE_DOCS && window.TAXTRIAGE_DOCS.version) || "latest";
+  var IS_CURRENT = !/^\d+\.\d+(\.\d+)?/.test(DOCS_VERSION);
+
+  var ISSUE_TEMPLATE = "add_organism.yml";
+  var ISSUES_NEW = "https://github.com/jhuapl-bio/taxtriage/issues/new";
+
+  // GitHub issue forms are static — they cannot repeat a field group, so
+  // requesting several organisms at once has to be assembled here and handed
+  // over as a single prefilled issue body. The guided single-organism form
+  // remains for people who start from the Issues tab instead.
+  function templateUrl(name) {
+    var params = ["template=" + encodeURIComponent(ISSUE_TEMPLATE)];
+    if (name) {
+      params.push("title=" + encodeURIComponent("Add organism: " + name));
+      params.push("organism=" + encodeURIComponent(name));
+    }
+    return ISSUES_NEW + "?" + params.join("&");
+  }
+
+  // Canonical body sites. Constrained rather than free text because the sheet
+  // already carries both "abscess" and "abcess" from hand entry.
+  var SITES = [
+    "blood",
+    "resp",
+    "lung",
+    "sputum",
+    "nasal",
+    "sinus",
+    "oral",
+    "teeth",
+    "gut",
+    "stool",
+    "feces",
+    "urine",
+    "vaginal",
+    "skin",
+    "abscess",
+    "ear",
+    "eye",
+    "ocular",
+    "cornea",
+    "csf",
+    "bile",
+    "mucus",
+  ];
+
+  // One spec drives the form, the issue body and the CSV block, so they cannot
+  // drift apart. `id` matches the pathogen sheet column name.
+  var REQUEST_FIELDS = [
+    { id: "name", label: "Organism name", type: "text", required: true, ph: "Streptococcus pneumoniae" },
+    { id: "taxid", label: "NCBI tax ID", type: "text", required: true, ph: "1313" },
+    {
+      id: "general_classification",
+      label: "Microbial category",
+      type: "select",
+      required: true,
+      options: ["primary", "opportunistic", "potential", "commensal"],
+    },
+    { id: "status", label: "Evidence status", type: "select", options: ["established", "putative"] },
+    { id: "pathogenic_sites", label: "Pathogenic sites", type: "sites" },
+    { id: "commensal_sites", label: "Commensal sites", type: "sites" },
+    { id: "high_consequence", label: "High consequence", type: "select", options: ["FALSE", "TRUE"] },
+    { id: "mol_type", label: "Molecule type", type: "select", options: ["dna", "rna"] },
+    { id: "host_organism", label: "Host organism", type: "text", ph: "human" },
+    { id: "assembly_accession", label: "Assembly accession", type: "text", ph: "GCF_000006885.1" },
+    { id: "alternative_names", label: "Synonyms", type: "text" },
+    { id: "pathology", label: "Disease association", type: "text" },
+    { id: "reference", label: "Supporting reference", type: "textarea", required: true },
+    { id: "request_type", label: "Request type (set automatically)", type: "request_type" },
+  ];
+
+  // Provenance of each row, standardised on the submission route rather than
+  // chosen: Open issue -> git-tracked, Download -> external-local. APL-derived
+  // is shown so the full vocabulary is visible, but is reserved for entries the
+  // maintainers curate. The whole control is display-only; the value is stamped
+  // at submit time, so it always reflects how the request actually arrived.
+  var REQUEST_TYPES = [
+    { value: "APL-derived", label: "APL-derived (maintainers only)", disabled: true },
+    { value: "git-tracked", label: "git-tracked — filed as a GitHub issue" },
+    { value: "external-local", label: "external-local — downloaded and sent privately" },
+  ];
+  var TYPE_FOR_ISSUE = "git-tracked";
+  var TYPE_FOR_FILE = "external-local";
+
+  // GitHub truncates very long prefilled bodies, and browsers cap URL length.
+  // Warn before we get near it rather than silently losing entries.
+  var MAX_URL = 6000;
+
+  function downloadFile(filename, text, mime) {
+    var blob = new Blob([text], { type: mime + ";charset=utf-8" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function csvCell(v) {
+    v = v == null ? "" : String(v);
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+
+  function requestBody(entries) {
+    var lines = [
+      "### Organisms requested",
+      "",
+      "Assembled from the [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/).",
+      "Taxonomic lineage is omitted — it is derived from the tax ID.",
+      "",
+    ];
+
+    entries.forEach(function (e, i) {
+      lines.push("#### " + (i + 1) + ". " + (e.name || "(unnamed)"), "");
+      REQUEST_FIELDS.forEach(function (f) {
+        if (f.id === "name") return;
+        var v = e[f.id];
+        if (!v) return;
+        lines.push("- **" + f.label + ":** " + v);
+      });
+      lines.push("");
+    });
+
+    // A paste-ready block in pathogen_sheet.csv column order.
+    lines.push("### Draft CSV rows", "", "```csv");
+    lines.push(ALL_COLS.join(","));
+    entries.forEach(function (e) {
+      lines.push(
+        ALL_COLS.map(function (c) {
+          return csvCell(e[c] || "");
+        }).join(","),
+      );
+    });
+    lines.push("```", "");
+    return lines.join("\n");
+  }
+
+  function requestIssueUrl(entries) {
+    var title =
+      entries.length === 1
+        ? "Add organism: " + entries[0].name
+        : "Add " + entries.length + " organisms to the pathogen sheet";
+    return (
+      ISSUES_NEW +
+      "?labels=pathogen-sheet" +
+      "&title=" +
+      encodeURIComponent(title) +
+      "&body=" +
+      encodeURIComponent(requestBody(entries))
+    );
+  }
 
   // Facets rendered as checkbox lists: [key, label, isMultiValue, searchable]
   var FACETS = [
@@ -40,6 +191,7 @@
     ["pathogenic_sites", "Pathogenic sites", true, false],
     ["commensal_sites", "Commensal sites", true, false],
     ["host_organism", "Host organism", false, true],
+    ["request_type", "Request type", false, false],
   ];
 
   // Dependent dropdowns, ordered broad -> narrow.
@@ -57,6 +209,9 @@
     ["family", "Family"],
     ["mol_type", "Mol"],
     ["host_organism", "Host"],
+    ["assembly_accession", "Assembly"],
+    ["request_type", "Request type"],
+    ["reference", "Reference"],
   ];
 
   // Canonical column set. Anything the CSV omits reads as empty.
@@ -81,6 +236,7 @@
     "reference",
     "Additional references",
     "assembly_accession",
+    "request_type",
   ];
 
   var DETAIL_COLS = [
@@ -101,6 +257,7 @@
     ["genus", "Genus"],
     ["mol_type", "Molecule type"],
     ["assembly_accession", "Assembly"],
+    ["request_type", "Request type"],
     ["reference", "Reference"],
     ["Additional references", "Additional references"],
   ];
@@ -202,8 +359,9 @@
   /* Turn parsed CSV into row objects.
    *
    * Deliberately tolerant of schema drift: any column the sheet does not carry
-   * (today that is `status`) simply reads as empty rather than breaking the
-   * page. Facets with nothing in them are hidden by the renderer.
+   * simply reads as empty rather than breaking the page, and facets with
+   * nothing in them are hidden by the renderer. This matters because the CSV is
+   * read live from a branch or tag that can change independently of the site.
    */
   function normalise(parsed) {
     var index = {};
@@ -226,9 +384,12 @@
 
           if (LIST_COLS.indexOf(c) !== -1) {
             o[c] = raw
-              ? raw.split(",").map(function (s) {
-                  return s.trim();
-                }).filter(Boolean)
+              ? raw
+                  .split(",")
+                  .map(function (s) {
+                    return s.trim();
+                  })
+                  .filter(Boolean)
               : [];
           } else if (c === "high_consequence") {
             o[c] = raw.toUpperCase() === "TRUE";
@@ -304,6 +465,7 @@
       reset: root.querySelector(".pt-reset"),
       exportBtn: root.querySelector(".pt-export"),
       drawer: root.querySelector(".pt-drawer"),
+      request: root.querySelector(".pt-request-drawer"),
     };
 
     /* ── filtering ────────────────────────────────────────────────────── */
@@ -415,8 +577,7 @@
       });
 
       // Taxonomy: each level's options are constrained by the level above.
-      html +=
-        '<details class="pt-facet pt-tax" open><summary>Taxonomy</summary><div class="pt-facet-body">';
+      html += '<details class="pt-facet pt-tax" open><summary>Taxonomy</summary><div class="pt-facet-body">';
       TAXONOMY.forEach(function (rank, i) {
         var parentChosen = i === 0 || state.tax[TAXONOMY[i - 1]];
         var counts = countValues(filter(rank), rank, false);
@@ -464,7 +625,7 @@
               esc(f[1]) +
               ": " +
               esc(v) +
-              "</button>"
+              "</button>",
           );
         });
       });
@@ -477,7 +638,7 @@
               esc(rank) +
               ": " +
               esc(state.tax[rank]) +
-              "</button>"
+              "</button>",
           );
         }
       });
@@ -522,6 +683,20 @@
       if (key === "pathogenic_sites" || key === "commensal_sites") {
         return '<td class="pt-sites">' + esc(v.join(", ")) + "</td>";
       }
+      if (key === "assembly_accession") {
+        return v
+          ? '<td class="pt-acc"><a href="https://www.ncbi.nlm.nih.gov/datasets/genome/' +
+              encodeURIComponent(v) +
+              '/" target="_blank" rel="noopener">' +
+              highlight(v) +
+              "</a></td>"
+          : "<td></td>";
+      }
+      if (key === "reference") {
+        // References run to full citations; clamp in the cell and keep the
+        // whole thing on hover and in the detail drawer.
+        return '<td class="pt-ref" title="' + esc(v) + '">' + highlight(displayValue(v)) + "</td>";
+      }
       return "<td>" + highlight(displayValue(v)) + "</td>";
     }
 
@@ -547,8 +722,23 @@
         "<strong>" + total.toLocaleString() + "</strong> of " + rows.length.toLocaleString() + " organisms";
 
       if (!total) {
+        // A search that finds nothing is the most likely moment someone wants
+        // an organism added, so offer it here with the query prefilled.
+        var q = state.q.trim();
+        var cta =
+          IS_CURRENT && q
+            ? '<p style="margin-top:0.75rem"><button class="pt-btn pt-request" data-name="' +
+              esc(q) +
+              '">Request &ldquo;' +
+              esc(q) +
+              "&rdquo;</button></p>"
+            : "";
         el.tbody.innerHTML =
-          '<tr><td colspan="' + TABLE_COLS.length + '" class="pt-empty">No organisms match these filters.</td></tr>';
+          '<tr><td colspan="' +
+          TABLE_COLS.length +
+          '" class="pt-empty"><p>No organisms match these filters.</p>' +
+          cta +
+          "</td></tr>";
       } else {
         el.tbody.innerHTML = slice
           .map(function (row) {
@@ -632,7 +822,7 @@
       el.drawer.innerHTML =
         '<button class="pt-drawer-close" aria-label="Close">✕</button><h3>' +
         esc(row.name) +
-        "</h3><dl class=\"pt-dl\">" +
+        '</h3><dl class="pt-dl">' +
         body +
         "</dl>";
       el.drawer.classList.add("is-open");
@@ -641,6 +831,279 @@
     function closeDrawer() {
       el.drawer.classList.remove("is-open");
     }
+
+    /* ── request builder ──────────────────────────────────────────────────
+     * Stages one or more organisms, then hands them to GitHub as a single
+     * prefilled issue. Lives here rather than in the issue form because issue
+     * forms cannot repeat a field group.
+     */
+
+    var staged = [];
+
+    function fieldControl(f) {
+      var req = f.required ? " required" : "";
+      if (f.type === "select") {
+        return (
+          '<select data-f="' +
+          f.id +
+          '"' +
+          req +
+          '><option value="">—</option>' +
+          f.options
+            .map(function (o) {
+              return '<option value="' + esc(o) + '">' + esc(o) + "</option>";
+            })
+            .join("") +
+          "</select>"
+        );
+      }
+      if (f.type === "request_type") {
+        // Display-only: the value is standardised on the submission route, so
+        // an editable control would imply a choice that is then overwritten.
+        return (
+          '<select data-f="' +
+          f.id +
+          '" disabled aria-describedby="pt-rq-type-note">' +
+          REQUEST_TYPES.map(function (o) {
+            return (
+              '<option value="' +
+              esc(o.value) +
+              '"' +
+              (o.disabled ? " disabled" : "") +
+              (o.value === TYPE_FOR_ISSUE ? " selected" : "") +
+              ">" +
+              esc(o.label) +
+              "</option>"
+            );
+          }).join("") +
+          "</select>"
+        );
+      }
+      if (f.type === "sites") {
+        return (
+          '<select data-f="' +
+          f.id +
+          '" multiple size="4">' +
+          SITES.map(function (o) {
+            return '<option value="' + esc(o) + '">' + esc(o) + "</option>";
+          }).join("") +
+          "</select>"
+        );
+      }
+      if (f.type === "textarea") {
+        return '<textarea data-f="' + f.id + '" rows="2"' + req + "></textarea>";
+      }
+      return '<input type="text" data-f="' + f.id + '" placeholder="' + esc(f.ph || "") + '"' + req + ">";
+    }
+
+    function renderRequest() {
+      var fields = REQUEST_FIELDS.map(function (f) {
+        return (
+          '<label class="pt-rq-field' +
+          (f.type === "textarea" || f.type === "sites" ? " pt-rq-wide" : "") +
+          '"><span>' +
+          esc(f.label) +
+          (f.required ? ' <em aria-hidden="true">*</em>' : "") +
+          "</span>" +
+          fieldControl(f) +
+          "</label>"
+        );
+      }).join("");
+
+      var list = staged.length
+        ? '<ol class="pt-rq-list">' +
+          staged
+            .map(function (e, i) {
+              return (
+                "<li><span><strong>" +
+                esc(e.name) +
+                "</strong> — taxid " +
+                esc(e.taxid) +
+                ", " +
+                esc(e.general_classification) +
+                '</span><button type="button" class="pt-rq-del" data-i="' +
+                i +
+                '" aria-label="Remove ' +
+                esc(e.name) +
+                '">✕</button></li>'
+              );
+            })
+            .join("") +
+          "</ol>"
+        : '<p class="pt-rq-empty">Nothing staged yet. Fill the fields above and choose <strong>Add another</strong> to queue more than one.</p>';
+
+      el.request.innerHTML =
+        '<button class="pt-drawer-close" aria-label="Close">✕</button>' +
+        "<h3>Request organisms</h3>" +
+        '<p class="pt-rq-intro">Queue as many as you like, then open a single issue. Fields marked <em>*</em> are required; the rest help but can be left blank.</p>' +
+        '<div class="pt-rq-form">' +
+        fields +
+        "</div>" +
+        '<p class="pt-rq-error" role="alert" hidden></p>' +
+        '<div class="pt-rq-actions">' +
+        '<button type="button" class="pt-btn pt-rq-add">Add another</button>' +
+        '<button type="button" class="pt-btn pt-rq-open">Open issue' +
+        (staged.length ? " (" + staged.length + ")" : "") +
+        "</button>" +
+        '<button type="button" class="pt-btn pt-rq-download">Download</button>' +
+        "</div>" +
+        '<p class="pt-rq-note" id="pt-rq-type-note">A public GitHub issue is the fastest route. If the ' +
+        "request is sensitive, <strong>Download</strong> saves the same content as a " +
+        "file you can email privately instead.<br>" +
+        "<code>request_type</code> follows whichever you choose — " +
+        "<strong>Open issue</strong> records <code>" +
+        TYPE_FOR_ISSUE +
+        "</code>, <strong>Download</strong> records <code>" +
+        TYPE_FOR_FILE +
+        "</code>.</p>" +
+        "<h4>Staged</h4>" +
+        list +
+        '<p class="pt-rq-alt">Prefer GitHub\'s guided form for a single organism? <a href="' +
+        templateUrl("") +
+        '" target="_blank" rel="noopener">Use the issue template</a>.</p>';
+    }
+
+    function readForm() {
+      var entry = {};
+      REQUEST_FIELDS.forEach(function (f) {
+        var node = el.request.querySelector('[data-f="' + f.id + '"]');
+        if (!node) return;
+        if (f.type === "sites") {
+          entry[f.id] = Array.prototype.filter
+            .call(node.options, function (o) {
+              return o.selected;
+            })
+            .map(function (o) {
+              return o.value;
+            })
+            .join(", ");
+        } else {
+          entry[f.id] = (node.value || "").trim();
+        }
+      });
+      return entry;
+    }
+
+    function showError(msg) {
+      var p = el.request.querySelector(".pt-rq-error");
+      p.textContent = msg;
+      p.hidden = !msg;
+    }
+
+    // Returns the entry, or null after reporting what is missing.
+    function takeEntry() {
+      var entry = readForm();
+      var missing = REQUEST_FIELDS.filter(function (f) {
+        return f.required && !entry[f.id];
+      });
+      if (missing.length) {
+        showError(
+          "Fill in " +
+            missing
+              .map(function (f) {
+                return f.label.toLowerCase();
+              })
+              .join(", ") +
+            " first.",
+        );
+        return null;
+      }
+      if (!/^\d+$/.test(entry.taxid)) {
+        showError("Tax ID should be numeric, e.g. 1313.");
+        return null;
+      }
+      showError("");
+      return entry;
+    }
+
+    // Staged entries plus whatever is currently typed, so a single organism does
+    // not require pressing "Add another" first. Returns null after reporting why.
+    function collectEntries() {
+      var list = staged.slice();
+      var current = readForm();
+      var started = REQUEST_FIELDS.some(function (f) {
+        return f.required && current[f.id];
+      });
+      if (started) {
+        var last = takeEntry();
+        if (!last) return null;
+        list.push(last);
+      }
+      if (!list.length) {
+        showError("Add at least one organism first.");
+        return null;
+      }
+      return list;
+    }
+
+    function openRequest(prefillName) {
+      renderRequest();
+      if (prefillName) {
+        var n = el.request.querySelector('[data-f="name"]');
+        if (n) n.value = prefillName;
+      }
+      el.request.classList.add("is-open");
+      var first = el.request.querySelector("input,select,textarea");
+      if (first && first.focus) first.focus();
+    }
+
+    el.request.addEventListener("click", function (e) {
+      if (e.target.closest(".pt-drawer-close")) {
+        el.request.classList.remove("is-open");
+        return;
+      }
+
+      var del = e.target.closest(".pt-rq-del");
+      if (del) {
+        staged.splice(Number(del.dataset.i), 1);
+        var keep = readForm();
+        renderRequest();
+        REQUEST_FIELDS.forEach(function (f) {
+          var node = el.request.querySelector('[data-f="' + f.id + '"]');
+          if (node && f.type !== "sites" && keep[f.id]) node.value = keep[f.id];
+        });
+        return;
+      }
+
+      if (e.target.closest(".pt-rq-add")) {
+        var entry = takeEntry();
+        if (!entry) return;
+        staged.push(entry);
+        renderRequest(); // clears the form, ready for the next one
+        return;
+      }
+
+      var wantsIssue = !!e.target.closest(".pt-rq-open");
+      var wantsFile = !!e.target.closest(".pt-rq-download");
+      if (wantsIssue || wantsFile) {
+        var list = collectEntries();
+        if (!list) return;
+
+        // The picker is a preview; the route is the truth. Overriding here
+        // means request_type always records how the request actually arrived.
+        list = list.map(function (e) {
+          e.request_type = wantsFile ? TYPE_FOR_FILE : TYPE_FOR_ISSUE;
+          return e;
+        });
+
+        if (wantsFile) {
+          // Same content as the issue, as a file that can be sent privately.
+          downloadFile("taxtriage-organism-request.md", requestBody(list), "text/markdown");
+          return;
+        }
+
+        var url = requestIssueUrl(list);
+        if (url.length > MAX_URL) {
+          showError(
+            "That is too much for one issue (" +
+              list.length +
+              " organisms). Use Download instead, or open this batch and start another.",
+          );
+          return;
+        }
+        window.open(url, "_blank", "noopener");
+      }
+    });
 
     /* ── export ───────────────────────────────────────────────────────── */
 
@@ -656,15 +1119,10 @@
               var v = displayValue(row[c]);
               return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
             })
-            .join(",")
+            .join(","),
         );
       });
-      var blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-      var a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "pathogen_sheet_filtered.csv";
-      a.click();
-      URL.revokeObjectURL(a.href);
+      downloadFile("pathogen_sheet_filtered.csv", lines.join("\n"), "text/csv");
     }
 
     /* ── events ───────────────────────────────────────────────────────── */
@@ -741,6 +1199,12 @@
 
     el.exportBtn.addEventListener("click", exportCsv);
 
+    root.addEventListener("click", function (e) {
+      var btn = e.target.closest(".pt-request");
+      if (!btn || el.request.contains(btn)) return;
+      openRequest(btn.dataset.name || "");
+    });
+
     el.thead.addEventListener("click", function (e) {
       var th = e.target.closest("th");
       if (!th || !th.dataset.key) return;
@@ -760,7 +1224,9 @@
     });
 
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") closeDrawer();
+      if (e.key !== "Escape") return;
+      closeDrawer();
+      el.request.classList.remove("is-open");
     });
 
     el.pager.addEventListener("click", function (e) {
@@ -791,6 +1257,7 @@
       '<span class="pt-count"></span>' +
       '<button class="pt-btn pt-reset" hidden>Clear filters</button>' +
       '<button class="pt-btn pt-export">Export CSV</button>' +
+      (IS_CURRENT ? '<button class="pt-btn pt-request">Request organisms</button>' : "") +
       "</div>" +
       '<div class="pt-chips"></div>' +
       '<div class="pt-body">' +
@@ -803,12 +1270,18 @@
       "</tr></thead><tbody></tbody></table></div>" +
       '<div class="pt-pager"></div>' +
       "</div></div>" +
-      '<div class="pt-drawer"></div>'
+      '<div class="pt-drawer"></div>' +
+      '<div class="pt-drawer pt-request-drawer"></div>'
     );
   }
 
   function boot() {
-    init(document.getElementById("pathogen-app"));
+    var mount = document.getElementById("pathogen-app");
+    // Widen the whole page for this table only. Done as a body class rather
+    // than page-scoped CSS so the styling lives in the stylesheet; with
+    // Material's instant navigation the class must be removed again on leaving.
+    document.body.classList.toggle("pt-fullwidth", !!mount);
+    init(mount);
   }
 
   // Material's instant navigation swaps content without a page load, so hook

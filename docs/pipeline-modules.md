@@ -53,12 +53,14 @@ Reduces each sample to N reads before any downstream processing. Useful for a fa
 ## Step 1: Quality Control — Part 1
 
 ### Illumina
+
 **Tool:** FastQC, fastp  
 **Parameter:** `--minq 20` (default), `--skip_fastp`
 
 Generates quality score distributions, adapter content plots, and per-base quality reports. Fastp filters low-quality reads based on `--minq`.
 
 ### Oxford Nanopore
+
 **Tool:** pycoQC (requires `--sequencing_summary`) for Illumina, NanoPlot for ONT
 
 Generates read length/quality plots from raw ONT output. NanoPlot is run on the raw reads. pycoQC uses the sequencing summary file for additional detail.
@@ -68,12 +70,14 @@ Generates read length/quality plots from raw ONT output. NanoPlot is run on the 
 ## Step 2: Adapter Trimming
 
 ### Illumina
+
 **Tool:** Trimgalore  
 **Parameter:** `--trim`
 
 Removes adapter sequences from paired or single-end Illumina reads.
 
 ### Oxford Nanopore
+
 **Tool:** Porechop  
 **Parameter:** `--trim`
 
@@ -112,6 +116,7 @@ Not all classified organisms are aligned — only "top hits" proceed to alignmen
 ![Top Hits Decision Tree](images/TASSDiagram.png)
 
 Top hits include:
+
 - Any organism annotated in the [pathogen sheet](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv) (regardless of abundance)
 - The top N organisms per taxonomic rank (controlled by `--top_hits_count` and `--top_per_taxa`)
 - Organisms with irregular HMP abundance distributions (if `--add_irregular_top_hits` is set)
@@ -123,6 +128,7 @@ Top hits include:
 **Parameters:** `--assembly`, `--reference_fasta`, `--organisms`
 
 Reference genomes for all top hit organisms are obtained:
+
 - **Default (internet):** Downloaded from NCBI FTP using the assembly summary file.
 - **Offline:** Provided via `--reference_fasta` (local FASTA) or `--assembly` (local assembly summary).
 
@@ -135,9 +141,11 @@ A FASTA index is built for Bowtie2 (Illumina) at this stage.
 ## Step 7: Alignment
 
 ### Illumina
+
 **Tool:** Minimap2 (default), Hisat2, Bowtie2 (with `--use_bt2`)
 
 ### ONT / PacBio
+
 **Tool:** Minimap2
 
 All Kraken2-classified reads (or all raw reads if `--skip_kraken2`) are aligned to the reference genomes. Only the best-scoring alignment per read is currently retained.
@@ -202,7 +210,7 @@ See [TASS Scoring](tass-scoring.md) for the full mathematical methodology.
 ## VF/AMR Annotation (Optional)
 
 **Tool:** Denovo Assembly, DIAMOND
-**Parameters:** `--annotate`, `--annotate_proteins <fasta>`, `--annotate_meta <annotate_meta>`, `--pident` 
+**Parameters:** `--annotate`, `--annotate_proteins <fasta>`, `--annotate_meta <annotate_meta>`, `--pident`
 
 Assembled contigs can be annotated for virulence factors, transporter, and antimicrobial resistance genes using DIAMOND. The `--annotate_proteins` parameter accepts a FASTA of protein sequences to search against, and `--annotate_meta` accepts a tabular metadata file with annotations to add to the report.
 
@@ -220,10 +228,10 @@ As of September 2025, TaxTriage supports AI/ML-based taxonomic predictions via M
 
 ### Supported Models (hosted on Hugging Face)
 
-| Model | Reads Optimized For |
-|---|---|
-| [Hyena DNA](https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy/hyenadna-large-1m-seqlen-hf-taxonomy) | Long reads (ONT) |
-| [DNABERT-2](https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy/DNABERT-2-117M-taxonomy) | Short reads (Illumina) |
+| Model                                                                                                                                 | Reads Optimized For    |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| [Hyena DNA](https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy/hyenadna-large-1m-seqlen-hf-taxonomy)                      | Long reads (ONT)       |
+| [DNABERT-2](https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy/DNABERT-2-117M-taxonomy)                                   | Short reads (Illumina) |
 | [NT Transformer](https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy/nucleotide-transformer-v2-50m-multi-species-taxonomy) | Short reads (Illumina) |
 
 ### Downloading a Model

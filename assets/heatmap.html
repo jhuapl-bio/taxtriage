@@ -44,7 +44,14 @@
     </div>
 
     <div id="banner">
-      <i class="fas fa-bacteria"></i>
+      <svg class="banner-logo" viewBox="0 0 64 64" role="img" aria-label="TaxTriage logo">
+        <g fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round">
+          <line x1="10" y1="18" x2="40" y2="18" />
+          <line x1="10" y1="32" x2="32" y2="32" />
+          <line x1="10" y1="46" x2="24" y2="46" />
+        </g>
+        <circle cx="52" cy="18" r="7" fill="#ffffff" />
+      </svg>
       TaxTriage Multi-Run Analysis
       <span class="sub" id="banner-sub"></span>
       <button id="pipeline-info-btn" type="button" aria-label="Show pipeline run metadata">
@@ -2289,34 +2296,11 @@
                     Organisms
                     <span id="longi-org-count" style="font-weight: 400; color: #888; font-size: 0.9em"></span>
                   </label>
-                  <input
-                    id="longi-org-search"
-                    type="text"
-                    placeholder="Search organisms…"
-                    style="
-                      border: 1px solid #ccd6e8;
-                      border-radius: 6px;
-                      padding: 5px 9px;
-                      font-size: 0.82em;
-                      outline: none;
-                    "
-                  />
-                  <!-- Scrollable chip list — click to select/deselect -->
-                  <div
-                    id="longi-org-list"
-                    style="
-                      border: 1px solid #ccd6e8;
-                      border-radius: 6px;
-                      background: #fff;
-                      max-height: 110px;
-                      overflow-y: auto;
-                      padding: 4px 5px;
-                      display: flex;
-                      flex-wrap: wrap;
-                      gap: 4px;
-                      align-content: flex-start;
-                    "
-                  ></div>
+                  <!-- Collapsed, searchable organism picker (see
+                       43_multiselect.js). Was a scrollable chip wall, which a
+                       run with hundreds of organisms turned into a scroll
+                       hunt. -->
+                  <div id="longi-org-list"></div>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 0.3em">
                   <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Axis</label>
@@ -3386,6 +3370,29 @@
           </div>
         </div>
 
+        <h3 style="display: flex; align-items: center; gap: 0.4em">
+          Sample QC / Flags
+          <button
+            class="info-tip-btn"
+            id="flag-tip-btn"
+            aria-label="Sample QC help"
+            data-tip="&lt;b&gt;Sample QC rules&lt;/b&gt; — filters that act on WHOLE SAMPLES rather than on individual detections.&lt;br&gt;&lt;br&gt;Build any number of rules from four sources: &lt;b&gt;sample metrics&lt;/b&gt; (total / aligned reads, platform, control type), &lt;b&gt;detection counts&lt;/b&gt; (distinct organisms above a TASS cutoff, detections passing threshold, highest TASS), &lt;b&gt;metadata columns&lt;/b&gt; (equals / contains / regex / is empty) and any &lt;b&gt;numeric detection column&lt;/b&gt; rolled up per sample.&lt;br&gt;&lt;br&gt;A matching sample is &lt;b&gt;flagged&lt;/b&gt; — marked in the Heatmap, Table, Metadata &amp;amp; Mapping and Summary tabs but still fully visible — or &lt;b&gt;flagged and hidden&lt;/b&gt;, which drops it from every chart and table exactly as the eye icon does.&lt;br&gt;&lt;br&gt;Defaults come from the pipeline&#39;s &lt;code&gt;--report_flag_*&lt;/code&gt; parameters; everything can be edited here and is saved with the session state."
+          >
+            &#x24D8;
+          </button>
+        </h3>
+        <div id="flag-summary">
+          <div id="flag-summary-line" class="flag-line quiet"></div>
+          <div id="flag-summary-actions">
+            <button type="button" id="flag-open-btn" title="Open the sample filter / flag rule builder">
+              <i class="fas fa-flag"></i> Filters &amp; flags…
+            </button>
+            <label id="flag-hide-toggle-lbl" title="Hide every flagged sample from all charts and tables">
+              <input type="checkbox" id="flag-hide-toggle" /> Hide flagged
+            </label>
+          </div>
+        </div>
+
         <h3 style="display: flex; align-items: center; justify-content: space-between; gap: 0.4em">
           Samples
           <span style="display: flex; gap: 0.3em; flex-shrink: 0">
@@ -3725,36 +3732,6 @@
         <div id="state-status" style="font-size: 0.75em; color: #555; margin-top: 0.4em"></div>
 
         <div id="data-capability-notice" style="display: none"></div>
-
-        <!-- ── Legend panel: sample colors + TASS cutoffs ── -->
-        <div
-          id="sidebar-legend"
-          style="display: none; margin-top: 0.9em; padding-top: 0.7em; border-top: 1px solid #d8e4f0"
-        >
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35em">
-            <span
-              style="
-                font-size: 0.78em;
-                font-weight: 700;
-                color: #37474f;
-                text-transform: uppercase;
-                letter-spacing: 0.04em;
-              "
-              >Legend</span
-            >
-            <button
-              id="sidebar-legend-toggle"
-              title="Collapse legend"
-              style="background: none; border: none; cursor: pointer; color: #90a4ae; font-size: 0.82em; padding: 0 2px"
-            >
-              &#9650;
-            </button>
-          </div>
-          <div id="sidebar-legend-body">
-            <div id="sidebar-legend-samples" style="margin-bottom: 0.5em"></div>
-            <div id="sidebar-legend-tass"></div>
-          </div>
-        </div>
       </div>
 
       <!-- /sidebar -->
@@ -3971,6 +3948,63 @@
       </div>
     </div>
 
+    <!-- ══ Sample QC: filter / flag rule builder ══════════════════════════ -->
+    <div id="flag-modal-overlay" class="export-modal-overlay" aria-hidden="true">
+      <div class="export-modal flag-modal" role="dialog" aria-modal="true" aria-labelledby="flag-modal-title">
+        <header>
+          <i class="fas fa-flag"></i>
+          <span id="flag-modal-title">Sample filters &amp; flags</span>
+          <button type="button" id="flag-modal-close" aria-label="Close">&times;</button>
+        </header>
+        <div class="flag-modal-body">
+          <p class="flag-modal-intro">
+            These rules act on <b>whole samples</b>, not on individual detections. A sample that matches is
+            <b>flagged</b> &mdash; marked in the Heatmap, Table, Metadata &amp; Mapping and Summary tabs but still
+            visible &mdash; or <b>flagged and hidden</b>, which removes it from every view. Changes apply as you make
+            them.
+          </p>
+          <div class="flag-modal-top">
+            <label title="Turn the whole rule set off without deleting it">
+              <input type="checkbox" id="flag-enabled" checked /> Rules active
+            </label>
+            <label>
+              Flag a sample when
+              <select id="flag-logic">
+                <option value="any">any rule matches</option>
+                <option value="all">every rule matches</option>
+              </select>
+            </label>
+            <label title="A sample with no value at all for a rule's field counts as matching that rule">
+              <input type="checkbox" id="flag-missing-fails" /> Missing values count as a match
+            </label>
+            <label title="Promote every flag to a hide, whatever each rule says">
+              <input type="checkbox" id="flag-hide-all" /> Hide all flagged samples
+            </label>
+          </div>
+          <div id="flag-rule-list"></div>
+          <div class="flag-modal-addrow">
+            <button type="button" id="flag-add-rule"><i class="fas fa-plus"></i> Add rule</button>
+            <span class="flag-preset-wrap">
+              Presets:
+              <button type="button" class="flag-preset" data-preset="lowreads">Low read depth</button>
+              <button type="button" class="flag-preset" data-preset="noalign">No alignments</button>
+              <button type="button" class="flag-preset" data-preset="fewtaxa">Few organisms above TASS</button>
+              <button type="button" class="flag-preset" data-preset="nodetect">No passing detections</button>
+              <button type="button" class="flag-preset" data-preset="control">Control samples</button>
+            </span>
+          </div>
+          <div id="flag-preview"></div>
+        </div>
+        <div class="export-modal-actions">
+          <button type="button" id="flag-reset-btn" title="Restore the rules the pipeline shipped with this report">
+            Reset to pipeline defaults
+          </button>
+          <button type="button" id="flag-clear-btn">Remove all rules</button>
+          <button type="button" id="flag-apply-btn" class="primary">Done</button>
+        </div>
+      </div>
+    </div>
+
     <script src="pages.js"></script>
     <script src="src/js/early.js"></script>
     <script src="src/js/00_preamble.js"></script>
@@ -4014,6 +4048,9 @@
     <script src="src/js/38_meta_grouping.js"></script>
     <script src="src/js/39_meta_group_views.js"></script>
     <script src="src/js/40_map_group_network.js"></script>
+    <script src="src/js/41_sample_flags.js"></script>
+    <script src="src/js/42_sample_flags_ui.js"></script>
+    <script src="src/js/43_multiselect.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

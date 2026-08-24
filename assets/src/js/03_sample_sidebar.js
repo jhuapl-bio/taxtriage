@@ -443,8 +443,9 @@ function _applyFilterAutoHide(matchedIds) {
         }
       } else if (_filterAutoHidden.has(id)) {
         // Matches again (query changed) — restore it, but only because we
-        // were the one who hid it.
-        sampleHidden[id] = false;
+        // were the one who hid it, and only if a sample QC rule with a
+        // "hide" action isn't holding it down as well.
+        if (typeof _flagAutoHidden === "undefined" || !_flagAutoHidden.has(id)) sampleHidden[id] = false;
         _filterAutoHidden.delete(id);
         changed = true;
       }
@@ -453,7 +454,7 @@ function _applyFilterAutoHide(matchedIds) {
     // Toggle switched off, or the search box was cleared — give back
     // visibility to everything we auto-hid.
     _filterAutoHidden.forEach((id) => {
-      sampleHidden[id] = false;
+      if (typeof _flagAutoHidden === "undefined" || !_flagAutoHidden.has(id)) sampleHidden[id] = false;
     });
     _filterAutoHidden.clear();
     changed = true;
@@ -582,6 +583,14 @@ function buildSampleList() {
   _sampleOrder = _sampleOrder.filter((id) => rawSamples.includes(id));
   _ttPushAll(_sampleOrder, newOnes);
 
+  //  Sample QC verdicts are derived from DATA + metadata, so they have to be
+  //  re-applied whenever the sample inventory changes — an upload, a delete,
+  //  or a whole-dataset swap (the GitHub Pages "Start empty" / state-load
+  //  paths all land here). Without this the row icons below and the sidebar
+  //  summary keep showing the previous dataset's verdict. The evaluation
+  //  itself is memoized, so this is a cache hit whenever nothing changed.
+  const _flagHideChanged = typeof ttFlagApplyHide === "function" ? ttFlagApplyHide() : false;
+
   const cont = document.getElementById("sample-list");
   if (!cont) return;
   cont.innerHTML = "";
@@ -697,6 +706,29 @@ function buildSampleList() {
     // Surfaced for samples with few reads or no alignment hits so the user
     // knows their plots/scores may be unreliable. Uses the app's instant
     // tooltip (showTip/moveTip/hideTip) to explain the caveat on hover.
+    // ── Sample QC flag icon ────────────────────────────────────────
+    // Set by the rule engine in 41_sample_flags.js. Hovering lists every
+    // rule the sample tripped; clicking opens the rule builder.
+    const _flagState = typeof ttFlagStateFor === "function" ? ttFlagStateFor(id) : null;
+    let flagIcon = null;
+    if (_flagState && _flagState.flagged) {
+      flagIcon = document.createElement("i");
+      flagIcon.className =
+        "fas " +
+        (_flagState.hide ? "fa-eye-slash" : "fa-flag") +
+        " sample-flag-icon" +
+        (_flagState.hide ? " hides" : "");
+      flagIcon.addEventListener("mouseover", (ev) => showTip(ttFlagTipHTML(id), ev));
+      flagIcon.addEventListener("mousemove", moveTip);
+      flagIcon.addEventListener("mouseout", hideTip);
+      flagIcon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        hideTip();
+        if (typeof ttFlagOpenModal === "function") ttFlagOpenModal();
+      });
+    }
+    div.classList.toggle("flagged-sample", !!(_flagState && _flagState.flagged));
+
     const _warn = _sampleDataWarning(id);
     let warnIcon = null;
     if (_warn.warn) {
@@ -816,6 +848,7 @@ function buildSampleList() {
 
     div.appendChild(colorIn);
     div.appendChild(span);
+    if (flagIcon) div.appendChild(flagIcon);
     if (warnIcon) div.appendChild(warnIcon);
     div.appendChild(editBtn);
     div.appendChild(rescaleBtn);
@@ -831,8 +864,8 @@ function buildSampleList() {
   _syncToggleAllSamplesBtn();
   // Rebuild per-sample-type TASS cutoff UI
   buildPerTypeTassUI();
-  // Update the sidebar legend (sample swatches + TASS cutoffs)
-  _updateSidebarLegend();
+  // Sample QC summary line + chips, re-rendered from the verdict applied above.
+  if (typeof ttFlagRenderSummary === "function") ttFlagRenderSummary();
   if (window.specimenMerge && typeof window.specimenMerge.refreshBar === "function") {
     window.specimenMerge.refreshBar();
   }
@@ -840,64 +873,7 @@ function buildSampleList() {
   // push that out to the charts/tables. redraw() is safe to call here even
   // though buildSampleList() is itself sometimes called FROM redraw()'s
   // callers, because this only fires when visibility actually changed.
-  if (_hideToggleChanged && typeof redraw === "function") redraw();
-}
-
-/** Rebuild the sidebar legend: sample color swatches + active TASS cutoffs.
- *  Called whenever buildSampleList() runs or TASS thresholds change. */
-function _updateSidebarLegend() {
-  const panel = document.getElementById("sidebar-legend");
-  const samplesEl = document.getElementById("sidebar-legend-samples");
-  const tassEl = document.getElementById("sidebar-legend-tass");
-  if (!panel || !samplesEl || !tassEl) return;
-
-  // ── sample swatches ──────────────────────────────────────────────
-  if (_sampleOrder.length > 0) {
-    let swatchHtml = `<div style="font-size:0.72em;font-weight:600;color:#546e7a;margin-bottom:0.25em">Sample Colors <span style="font-weight:400;color:#90a4ae">(current page)</span></div>`;
-    swatchHtml += '<div style="display:flex;flex-direction:column;gap:0.18em">';
-    _sampleListPageIds.forEach((id) => {
-      const col = sampleColors[id] || "#888";
-      const hidden = sampleHidden[id];
-      swatchHtml +=
-        `<div style="display:flex;align-items:center;gap:0.4em;opacity:${hidden ? 0.4 : 1}">` +
-        `<span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:${col};border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>` +
-        `<span style="font-size:0.78em;color:#37474f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px" title="${id}">${id}</span>` +
-        `</div>`;
-    });
-    if (!_sampleListPageIds.length) {
-      swatchHtml += '<div style="font-size:0.75em;color:#90a4ae;font-style:italic">No matching samples.</div>';
-    }
-    swatchHtml += "</div>";
-    samplesEl.innerHTML = swatchHtml;
-    panel.style.display = "";
-  } else {
-    samplesEl.innerHTML = "";
-    panel.style.display = "none";
-  }
-
-  // ── TASS cutoffs ─────────────────────────────────────────────────
-  const cs = _tassCutoffSummary();
-  let tassHtml =
-    '<div style="font-size:0.72em;font-weight:600;color:#546e7a;margin:0.45em 0 0.25em">TASS Cutoffs</div>';
-  if (cs.mode === "byType" && cs.items.length) {
-    tassHtml += '<div style="display:flex;flex-direction:column;gap:0.15em">';
-    cs.items.forEach(({ type, applied }) => {
-      tassHtml +=
-        `<div style="display:flex;align-items:center;gap:0.4em">` +
-        `<span style="display:inline-block;width:11px;height:2px;background:#f59f00;flex-shrink:0;border-radius:1px"></span>` +
-        `<span style="font-size:0.78em;color:#37474f">${type}: <b>${applied}</b></span>` +
-        `</div>`;
-    });
-    tassHtml += "</div>";
-  } else {
-    const v = cs.global || 0;
-    tassHtml +=
-      `<div style="display:flex;align-items:center;gap:0.4em">` +
-      `<span style="display:inline-block;width:11px;height:2px;background:#f59f00;flex-shrink:0;border-radius:1px"></span>` +
-      `<span style="font-size:0.78em;color:#37474f">Global: <b>${v}</b></span>` +
-      `</div>`;
-  }
-  tassEl.innerHTML = tassHtml;
+  if ((_hideToggleChanged || _flagHideChanged) && typeof redraw === "function") redraw();
 }
 
 /* ── Per-sample-type TASS helpers ────────────────────────────────────── */
@@ -1188,7 +1164,6 @@ function buildPerTypeTassUI() {
       _invalidateFilterCache();
       redraw();
       if (window._resetHistSelectors) window._resetHistSelectors();
-      _updateSidebarLegend();
     });
   }
 }

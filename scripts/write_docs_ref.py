@@ -45,7 +45,7 @@ def main() -> int:
     here = Path(__file__).resolve().parent.parent
     ap = argparse.ArgumentParser()
     ap.add_argument("--ref", default=None, help="git ref to read data files from (default: current branch/tag)")
-    ap.add_argument("--version", default=None, help="human-readable docs version, e.g. 3.3 or bleeding-edge")
+    ap.add_argument("--version", default=None, help="human-readable docs version, e.g. 3.3 or latest")
     ap.add_argument("--out", type=Path, default=here / "docs" / "javascripts" / "docs_ref.js")
     args = ap.parse_args()
 

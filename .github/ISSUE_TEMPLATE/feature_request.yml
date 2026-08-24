@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an idea for the nf-core/taxtriage pipeline
+description: Suggest an idea for the jhuapl-bio/taxtriage pipeline
 labels: enhancement
 body:
   - type: textarea

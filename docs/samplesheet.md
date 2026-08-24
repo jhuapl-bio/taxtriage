@@ -22,19 +22,19 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 
 ## Column Reference
 
-| Column | Required | Description |
-|---|---|---|
-| `sample` | **MANDATORY** | Unique sample name. If the same name appears on multiple rows, those reads are concatenated before processing. Spaces are converted to `_`. |
-| `platform` | **MANDATORY** | Sequencing platform: `ILLUMINA`, `OXFORD`, or `PACBIO`. Defaults to `ILLUMINA` if blank. Other platforms may work as a proxy but are not officially supported. |
-| `bam` | OPTIONAL | Path to a pre-aligned `.bam`, `.cram` or `.sam` file. When set, the row skips QC, trimming, host removal, classification and reference download, and `fastq_1` is ignored. A sheet must have either this column or `fastq_1`. See [Pre-Aligned Input](#pre-aligned-input-bam-column). |
-| `fastq_1` | **MANDATORY** (unless `bam` is set) | Path to the primary input file. Accepts gzipped or uncompressed FASTQ (`.fastq.gz`, `.fq.gz`, `.fastq`, `.fq`) **or** FASTA (`.fa`, `.fasta`, `.fna`, `.fa.gz`, `.fasta.gz`, `.fna.gz`). May also be a directory of FASTQ files (ONT demux mode), **or an SRA/ENA accession** to download automatically. See [SRA / ENA Accessions](#sra--ena-accessions), [FASTA Input](#fasta-input) and [Multi-File Input](#multi-file-input) for extended options. |
-| `fastq_2` | OPTIONAL | Path to the second FASTQ file for paired-end Illumina reads. Must be gzipped. Ignored when `fastq_1` is FASTA, contains multiple files, or is an accession. |
-| `sequencing_summary` | OPTIONAL | Path to a Nanopore sequencing summary file — enables pycoQC plots. |
-| `trim` | OPTIONAL | `TRUE` or `FALSE` — whether to run adapter trimming on this sample. |
-| `type` | OPTIONAL (Recommended) | Sample body site (e.g., `blood`, `stool`). Used for HMP-based filtering and pathogen annotation. See [Sample Types](#sample-types) below. |
-| `minimap2_preset` | OPTIONAL | Override the minimap2 alignment preset for this sample. See [minimap2 Presets](#minimap2-presets) below. |
-| `positive` | OPTIONAL | Name of the positive control sample (matching `sample` column) to compare against. |
-| `negative` | OPTIONAL | Name of the negative control sample to compare against. |
+| Column               | Required                            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sample`             | **MANDATORY**                       | Unique sample name. If the same name appears on multiple rows, those reads are concatenated before processing. Spaces are converted to `_`.                                                                                                                                                                                                                                                                                                            |
+| `platform`           | **MANDATORY**                       | Sequencing platform: `ILLUMINA`, `OXFORD`, or `PACBIO`. Defaults to `ILLUMINA` if blank. Other platforms may work as a proxy but are not officially supported.                                                                                                                                                                                                                                                                                         |
+| `bam`                | OPTIONAL                            | Path to a pre-aligned `.bam`, `.cram` or `.sam` file. When set, the row skips QC, trimming, host removal, classification and reference download, and `fastq_1` is ignored. A sheet must have either this column or `fastq_1`. See [Pre-Aligned Input](#pre-aligned-input-bam-column).                                                                                                                                                                  |
+| `fastq_1`            | **MANDATORY** (unless `bam` is set) | Path to the primary input file. Accepts gzipped or uncompressed FASTQ (`.fastq.gz`, `.fq.gz`, `.fastq`, `.fq`) **or** FASTA (`.fa`, `.fasta`, `.fna`, `.fa.gz`, `.fasta.gz`, `.fna.gz`). May also be a directory of FASTQ files (ONT demux mode), **or an SRA/ENA accession** to download automatically. See [SRA / ENA Accessions](#sra--ena-accessions), [FASTA Input](#fasta-input) and [Multi-File Input](#multi-file-input) for extended options. |
+| `fastq_2`            | OPTIONAL                            | Path to the second FASTQ file for paired-end Illumina reads. Must be gzipped. Ignored when `fastq_1` is FASTA, contains multiple files, or is an accession.                                                                                                                                                                                                                                                                                            |
+| `sequencing_summary` | OPTIONAL                            | Path to a Nanopore sequencing summary file — enables pycoQC plots.                                                                                                                                                                                                                                                                                                                                                                                     |
+| `trim`               | OPTIONAL                            | `TRUE` or `FALSE` — whether to run adapter trimming on this sample.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `type`               | OPTIONAL (Recommended)              | Sample body site (e.g., `blood`, `stool`). Used for HMP-based filtering and pathogen annotation. See [Sample Types](#sample-types) below.                                                                                                                                                                                                                                                                                                              |
+| `minimap2_preset`    | OPTIONAL                            | Override the minimap2 alignment preset for this sample. See [minimap2 Presets](#minimap2-presets) below.                                                                                                                                                                                                                                                                                                                                               |
+| `positive`           | OPTIONAL                            | Name of the positive control sample (matching `sample` column) to compare against.                                                                                                                                                                                                                                                                                                                                                                     |
+| `negative`           | OPTIONAL                            | Name of the negative control sample to compare against.                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ---
 
@@ -51,12 +51,12 @@ whole_project,,PRJNA681875,,,FALSE,stool
 
 ### Accepted accession types
 
-| Level | Prefixes | Result |
-|---|---|---|
-| Run | `SRR`, `ERR`, `DRR` | One sample, keeping the name in the `sample` column |
-| Experiment | `SRX`, `ERX`, `DRX` | One sample per child run |
-| Sample | `SRS`, `ERS`, `DRS`, `SAMN`, `SAMEA`, `SAMD` | One sample per child run |
-| Study / project | `SRP`, `ERP`, `DRP`, `PRJNA`, `PRJEB`, `PRJDB` | One sample per child run |
+| Level           | Prefixes                                       | Result                                              |
+| --------------- | ---------------------------------------------- | --------------------------------------------------- |
+| Run             | `SRR`, `ERR`, `DRR`                            | One sample, keeping the name in the `sample` column |
+| Experiment      | `SRX`, `ERX`, `DRX`                            | One sample per child run                            |
+| Sample          | `SRS`, `ERS`, `DRS`, `SAMN`, `SAMEA`, `SAMD`   | One sample per child run                            |
+| Study / project | `SRP`, `ERP`, `DRP`, `PRJNA`, `PRJEB`, `PRJDB` | One sample per child run                            |
 
 When an accession expands to more than one run, each resulting sample is named `<sample>_<run_accession>` (e.g. `whole_project_SRR13191701`) so names stay unique and traceable. Every other column on that row — `trim`, `type`, `positive`/`negative`, `minimap2_preset`, metadata columns — is inherited by all of its runs.
 
@@ -77,7 +77,7 @@ Leave `platform` blank and the instrument platform reported by the archive is us
 
 Downloads are written to `<outdir>/sra_downloads/<run_accession>/` and are **skipped entirely** on any later run where they already exist — both with `-resume` and on a fresh run. Set `--sra_cache_dir /shared/sra` to place the cache on shared storage so an accession is only ever downloaded once across projects or users.
 
-> ℹ️ A file that happens to be *named* like an accession (e.g. `SRR13191702.fastq.gz`) is still treated as a local path. Only bare accessions — no dots, no slashes — trigger a download.
+> ℹ️ A file that happens to be _named_ like an accession (e.g. `SRR13191702.fastq.gz`) is still treated as a local path. Only bare accessions — no dots, no slashes — trigger a download.
 
 > ⚠️ **Controls and multi-run accessions.** The `positive`/`negative` columns match on final sample names. If a control is itself given as a project/experiment accession, its samples get the `_<run_accession>` suffix, so point the control columns at the suffixed name (or use a run accession for controls so the name stays exactly what you wrote).
 
@@ -181,30 +181,30 @@ The optional `minimap2_preset` column sets the minimap2 alignment preset **per s
 
 When this column is absent or blank, the preset is selected automatically from `platform`:
 
-| Platform | Default preset |
-|---|---|
-| `ILLUMINA` | `sr` |
-| `PACBIO` | `map-hifi` |
-| `OXFORD` (and all others) | `map-ont` |
+| Platform                  | Default preset |
+| ------------------------- | -------------- |
+| `ILLUMINA`                | `sr`           |
+| `PACBIO`                  | `map-hifi`     |
+| `OXFORD` (and all others) | `map-ont`      |
 
 ### Available presets
 
-| Preset | Best for |
-|---|---|
-| `map-ont` | Oxford Nanopore genomic reads |
-| `map-pb` | PacBio CLR genomic reads |
-| `map-hifi` | PacBio HiFi / CCS reads (v2.19+) |
-| `lr:hq` | Nanopore Q20+ high-quality reads (v2.27+) |
-| `sr` | Short-read paired-end genomic reads |
-| `splice` | Spliced long reads (strand unknown) |
+| Preset            | Best for                                                |
+| ----------------- | ------------------------------------------------------- |
+| `map-ont`         | Oxford Nanopore genomic reads                           |
+| `map-pb`          | PacBio CLR genomic reads                                |
+| `map-hifi`        | PacBio HiFi / CCS reads (v2.19+)                        |
+| `lr:hq`           | Nanopore Q20+ high-quality reads (v2.27+)               |
+| `sr`              | Short-read paired-end genomic reads                     |
+| `splice`          | Spliced long reads (strand unknown)                     |
 | `splice -uf -k14` | Noisy Nanopore direct RNA-seq (pass as `task.ext.args`) |
-| `splice:hq` | PacBio Kinnex / Iso-seq (RNA-seq) |
-| `splice:sr` | Short-read RNA-seq (v2.29+) |
-| `asm5` | Intra-species assembly-to-assembly alignment |
-| `asm10` | Cross-species assembly alignment |
-| `asm20` | Divergent assembly alignment |
-| `ava-pb` | PacBio read overlap |
-| `ava-ont` | Nanopore read overlap |
+| `splice:hq`       | PacBio Kinnex / Iso-seq (RNA-seq)                       |
+| `splice:sr`       | Short-read RNA-seq (v2.29+)                             |
+| `asm5`            | Intra-species assembly-to-assembly alignment            |
+| `asm10`           | Cross-species assembly alignment                        |
+| `asm20`           | Divergent assembly alignment                            |
+| `ava-pb`          | PacBio read overlap                                     |
+| `ava-ont`         | Nanopore read overlap                                   |
 
 > ℹ️ Presets that require additional flags beyond the preset name (e.g. `splice -uf -k14`) should pass the extra flags via `task.ext.args` in your Nextflow config rather than in the `minimap2_preset` column.
 
@@ -240,22 +240,22 @@ Negative Control Miseq,ILLUMINA,examples/data/controls/negative/neg_R1.fastq.gz,
 
 The `type` column influences downstream filtering and annotation. Supported values:
 
-| Value | HMP Filtering | Notes |
-|---|---|---|
-| `blood` | No | |
-| `csf` | No | Cerebrospinal fluid |
-| `sterile` | No | |
-| `nasal` | No | |
-| `oral` | Yes | Matches HMP oral dataset |
-| `vaginal` | Yes | Matches HMP vaginal dataset |
-| `gut` | Yes | Matches HMP gut dataset |
-| `stool` | Yes | Matches HMP stool dataset |
-| `skin` | Yes | Matches HMP skin dataset |
-| `abscess` | No | |
-| `lung` | No | |
-| `ear` | No | |
-| `sputum` | No | |
-| `urine` | No | |
+| Value     | HMP Filtering | Notes                       |
+| --------- | ------------- | --------------------------- |
+| `blood`   | No            |                             |
+| `csf`     | No            | Cerebrospinal fluid         |
+| `sterile` | No            |                             |
+| `nasal`   | No            |                             |
+| `oral`    | Yes           | Matches HMP oral dataset    |
+| `vaginal` | Yes           | Matches HMP vaginal dataset |
+| `gut`     | Yes           | Matches HMP gut dataset     |
+| `stool`   | Yes           | Matches HMP stool dataset   |
+| `skin`    | Yes           | Matches HMP skin dataset    |
+| `abscess` | No            |                             |
+| `lung`    | No            |                             |
+| `ear`     | No            |                             |
+| `sputum`  | No            |                             |
+| `urine`   | No            |                             |
 
 > If a type is not in this list or is left blank, the HMP distribution filtering step is skipped for that sample. The type still affects pathogen annotation labels in the final PDF.
 
@@ -274,7 +274,7 @@ sample,platform,fastq_1,type,altitude,collection_date
 Sample_A,ILLUMINA,reads_R1.fastq.gz,blood,1200,2024-03-12
 ```
 
-**Grouping DNA + RNA libraries into one specimen.** Give both libraries the same `specimen` value; the interactive report can then merge them (see the **Cross-Sample Organism Analysis** tab's *Merge* toggle) so prevalence counts the specimen once:
+**Grouping DNA + RNA libraries into one specimen.** Give both libraries the same `specimen` value; the interactive report can then merge them (see the **Cross-Sample Organism Analysis** tab's _Merge_ toggle) so prevalence counts the specimen once:
 
 ```
 sample,platform,fastq_1,type,specimen
@@ -297,24 +297,24 @@ Provide a separate CSV file with at minimum a `sample` column matching your samp
 
 Beyond `sample`, several column names are **recognized** by the interactive report and power dedicated views (Map, Longitudinal, Geographic Comparison, Host & Disease). Names are matched exactly (snake_case), so spelling matters. See [Interactive Report → Run Metadata tab](interactive-report.md#run-metadata-tab-and-metadata-driven-views) for what each one drives.
 
-| Column | Used in Multi-Run Report | Description |
-|---|---|---|
-| `sample` | Yes | Must match samplesheet sample names |
-| `run_id` | Yes | Groups samples by run in the ODR |
-| `specimen` | Yes | Groups multiple samples (e.g. a DNA and an RNA library from the same swab) into one **specimen**. Samples sharing a `specimen` value can be merged in the interactive report's **Cross-Sample Organism Analysis** tab so prevalence and per-organism TASS / coverage / reads are computed per specimen rather than per sample. Leave blank for samples that are their own specimen. |
-| `latitude` | Yes | Sample collection latitude; enables the **Map** tab and Geographic Comparison |
-| `longitude` | Yes | Sample collection longitude (pair with `latitude`) |
-| `collection_time` | Yes | Drives **Longitudinal Analysis**. Format: `YYYY-MM-DD HH:MM:SS` (e.g., `2024-03-12 09:45:00`) or `M/D/YYYY` |
-| `sample_origin_country` | Yes | Country for the **Geographic Comparison** choropleth |
-| `sample_origin_state_province_territory` | Yes | State / province / territory for the **Geographic Comparison** choropleth (default level) |
-| `host_scientific_name` | Yes | Host species; a grouping in **Host & Disease** |
-| `host_disease` | Yes | Host disease / symptoms; default **Host & Disease** grouping and the **Symptom × Organism** matrix. Multi-value: comma-separated symptoms are split |
-| `environmental_site` | Yes | Environmental sampling site; a grouping in **Host & Disease** |
-| `depth` | Yes | Numeric (m); shown in the metadata table |
-| `salinity` | Yes | Numeric (PSU); shown in the metadata table |
-| `location` | Yes | Free-text location; shown in the metadata table |
-| `sequencing_instrument`, `sequencing_platform`, `library_preparation_kit`, `sequencing_protocol_primer_set` | Yes | Sequencing metadata; rendered with friendly labels |
-| Any other column | Yes | Included in report for filtering/display |
+| Column                                                                                                      | Used in Multi-Run Report | Description                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sample`                                                                                                    | Yes                      | Must match samplesheet sample names                                                                                                                                                                                                                                                                                                                                                 |
+| `run_id`                                                                                                    | Yes                      | Groups samples by run in the ODR                                                                                                                                                                                                                                                                                                                                                    |
+| `specimen`                                                                                                  | Yes                      | Groups multiple samples (e.g. a DNA and an RNA library from the same swab) into one **specimen**. Samples sharing a `specimen` value can be merged in the interactive report's **Cross-Sample Organism Analysis** tab so prevalence and per-organism TASS / coverage / reads are computed per specimen rather than per sample. Leave blank for samples that are their own specimen. |
+| `latitude`                                                                                                  | Yes                      | Sample collection latitude; enables the **Map** tab and Geographic Comparison                                                                                                                                                                                                                                                                                                       |
+| `longitude`                                                                                                 | Yes                      | Sample collection longitude (pair with `latitude`)                                                                                                                                                                                                                                                                                                                                  |
+| `collection_time`                                                                                           | Yes                      | Drives **Longitudinal Analysis**. Format: `YYYY-MM-DD HH:MM:SS` (e.g., `2024-03-12 09:45:00`) or `M/D/YYYY`                                                                                                                                                                                                                                                                         |
+| `sample_origin_country`                                                                                     | Yes                      | Country for the **Geographic Comparison** choropleth                                                                                                                                                                                                                                                                                                                                |
+| `sample_origin_state_province_territory`                                                                    | Yes                      | State / province / territory for the **Geographic Comparison** choropleth (default level)                                                                                                                                                                                                                                                                                           |
+| `host_scientific_name`                                                                                      | Yes                      | Host species; a grouping in **Host & Disease**                                                                                                                                                                                                                                                                                                                                      |
+| `host_disease`                                                                                              | Yes                      | Host disease / symptoms; default **Host & Disease** grouping and the **Symptom × Organism** matrix. Multi-value: comma-separated symptoms are split                                                                                                                                                                                                                                 |
+| `environmental_site`                                                                                        | Yes                      | Environmental sampling site; a grouping in **Host & Disease**                                                                                                                                                                                                                                                                                                                       |
+| `depth`                                                                                                     | Yes                      | Numeric (m); shown in the metadata table                                                                                                                                                                                                                                                                                                                                            |
+| `salinity`                                                                                                  | Yes                      | Numeric (PSU); shown in the metadata table                                                                                                                                                                                                                                                                                                                                          |
+| `location`                                                                                                  | Yes                      | Free-text location; shown in the metadata table                                                                                                                                                                                                                                                                                                                                     |
+| `sequencing_instrument`, `sequencing_platform`, `library_preparation_kit`, `sequencing_protocol_primer_set` | Yes                      | Sequencing metadata; rendered with friendly labels                                                                                                                                                                                                                                                                                                                                  |
+| Any other column                                                                                            | Yes                      | Included in report for filtering/display                                                                                                                                                                                                                                                                                                                                            |
 
 An example ODR showing metadata in action: [https://jhuapl-bio.github.io/taxtriage/](https://jhuapl-bio.github.io/taxtriage/)
 
@@ -347,13 +347,13 @@ nextflow run main.nf \
 
 Paired-end layout and platform come from the archive, so neither `--fastq_2` nor `--platform` is needed. If `--sample` is omitted the accession itself is used as the sample name. A project accession here fans out into one sample per run, same as in a samplesheet.
 
-| Parameter | Required | Description |
-|---|---|---|
-| `--fastq_1` | Yes | Path to primary input file (FASTQ or FASTA), or an SRA/ENA accession |
-| `--fastq_2` | No | Path to second FASTQ (paired-end). Ignored for accessions |
-| `--sample` | No | Sample name (defaults to FASTQ basename) |
-| `--type` | No | Sample type (e.g., `blood`) |
-| `--platform` | No | Platform (defaults to `ILLUMINA`) |
+| Parameter    | Required | Description                                                          |
+| ------------ | -------- | -------------------------------------------------------------------- |
+| `--fastq_1`  | Yes      | Path to primary input file (FASTQ or FASTA), or an SRA/ENA accession |
+| `--fastq_2`  | No       | Path to second FASTQ (paired-end). Ignored for accessions            |
+| `--sample`   | No       | Sample name (defaults to FASTQ basename)                             |
+| `--type`     | No       | Sample type (e.g., `blood`)                                          |
+| `--platform` | No       | Platform (defaults to `ILLUMINA`)                                    |
 
 ---
 

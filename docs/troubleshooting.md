@@ -69,12 +69,14 @@ Command error:
 ```
 
 **Causes and fixes:**
+
 - Read quality is lower than `--minq` threshold — lower `--minq` or use `--skip_fastp`
 - FASTQ file path is wrong or the file is empty — check your samplesheet paths
 
 ### KRAKEN2_KRAKEN2
 
 **Memory error:**
+
 ```
 Command error:
   Kraken2 DB could not be loaded into memory
@@ -87,6 +89,7 @@ Command error:
 **Invalid or corrupt database:**
 
 Verify the database directory contains exactly these three files:
+
 - `hash.k2d`
 - `opts.k2d`
 - `taxo.k2d`
@@ -113,6 +116,7 @@ download/<sample>.dwnld.references.fasta  (empty or missing)
 ```
 
 This usually means the reference FASTA was loaded incorrectly. The pipeline automatically retries with increased memory up to 3 times. If it persists:
+
 - Check that your reference FASTA file is not corrupt
 - Reduce the number of top hits with `--top_hits_count` or `--top_per_taxa`
 - Try `--no_split_prefix` to disable split-prefix mode
@@ -122,6 +126,7 @@ This usually means the reference FASTA was loaded incorrectly. The pipeline auto
 Minimap2 loads the reference index into RAM. The pipeline now backs off automatically: on each retry it shrinks the `-I` index batch (8G → 4G → 2G → 1G) and `-K` query batch (500M → 200M → 100M → 50M) while stepping the memory request up (24 → 40 → 56 → 72 GB), retrying up to 3 times. Most OOM kills resolve on a later attempt with no action needed.
 
 If it still fails:
+
 - Set `--mmap2_I` / `--mmap2_K` to smaller values to force low-RAM mode from attempt 1 (e.g. `--mmap2_I 1G --mmap2_K 50M`)
 - Reduce `--top_hits_count` or `--top_per_taxa` to limit the number of references
 - Increase Docker/Singularity memory limits
@@ -134,6 +139,7 @@ Make sure a `.bam` file exists in the `alignment/` directory for each sample. An
 ### SpAdes / FLYE (De Novo Assembly)
 
 De novo assembly is memory-intensive. If it fails:
+
 1. Remove `--reference_fasta` if a large FASTA was provided
 2. Lower `--top_hits_count` or `--top_per_taxa` to reduce input reads
 3. Increase the memory limit with `--max_memory`
@@ -153,11 +159,13 @@ Typically fails only due to insufficient disk space or timeout. Check available 
 **Symptom:** The pipeline stalls or fails when trying to pull assemblies from NCBI.
 
 **Possible causes:**
+
 - Firewall or proxy blocking outbound `curl` requests
 - NCBI FTP temporarily unavailable
 - Missing SSL/TLS certificates in your environment
 
 **Solutions:**
+
 - Use `--assembly /path/to/local_assembly_summary.txt` with a downloaded copy of the NCBI assembly summary
 - Use `--reference_fasta` with manually downloaded FASTA files
 - Work with your IT team to allow outbound HTTPS requests to NCBI FTP
@@ -194,20 +202,47 @@ This gap is itself the diagnosis: strain-level scores are computed directly from
 
 **Confirm it** by comparing two columns of the same species row in the interactive report:
 
-| Column | Suspicious pattern |
-|---|---|
-| `Coverage` | high — 80–100 |
+| Column      | Suspicious pattern    |
+| ----------- | --------------------- |
+| `Coverage`  | high — 80–100         |
 | `Breadth %` | near zero — 0.00–0.05 |
 
 Those two describe the same organism and should not disagree. `Breadth %` is honest (covered bases ÷ full genome length); `Coverage` is the roll-up override. If `Coverage` is high while `Breadth %` is ~0, the override has latched onto a small accession.
 
-**Why it happens.** The species-level coverage override takes the maximum breadth fraction across member accessions, and an accession is one BAM reference — one *contig*. For chromosome-level assemblies one accession is the genome and this is correct. For scaffold-level draft assemblies (many eukaryotic references, and any `GCA_` assembly still in thousands of pieces) a single read covering one ~900 bp scaffold yields a 0.94 breadth fraction that is then applied to the whole genome. That value drives the breadth term *and* opens the minhash gate — the two heaviest default weights — so TASS lands near 90 for an organism that is absent.
+**Why it happens.** The species-level coverage override takes the maximum breadth fraction across member accessions, and an accession is one BAM reference — one _contig_. For chromosome-level assemblies one accession is the genome and this is correct. For scaffold-level draft assemblies (many eukaryotic references, and any `GCA_` assembly still in thousands of pieces) a single read covering one ~900 bp scaffold yields a 0.94 breadth fraction that is then applied to the whole genome. That value drives the breadth term _and_ opens the minhash gate — the two heaviest default weights — so TASS lands near 90 for an organism that is absent.
 
 **What to do.** Current defaults (`--rep_breadth_min_frac 0.01`, `--rep_breadth_min_len 50000`) already require an accession to be a meaningful fraction of the genome before it can set the group maximum. If you still see the pattern, the offending accession is clearing those bars — raise either value and re-run the scoring step. Check the `[LCA] representative-breadth eligibility:` line in the `match_paths.py` log to see how many accessions were excluded.
 
-Legitimate low-breadth detections do exist — a genuine sterile-site pathogen at very low titre. Distinguish them by checking whether reads are spread across *many* large accessions (real) or concentrated on a few tiny ones (artefact), and by whether the same organism scores consistently across replicate samples.
+Legitimate low-breadth detections do exist — a genuine sterile-site pathogen at very low titre. Distinguish them by checking whether reads are spread across _many_ large accessions (real) or concentrated on a few tiny ones (artefact), and by whether the same organism scores consistently across replicate samples.
 
 See [TASS Scoring 11.3](tass-scoring.md#113-size-eligibility-for-the-representative-coverage-maximum) for the full mechanism.
+
+---
+
+## A Sample Is Missing From the Interactive Report
+
+The report can hide a sample for three different reasons, and they undo in
+different places. Check them in this order:
+
+| Cause                                                   | How you can tell                                                                                                            | Fix                                                                                                                                        |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| A **sample QC rule** with a _flag & hide_ action        | The **Sample QC / Flags** panel in the right sidebar reports a flagged / hidden count; open the dialog to see which samples | Open **Filters & flags…**, then either untick **Hide all flagged samples**, change the rule's action back to _flag it_, or delete the rule |
+| Hidden **by hand**, via the eye icon on its sidebar row | Its row in the Samples list is dimmed with a crossed-out eye                                                                | Click the eye icon again, or use **Hide All / Show All**                                                                                   |
+| The **sidebar search** auto-hide                        | A query is present in the Samples search box and **Hide filtered-out samples** is ticked                                    | Clear the search box, or untick that option                                                                                                |
+
+None of these delete anything — the sample's data is still in the file, and the
+Metadata & Mapping table keeps listing it as part of the run inventory. Only the
+red **trash icon** on a sidebar row actually removes a sample from the loaded
+dataset, and even that leaves the file on disk untouched.
+
+If the sample is missing from the **Samples list itself**, it never reached the
+report: check that its `<sample>.paths.json` was produced by the run, and see
+[Interactive Report](interactive-report.md) for what a sample with no
+alignments looks like.
+
+If the flags were not something you configured, they came from the pipeline —
+see [Report Sample-QC Flags](cli-parameters.md#report-sample-qc-flags) for the
+`--report_flag_*` parameters that seed them.
 
 ---
 
@@ -216,11 +251,13 @@ See [TASS Scoring 11.3](tass-scoring.md#113-size-eligibility-for-the-representat
 When a module fails, you can inspect and rerun its exact command:
 
 1. Find the working directory hash from the Nextflow log output:
+
    ```
    [28/5412a9] process > NFCORE_TAXTRIAGE:TAXTRIAGE:KRAKEN2_KRAKEN2
    ```
 
 2. Navigate to the directory:
+
    ```bash
    cd work/28/
    # Tab-complete the full path:
@@ -228,6 +265,7 @@ When a module fails, you can inspect and rerun its exact command:
    ```
 
 3. Inspect the command and its output:
+
    ```bash
    cat .command.sh   # The exact command that was run
    cat .command.out  # Stdout

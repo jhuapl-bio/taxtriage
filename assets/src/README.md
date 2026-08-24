@@ -18,11 +18,11 @@ src/css/
   compare.css    comparison-view styles
 src/js/
   early.js       small <head> script — reads window.HEATMAP_BOOT
-  00_preamble.js … 36_guided_help_tour.js
+  00_preamble.js … 42_sample_flags_ui.js
                  the main bundle, one file per author section (heatmap, tass,
                  sunburst, coverage, proteins/VF-AMR, table, histogram, explore,
                  summary, cross-sample, compare-coverages, longitudinal, map,
-                 file upload, session state, help tour, …)
+                 file upload, session state, help tour, sample QC flags, …)
 ```
 
 The `src/js/*.js` files load in filename order as separate classic `<script>`

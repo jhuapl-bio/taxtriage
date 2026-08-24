@@ -69,6 +69,11 @@ LINK = re.compile(r"(?<!\!)\[([^\]]*)\]\(([^)\s]+)(\s+\"[^\"]*\")?\)")
 # pages are flat, so stepping up one level is always correct.
 HTML_ASSET = re.compile(r'((?:src|href)\s*=\s*")(images/)', re.IGNORECASE)
 
+# ```math fences are a GitHub-only extension: GitHub renders them as LaTeX, but
+# Python-Markdown treats them as a code block tagged "math" and prints the
+# source verbatim. Convert to $$…$$, which pymdownx.arithmatex picks up.
+MATH_FENCE = re.compile(r"^```math[ \t]*\n(.*?)\n```[ \t]*$", re.DOTALL | re.MULTILINE)
+
 
 def rewrite_target(target: str) -> str:
     """Map a single link target to its MkDocs equivalent."""
@@ -153,6 +158,7 @@ def main() -> int:
         text = md.read_text(encoding="utf-8")
         text = rewrite_links(text, unresolved)
         text = HTML_ASSET.sub(r"\1../\2", text)
+        text = MATH_FENCE.sub(lambda m: "$$\n" + m.group(1) + "\n$$", text)
         text = text.replace("\r\n", "\n").rstrip() + "\n"
 
         (docs / dest_name).write_text(text, encoding="utf-8")

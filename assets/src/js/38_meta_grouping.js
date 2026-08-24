@@ -755,23 +755,31 @@
   };
   window._mgShapeEl = _shapePath;
 
-  /* ── Legend / group state chips ────────────────────────────────────────
-     Rendered into any container by id. Each chip cycles on click:
+  /* ── Group picker ──────────────────────────────────────────────────────
+     Rendered into any container by id, as a COLLAPSED SEARCHABLE DROPDOWN
+     (see 43_multiselect.js). It used to be a row of chips, one per group —
+     fine for a handful of groups, unusable for the fifty-plus a real
+     multi-site run produces: the row wrapped into a wall that pushed the map
+     and the heatmap off screen, and finding one group meant reading all of
+     them. The dropdown is one line high whatever the run size and has a
+     search box.
 
-       click 1 → HIGHLIGHT  this group is emphasised, everything else fades,
-                            and the map draws its similarity network
-       click 2 → HIDDEN     removed from the views and the map
-       click 3 → NORMAL     back to the default
+     Every group starts CHECKED (visible). Three states survive the move:
 
-       shift-click → step BACKWARDS through the cycle (undo an over-shoot)
-       alt-click   → solo (show only this group)
+       checkbox off  → HIDDEN     removed from the views and the map
+       row click     → HIGHLIGHT  this group is emphasised, everything else
+                                  fades, and the map draws its similarity
+                                  network; clicking again steps on through the
+                                  normal → highlight → hidden cycle
+       shift-click   → step BACKWARDS through the cycle (undo an over-shoot)
+       alt-click     → solo (show only this group)
 
-     Non-normal groups stay listed so they can always be cycled back. A
-     "Reset (n)" button appears once anything is off-default. Registered
-     legends re-render together, so cycling in the Group Heatmap is
-     immediately reflected in the bar, the map and the network.
+     A "Reset (n)" button appears beside the dropdown once anything is
+     off-default. Registered pickers re-render together, so a change in the
+     Group Heatmap is immediately reflected in the bar, the map and the
+     network.
 
-     opts.onPick — optional extra callback fired after a click (the map uses
+     opts.onPick — optional extra callback fired after a change (the map uses
      it to refit its bounds and redraw the overlay).                          */
   const _STATE_ICON = { normal: "fa-circle", highlight: "fa-bullseye", hidden: "fa-eye-slash" };
   const _NEXT_LABEL = { normal: "highlight it", highlight: "hide it", hidden: "restore it" };
@@ -789,52 +797,76 @@
       el.style.display = "none";
       return;
     }
-    el.style.display = "flex";
-    const limit = opts.limit || 40;
-    const shown = m.order.slice(0, limit);
+    el.style.display = "";
     const nOff = m.order.filter((k) => m.groups[k].state !== STATE_NORMAL).length;
+    const nShown = m.order.filter((k) => !m.groups[k].hidden).length;
 
-    el.innerHTML =
-      `<span class="mg-legend-title">${_esc(api.describe())}</span>` +
-      shown
-        .map((k) => {
-          const g = m.groups[k];
-          const n = g.samples.length;
-          const cls =
-            "mg-legend-item" +
-            (g.hidden ? " mg-off" : "") +
-            (g.highlighted ? " mg-hi" : "") +
-            (g.dimmed ? " mg-dim" : "");
-          const swatch = g.hidden ? "#cfd8dc" : g.color;
-          return (
-            `<button type="button" class="${cls}" data-group="${_esc(k)}" data-state="${g.state}" ` +
-            `title="${_esc(k)} — ${n} sample${n === 1 ? "" : "s"}\n` +
-            `Currently: ${g.state}. Click to ${_NEXT_LABEL[g.state]}.\n` +
-            `Shift-click steps back · Alt-click shows only this group">` +
-            `<i class="fas ${_STATE_ICON[g.state]} mg-legend-state"></i>` +
-            window._mgShapeSvg(g.shape, swatch, 13, g.hidden ? { stroke: "#b0bec5" } : null) +
-            `<span class="mg-legend-label">${_esc(k)}</span>` +
-            `<span class="mg-legend-count">${n}</span>` +
-            `</button>`
-          );
-        })
-        .join("") +
-      (m.order.length > limit ? `<span class="mg-legend-more">+${m.order.length - limit} more</span>` : "") +
-      (nOff
-        ? `<button type="button" class="mg-legend-showall" title="Reset every group to normal">` +
-          `<i class="fas fa-rotate-left"></i> Reset (${nOff})</button>`
-        : "");
+    const items = m.order.map((k) => {
+      const g = m.groups[k];
+      const n = g.samples.length;
+      return {
+        key: k,
+        label: k,
+        count: n,
+        //  Unchecked == hidden, so the box reads as "is this group in the
+        //  views?" rather than as a separate selection concept.
+        checked: !g.hidden,
+        stateIcon: _STATE_ICON[g.state],
+        swatchHTML: window._mgShapeSvg(
+          g.shape,
+          g.hidden ? "#cfd8dc" : g.color,
+          13,
+          g.hidden ? { stroke: "#b0bec5" } : null,
+        ),
+        rowClass: (g.hidden ? "mg-off " : "") + (g.highlighted ? "mg-hi " : "") + (g.dimmed ? "mg-dim" : ""),
+        title:
+          `${k} — ${n} sample${n === 1 ? "" : "s"}\n` +
+          `Currently: ${g.state}.\n` +
+          `Untick to hide it · click the row to ${_NEXT_LABEL[g.state]}\n` +
+          `Shift-click steps back · Alt-click shows only this group`,
+      };
+    });
 
-    el.querySelectorAll(".mg-legend-item").forEach((b) => {
-      b.addEventListener("click", (ev) => {
-        const key = b.getAttribute("data-group");
+    window.ttMultiSelect.render(el, {
+      icon: "fa-layer-group",
+      title: api.describe() + " — choose which groups the views show",
+      placeholder: "Search groups…",
+      emptyText: "No groups.",
+      summary: (n, total) => `${_esc(api.describe())}: ${nShown} of ${total} group${total === 1 ? "" : "s"} shown`,
+      items,
+      onToggle: (key, checked) => {
+        api.setState(key, checked ? STATE_NORMAL : STATE_HIDDEN);
+        if (typeof opts.onPick === "function") opts.onPick(key);
+      },
+      onRowClick: (key, ev) => {
         if (ev.altKey) api.solo(key);
         else api.cycle(key, { back: ev.shiftKey });
         if (typeof opts.onPick === "function") opts.onPick(key);
-      });
+      },
+      onAll: () => {
+        api.showAllGroups();
+        if (typeof opts.onPick === "function") opts.onPick(null);
+      },
+      onNone: () => {
+        //  One call, one broadcast — looping setState would re-render every
+        //  registered picker once per group.
+        api.setHiddenGroups(m.order);
+        if (typeof opts.onPick === "function") opts.onPick(null);
+      },
+      footNote:
+        '<i class="fas fa-circle-info"></i> Untick to hide a group · click a row to cycle ' +
+        "normal \u2192 highlight \u2192 hidden",
+      actions: nOff
+        ? [
+            {
+              label: '<i class="fas fa-rotate-left"></i> Reset (' + nOff + ")",
+              title: "Reset every group to normal",
+              className: "mg-legend-showall",
+              onClick: () => api.showAllGroups(),
+            },
+          ]
+        : [],
     });
-    const sa = el.querySelector(".mg-legend-showall");
-    if (sa) sa.addEventListener("click", () => api.showAllGroups());
   };
 
   // Re-render every legend that has been rendered at least once. Called from

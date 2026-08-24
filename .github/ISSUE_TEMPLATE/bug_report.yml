@@ -8,7 +8,7 @@ body:
         Before you post this issue, please check the documentation:
 
         - [nf-core website: troubleshooting](https://nf-co.re/usage/troubleshooting)
-        - [nf-core/taxtriage pipeline documentation](https://nf-co.re/taxtriage/usage)
+        - [jhuapl-bio/taxtriage pipeline documentation](https://jhuapl-bio.github.io/taxtriage/latest/)
 
   - type: textarea
     id: description
@@ -47,4 +47,4 @@ body:
         * Executor _(eg. slurm, local, awsbatch)_
         * Container engine: _(e.g. Docker, Singularity, Conda, Podman, Shifter or Charliecloud)_
         * OS _(eg. CentOS Linux, macOS, Linux Mint)_
-        * Version of nf-core/taxtriage _(eg. 1.1, 1.5, 1.8.2)_
+        * Version of jhuapl-bio/taxtriage _(eg. 1.1, 1.5, 1.8.2)_

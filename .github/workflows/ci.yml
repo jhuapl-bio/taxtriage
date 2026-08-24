@@ -16,7 +16,10 @@ jobs:
   test:
     name: Run pipeline with test data
     # Only run on push if this is the nf-core dev branch (merged PRs)
-    if: "${{ github.event_name != 'push' || (github.event_name == 'push' && github.repository == 'nf-core/taxtriage') }}"
+    # Skip push events: pull requests and releases already cover every change,
+    # and running both would duplicate each merge. Behaviour is unchanged from
+    # the previous nf-core repository gate, which never matched here either.
+    if: "${{ github.event_name != 'push' }}"
     runs-on: ubuntu-latest
     strategy:
       matrix:

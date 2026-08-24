@@ -8,15 +8,15 @@ This page describes the files and directories produced by TaxTriage. All paths a
 
 These are the outputs you should review first after a successful run:
 
-| File | Location | Description |
-|---|---|---|
-| Combined ODR PDF | `report/all.odr.pdf` | All-sample Organism Discovery Report with confidence-ranked pathogen table |
-| Per-sample ODR PDF | `report/<sample>.odr.pdf` | Single-sample ODR |
-| Interactive Comparison | `report/all.odr.html` | Multi-sample interactive comparison report. See [Interactive Report](interactive-report.md). |
-| MultiQC Report | `report/multiqc_report.html` | QC stats and alignment metrics across all samples |
-| Krona Plot | `report/combined_krona_kreports.html` | Interactive radial abundance visualization from Kraken2 |
-| Microbial Sheet | `report/<sample\|all>.odr.txt` | Full tabular data backing the ODR PDF |
-| Annotated Workbook | `report/<sample\|all>.odr.xlsx` | Excel workbook of the ODR data, including VF/AMR annotation and a Metadata sheet |
+| File                   | Location                              | Description                                                                                  |
+| ---------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Combined ODR PDF       | `report/all.odr.pdf`                  | All-sample Organism Discovery Report with confidence-ranked pathogen table                   |
+| Per-sample ODR PDF     | `report/<sample>.odr.pdf`             | Single-sample ODR                                                                            |
+| Interactive Comparison | `report/all.odr.html`                 | Multi-sample interactive comparison report. See [Interactive Report](interactive-report.md). |
+| MultiQC Report         | `report/multiqc_report.html`          | QC stats and alignment metrics across all samples                                            |
+| Krona Plot             | `report/combined_krona_kreports.html` | Interactive radial abundance visualization from Kraken2                                      |
+| Microbial Sheet        | `report/<sample\|all>.odr.txt`        | Full tabular data backing the ODR PDF                                                        |
+| Annotated Workbook     | `report/<sample\|all>.odr.xlsx`       | Excel workbook of the ODR data, including VF/AMR annotation and a Metadata sheet             |
 
 ---
 
@@ -98,6 +98,7 @@ Standard FastQC outputs for Illumina samples:
 ### MultiQC (`report/multiqc_report.html`)
 
 Aggregated report across all samples, including:
+
 - FastQC / NanoPlot summaries
 - Alignment statistics from samtools
 - Kraken2 classification summary
@@ -109,37 +110,39 @@ The main deliverable. Example report:
 
 <img src="../images/pathogens.report.example.png" width="60%">
 
- Each table row is one detected organism with the following key columns:
+Each table row is one detected organism with the following key columns:
 
-| Column | Description |
-|---|---|
-| **Detected Organism** | Organism name |
-| **Specimen ID** | NCBI Taxid |
-| **Sample Type** | body site (blood, stool, etc.) |
-| **% Reads** | Percentage of total reads assigned |
-| **# Reads Aligned** | Reads mapped above minimum MAPQ |
-| **% Aligned Reads** | Fraction of dataset aligned |
-| **Coverage** | Fraction of reference genome covered |
-| **HHS Percentile** | Abundance rank vs. HMP healthy human dataset |
-| **IsAnnotated** | Present in pathogen sheet |
-| **Microbial Category** | Unknown / Commensal / Primary / Opportunistic / Potential — see [Microbial Categories](microbial-categories.md) |
-| **High Consequence** | Always shown in PDF regardless of TASS cutoff |
-| **Gini Coefficient** | Coverage distribution inequality (0=uneven, 1=uniform) |
-| **Mean BaseQ** | Average base quality across aligned reads |
-| **Mean MapQ** | Average mapping quality of aligned reads |
-| **Mean Coverage** | Mean coverage across all contigs/chromosomes |
-| **Mean Depth** | Mean depth across all positions |
-| **Minhash Score** | False-positive penalty score |
-| **Breadth Weight Score** | Log-based breadth of coverage component |
-| **TASS Score** | Final combined confidence score (0–1) |
-| **K2 Reads** | Number of Kraken2-assigned reads |
-| **Siblings Score** | Read abundance vs. related organisms in same genus |
+| Column                   | Description                                                                                                     |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| **Detected Organism**    | Organism name                                                                                                   |
+| **Specimen ID**          | NCBI Taxid                                                                                                      |
+| **Sample Type**          | body site (blood, stool, etc.)                                                                                  |
+| **% Reads**              | Percentage of total reads assigned                                                                              |
+| **# Reads Aligned**      | Reads mapped above minimum MAPQ                                                                                 |
+| **% Aligned Reads**      | Fraction of dataset aligned                                                                                     |
+| **Coverage**             | Fraction of reference genome covered                                                                            |
+| **HHS Percentile**       | Abundance rank vs. HMP healthy human dataset                                                                    |
+| **IsAnnotated**          | Present in pathogen sheet                                                                                       |
+| **Microbial Category**   | Unknown / Commensal / Primary / Opportunistic / Potential — see [Microbial Categories](microbial-categories.md) |
+| **High Consequence**     | Always shown in PDF regardless of TASS cutoff                                                                   |
+| **Gini Coefficient**     | Coverage distribution inequality (0=uneven, 1=uniform)                                                          |
+| **Mean BaseQ**           | Average base quality across aligned reads                                                                       |
+| **Mean MapQ**            | Average mapping quality of aligned reads                                                                        |
+| **Mean Coverage**        | Mean coverage across all contigs/chromosomes                                                                    |
+| **Mean Depth**           | Mean depth across all positions                                                                                 |
+| **Minhash Score**        | False-positive penalty score                                                                                    |
+| **Breadth Weight Score** | Log-based breadth of coverage component                                                                         |
+| **TASS Score**           | Final combined confidence score (0–1)                                                                           |
+| **K2 Reads**             | Number of Kraken2-assigned reads                                                                                |
+| **Siblings Score**       | Read abundance vs. related organisms in same genus                                                              |
 
 See [TASS Scoring](tass-scoring.md) for full definitions of each metric.
 
 ### Interactive Comparison Report (`report/all.odr.html`)
 
-A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, coverage/sunburst/explore views, a per-sample-type TASS cutoff slider, species/genus roll-up views, and a built-in Export-to-PDF button. No server is required — the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
+A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, coverage/sunburst/explore views, a per-sample-type TASS cutoff slider, species/genus roll-up views, whole-sample QC flags, and a built-in Export-to-PDF button. No server is required — the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
+
+Samples flagged by a QC rule (`--report_flag_*`, or rules added in the report itself) are marked here, not removed: the file still carries every sample's data, so clearing a rule brings a hidden sample straight back. See [Interactive Report → Sample QC flags](interactive-report.md#sample-qc-flags).
 
 ### Microbial Sheet (`report/<sample>.odr.txt`)
 
@@ -168,6 +171,7 @@ Per-reference coverage summary produced by `samtools coverage` for each top-hit 
 ### Variant Files (`bcftools/`) — Optional
 
 Available when `--reference_assembly` is enabled:
+
 - VCF files with variant calls per taxid
 - Consensus FASTA assembled from the reference + variants
 
@@ -187,6 +191,7 @@ You can modify the sheet or provide your own with `--pathogens`. Required column
 4. `high_consequence` — `TRUE`/`FALSE` — always shown in PDF regardless of TASS score
 
 Optional but recommended:
+
 - `pathogenic_sites` — Comma-separated body sites where this organism is pathogenic
 - `commensal_sites` — Sites where this organism is commensal (overrides general classification for those sites)
 - `assembly_accession` — Curated `GCF_*` / `GCA_*` assembly to pin for this organism. When set, it is downloaded directly (accession-first) instead of the pipeline picking an assembly by taxid; see [Assembly Selection Order](cli-parameters.md#assembly-selection-order). Auto-generated during the database build and kept as the last column; leave blank to let TaxTriage choose.

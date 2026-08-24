@@ -1,0 +1,233 @@
+name: Add an organism to the pathogen sheet
+description: Request a new organism, or a correction to an existing one, in assets/pathogen_sheet.csv
+title: "Add organism: "
+labels: ["pathogen-sheet"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping extend the pathogen annotation sheet.
+
+        The fields below map one-to-one onto the columns of
+        [`assets/pathogen_sheet.csv`](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv),
+        so a maintainer can transfer your answers directly. Only the organism
+        name, tax ID, classification and a supporting reference are required —
+        leave anything you are unsure of blank rather than guessing.
+
+        Taxonomic lineage (kingdom through genus) is **not** requested — it is
+        derived from the tax ID, so supplying it by hand only adds a chance of
+        disagreeing with NCBI.
+
+        Browse what is already annotated in the
+        [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/)
+        before filing, to avoid duplicates.
+
+        Anything added from this form is recorded with
+        `request_type: git-tracked`, since the request itself lives in git
+        history. Requests sent privately are recorded as `external-local`, and
+        `APL-derived` is reserved for entries curated by the maintainers.
+
+        **Requesting several organisms?** This form covers one. Use the
+        **Request organisms** button on the
+        [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/)
+        to queue any number and open a single issue with a paste-ready CSV block.
+
+  - type: input
+    id: organism
+    attributes:
+      label: Organism name
+      description: Scientific name as it appears in NCBI Taxonomy.
+      placeholder: Streptococcus pneumoniae
+    validations:
+      required: true
+
+  - type: input
+    id: taxid
+    attributes:
+      label: NCBI Taxonomy ID
+      description: >-
+        Numeric tax ID. Look it up at
+        https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi — the pipeline
+        matches on this, so an incorrect ID silently breaks detection.
+      placeholder: "1313"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: general_classification
+    attributes:
+      label: Microbial category
+      description: >-
+        See the
+        [Microbial Categories](https://jhuapl-bio.github.io/taxtriage/latest/microbial-categories/)
+        reference for what each means and how it affects scoring.
+      options:
+        - primary — causes disease in immunocompetent hosts
+        - opportunistic — causes disease given a predisposing factor
+        - potential — reported as a pathogen, context dependent
+        - commensal — expected flora, not usually pathogenic
+    validations:
+      required: true
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: Evidence status
+      options:
+        - established — well documented in the literature
+        - putative — suggested but not confirmed
+    validations:
+      required: false
+
+  - type: dropdown
+    id: pathogenic_sites
+    attributes:
+      label: Pathogenic body sites
+      description: Sites where detecting this organism is clinically meaningful.
+      multiple: true
+      options:
+        - blood
+        - resp
+        - lung
+        - sputum
+        - nasal
+        - sinus
+        - oral
+        - teeth
+        - gut
+        - stool
+        - feces
+        - urine
+        - vaginal
+        - skin
+        - abscess
+        - ear
+        - eye
+        - ocular
+        - cornea
+        - csf
+        - bile
+        - mucus
+    validations:
+      required: false
+
+  - type: dropdown
+    id: commensal_sites
+    attributes:
+      label: Commensal body sites
+      description: >-
+        Sites where this organism is expected flora. Detections here are
+        down-weighted rather than flagged.
+      multiple: true
+      options:
+        - blood
+        - resp
+        - lung
+        - sputum
+        - nasal
+        - sinus
+        - oral
+        - teeth
+        - gut
+        - stool
+        - feces
+        - urine
+        - vaginal
+        - skin
+        - ear
+        - eye
+    validations:
+      required: false
+
+  - type: dropdown
+    id: high_consequence
+    attributes:
+      label: High consequence?
+      description: >-
+        Organisms warranting immediate escalation regardless of abundance.
+        Leave as "no" unless you are certain.
+      options:
+        - "no"
+        - "yes"
+      default: 0
+    validations:
+      required: false
+
+  - type: dropdown
+    id: mol_type
+    attributes:
+      label: Molecule type
+      description: Determines which alignment path the pipeline uses.
+      options:
+        - dna
+        - rna
+    validations:
+      required: false
+
+  - type: input
+    id: host_organism
+    attributes:
+      label: Host organism
+      description: Host the annotation applies to.
+      placeholder: human
+    validations:
+      required: false
+
+  - type: input
+    id: assembly_accession
+    attributes:
+      label: Reference assembly accession
+      description: >-
+        RefSeq/GenBank assembly the pipeline should download for alignment.
+        Prefer a RefSeq representative or reference genome.
+      placeholder: GCF_000006885.1
+    validations:
+      required: false
+
+  - type: input
+    id: alternative_names
+    attributes:
+      label: Synonyms or former names
+      description: Comma separated. Also searched when matching classifier output.
+      placeholder: Diplococcus pneumoniae
+    validations:
+      required: false
+
+  - type: input
+    id: pathology
+    attributes:
+      label: Disease association
+      placeholder: Community-acquired pneumonia, meningitis, otitis media
+    validations:
+      required: false
+
+  - type: textarea
+    id: reference
+    attributes:
+      label: Supporting reference
+      description: >-
+        Citation, DOI or PMID supporting the pathogen–site association. Peer
+        reviewed sources preferred; this is what a reviewer will check.
+      placeholder: |
+        Weiser JN, et al. "Streptococcus pneumoniae: transmission, colonization
+        and invasion." Nat Rev Microbiol 16.6 (2018): 355-367. doi:10.1038/s41579-018-0001-8
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Context, caveats, or why this organism matters for your work.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked the Pathogen Sheet and this organism is not already listed
+          required: true
+        - label: I verified the tax ID against NCBI Taxonomy
+          required: true

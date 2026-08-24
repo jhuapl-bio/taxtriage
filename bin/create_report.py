@@ -4357,6 +4357,32 @@ def create_run_highlights_box(samples_dict, args, available_width, styles):
         cards,
     ])
 
+def _draw_taxtriage_logo(canvas, x, y, size):
+    """
+    Draw the TaxTriage header mark (see docs/images/logo.svg) directly with
+    ReportLab canvas primitives, anchored with its bottom-left corner at
+    (x, y) and scaled to `size` points square. Kept as vector drawing (no
+    rasterized/embedded image, no extra svg-rendering dependency) so it stays
+    crisp at any resolution and matches the mark used in the mkdocs site
+    header and the interactive HTML report banner.
+    """
+    canvas.saveState()
+    canvas.translate(x, y)
+    scale = size / 64.0
+    canvas.scale(scale, scale)
+    canvas.setStrokeColor(colors.white)
+    canvas.setFillColor(colors.white)
+    canvas.setLineWidth(7)
+    canvas.setLineCap(1)  # round
+    # SVG coordinates have y increasing downward from the top of the 64x64
+    # viewBox; flip to canvas's bottom-up coordinate space.
+    canvas.line(10, 64 - 18, 40, 64 - 18)
+    canvas.line(10, 64 - 32, 32, 64 - 32)
+    canvas.line(10, 64 - 46, 24, 64 - 46)
+    canvas.circle(52, 64 - 18, 7, stroke=0, fill=1)
+    canvas.restoreState()
+
+
 def create_pdf_template(output_path, samples_dict, args):
     """
     Create the full PDF report.
@@ -4376,6 +4402,9 @@ def create_pdf_template(output_path, samples_dict, args):
         # Full-width blue background
         canvas.setFillColor(colors.HexColor('#1F4E79'))
         canvas.rect(0, page_height - header_h, page_width, header_h, stroke=0, fill=1)
+
+        # TaxTriage logo mark, top-right corner of the header bar
+        _draw_taxtriage_logo(canvas, page_width - 0.75 * inch, page_height - header_h + 0.32 * inch, 0.5 * inch)
 
         # Title
         title = Paragraph("Organism Discovery Report", title_style)

@@ -2,9 +2,8 @@
 title: Pathogen Sheet
 hide:
   - toc
+  - navigation
 ---
-
-<style>.md-content__inner{max-width:none}</style>
 
 # Pathogen Annotation Sheet
 
@@ -33,28 +32,34 @@ currently carry are left blank.
 
 ## Column reference
 
-| Column | Meaning |
-|---|---|
-| `name` | Organism name, matched against the taxonomic classification output |
-| `taxid` | NCBI Taxonomy identifier |
-| `general_classification` | `primary`, `opportunistic`, `potential`, or `commensal` — see [Microbial Categories](microbial-categories.md) |
-| `status` | `established` where the pathogen–site association is well documented, `putative` where it is suggested but not confirmed |
-| `high_consequence` | Flags organisms warranting immediate escalation regardless of abundance |
-| `pathogenic_sites` | Body sites where detection is considered clinically meaningful |
-| `commensal_sites` | Body sites where the organism is expected flora, which down-weights its score |
-| `alternative_names` | Synonyms and former names, also searched during matching |
-| `pathology` | Free-text disease association |
-| `host_organism` | Host the annotation applies to |
-| `kingdom` … `genus` | Lineage, used for genus-level rollups |
-| `mol_type` | `dna` or `rna`, which determines the alignment path |
-| `reference` | Literature supporting the annotation |
-| `assembly_accession` | Default reference assembly downloaded for alignment |
+| Column                   | Meaning                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `name`                   | Organism name, matched against the taxonomic classification output                                                       |
+| `taxid`                  | NCBI Taxonomy identifier                                                                                                 |
+| `general_classification` | `primary`, `opportunistic`, `potential`, or `commensal` — see [Microbial Categories](microbial-categories.md)            |
+| `status`                 | `established` where the pathogen–site association is well documented, `putative` where it is suggested but not confirmed |
+| `high_consequence`       | Flags organisms warranting immediate escalation regardless of abundance                                                  |
+| `pathogenic_sites`       | Body sites where detection is considered clinically meaningful                                                           |
+| `commensal_sites`        | Body sites where the organism is expected flora, which down-weights its score                                            |
+| `alternative_names`      | Synonyms and former names, also searched during matching                                                                 |
+| `pathology`              | Free-text disease association                                                                                            |
+| `host_organism`          | Host the annotation applies to                                                                                           |
+| `kingdom` … `genus`      | Lineage, used for genus-level rollups                                                                                    |
+| `mol_type`               | `dna` or `rna`, which determines the alignment path                                                                      |
+| `reference`              | Literature supporting the annotation                                                                                     |
+| `assembly_accession`     | Default reference assembly downloaded for alignment                                                                      |
 
 ## Contributing an organism
 
-The sheet is a plain CSV — additions are pull requests against the pipeline repo.
-See [Contributing](contributing.md#adding-organisms-to-the-pathogen-sheet) for
-the required fields and review expectations.
+Use **Request organisms** above to queue one or more entries and open a single
+issue — it collects the same fields as the CSV and includes paste-ready rows for
+a maintainer. Searching for something that is missing also offers to request it
+directly from the empty result.
+
+The sheet is a plain CSV, so additions can equally be pull requests against the
+pipeline repo. See
+[Contributing](contributing.md#adding-organisms-to-the-pathogen-sheet) for the
+required fields and review expectations.
 
 To run with your own sheet instead of the bundled one:
 

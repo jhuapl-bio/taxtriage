@@ -29,11 +29,11 @@ The plugin integrates with Docker and Nextflow to execute the full TaxTriage wor
 
 2. Copy it to your Geneious plugins directory:
 
-   | OS | Path |
-   |---|---|
-   | macOS | `~/.geneious/plugins/` |
+   | OS      | Path                               |
+   | ------- | ---------------------------------- |
+   | macOS   | `~/.geneious/plugins/`             |
    | Windows | `%USERPROFILE%\.geneious\plugins\` |
-   | Linux | `~/.geneious/plugins/` |
+   | Linux   | `~/.geneious/plugins/`             |
 
 3. Restart Geneious.
 
@@ -48,16 +48,17 @@ Go to **Tools > TaxTriage Analysis** in Geneious.
 ### Select Input Files
 
 Choose one of:
+
 - **Input Files** — Click "Browse" to select individual FASTQ/FASTA files
 - **Input Directory** — Click "Browse" to select a folder of sequence files
 
 ### Configure Sequencing Preset
 
-| Preset | Use For |
-|---|---|
+| Preset                | Use For                   |
+| --------------------- | ------------------------- |
 | ONT (Oxford Nanopore) | Long-read sequencing data |
-| Illumina PE | Paired-end Illumina reads |
-| Illumina SE | Single-end Illumina reads |
+| Illumina PE           | Paired-end Illumina reads |
+| Illumina SE           | Single-end Illumina reads |
 
 ### Quality Parameters
 
@@ -100,11 +101,11 @@ src/geneious-plugin/
 
 ### Dependencies
 
-| Dependency | Purpose |
-|---|---|
-| `GeneiousPublicAPI.jar` | Core Geneious plugin API |
-| `jdom.jar` | XML document processing |
-| `jebl.jar` | Java Evolutionary Biology Library |
+| Dependency              | Purpose                           |
+| ----------------------- | --------------------------------- |
+| `GeneiousPublicAPI.jar` | Core Geneious plugin API          |
+| `jdom.jar`              | XML document processing           |
+| `jebl.jar`              | Java Evolutionary Biology Library |
 
 These JARs are automatically copied from the Geneious devkit during project setup.
 
@@ -133,6 +134,7 @@ The resulting `TaxTriage.gplugin` will be in `build/`.
 ## Docker Integration
 
 The plugin handles Docker automatically. On first run:
+
 1. The Nextflow Docker image is pulled
 2. TaxTriage container images are pulled
 3. Databases are downloaded to the working directory

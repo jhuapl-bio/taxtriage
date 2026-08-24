@@ -24,11 +24,11 @@ Optional protein-annotation XLSX files (from `--annotate_proteins` / `--annotate
 
 The report's own data and JavaScript are always inlined, but a handful of third-party libraries (D3, SheetJS/xlsx, jsPDF, Leaflet, Leaflet.markercluster, and Font Awesome) are loaded from a public CDN when the report is opened. By default those `<script>` / `<link>` tags are left pointing at the CDN, so the machine **viewing** the report needs internet access the first time it loads. For air-gapped or intermittently connected environments, two parameters fold those libraries directly into `all.odr.html` at build time, producing a report that opens with no network at all.
 
-| Mode | What happens | When to use |
-|---|---|---|
-| _default_ (neither flag) | CDN `<script>`/`<link>` tags are kept; the browser fetches the libraries on load. | The viewing machine has internet. Smallest report file. |
-| `--offline_report` | The build step **downloads** each library and embeds it inline. Requires internet on the machine running the pipeline (not on the viewer). | The pipeline host is online but report viewers may be offline. |
-| `--offline_report_files <dir>` | Local copies of the libraries in `<dir>` are embedded inline, so **no network access is needed at all**. Takes precedence over `--offline_report`. | Fully air-gapped builds, or to pin exact library versions. |
+| Mode                           | What happens                                                                                                                                       | When to use                                                    |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| _default_ (neither flag)       | CDN `<script>`/`<link>` tags are kept; the browser fetches the libraries on load.                                                                  | The viewing machine has internet. Smallest report file.        |
+| `--offline_report`             | The build step **downloads** each library and embeds it inline. Requires internet on the machine running the pipeline (not on the viewer).         | The pipeline host is online but report viewers may be offline. |
+| `--offline_report_files <dir>` | Local copies of the libraries in `<dir>` are embedded inline, so **no network access is needed at all**. Takes precedence over `--offline_report`. | Fully air-gapped builds, or to pin exact library versions.     |
 
 In both offline modes the fonts and marker images those stylesheets reference (Font Awesome webfonts, Leaflet markers) are embedded as base64 data URIs too, so icons and the geographic map markers render offline as well. Only the interactive map's boundary **tiles** still come from a public map service, but the ranked geographic list works without them.
 
@@ -63,13 +63,13 @@ See [CLI Parameters → Output, Reporting, and Visualization](cli-parameters.md#
 
 A **View level** dropdown in the controls lets you switch the entire report (tables, heatmap, TASS and coverage plots) between three taxonomic granularities, meaning the level of taxonomic detail each row represents:
 
-| View level | Internal key   | What it shows |
-|---|---|---|
-| **Strain**  | `key`          | One row per detected strain/accession (the default, most granular view). |
-| **Species** | `subkey`       | Strains rolled up to their species-level taxid. |
-| **Genus**   | `toplevelkey`  | Species rolled up to genus (or whatever rank `--rank` is set to). |
+| View level  | Internal key  | What it shows                                                            |
+| ----------- | ------------- | ------------------------------------------------------------------------ |
+| **Strain**  | `key`         | One row per detected strain/accession (the default, most granular view). |
+| **Species** | `subkey`      | Strains rolled up to their species-level taxid.                          |
+| **Genus**   | `toplevelkey` | Species rolled up to genus (or whatever rank `--rank` is set to).        |
 
-This matters for closely related organisms (e.g. several near-identical *Salmonella* strains). At the strain level, reads shared between strains are ambiguous and each strain's coverage and score are diluted; rolling up to species or genus recovers a confident call. See [TASS Scoring → Species/Genus roll-up scoring](tass-scoring.md#11-aggregation-levels) for how the underlying metrics are recomputed.
+This matters for closely related organisms (e.g. several near-identical _Salmonella_ strains). At the strain level, reads shared between strains are ambiguous and each strain's coverage and score are diluted; rolling up to species or genus recovers a confident call. See [TASS Scoring → Species/Genus roll-up scoring](tass-scoring.md#11-aggregation-levels) for how the underlying metrics are recomputed.
 
 > The View-level dropdown only changes the tables/heatmap/TASS/coverage plots. The Sunburst and Summary views are unaffected. The dropdown is enabled for both JSON and flat (TSV/XLSX) inputs; with flat inputs the species and genus rows are built on the fly when you switch.
 
@@ -82,11 +82,11 @@ When a strain's own TASS score is **below** the cutoff but its species or genus 
 
 A legend appears only when rescued cells are present, and each marker carries a hover tooltip ("Orange corner = species rescue / Purple corner = genus rescue"). In the tables these rows are tagged with **↑ species** / **↑ genus** badges. A strain only earns a badge when its parent roll-up actually clears the cutoff; if neither the strain nor its roll-up passes, the row is simply hidden.
 
-The **"Roll up threshold"** checkbox (Strain view only) is orthogonal to the View-level dropdown: the dropdown chooses *which granularity* you look at, while the checkbox toggles *strict vs. rolled-up* filtering within the Strain view.
+The **"Roll up threshold"** checkbox (Strain view only) is orthogonal to the View-level dropdown: the dropdown chooses _which granularity_ you look at, while the checkbox toggles _strict vs. rolled-up_ filtering within the Strain view.
 
 ### Below-cutoff organisms with VF/AMR hits
 
-When VF/AMR annotation is present (`--annotate`), an organism can fall **below** the TASS cutoff at the strain, species *and* genus level, and yet still have one or more Virulence-Factor or AMR genes detected for its genus in that same sample. By default these would be hidden by the score filter, which can mask a real pathogenicity signal.
+When VF/AMR annotation is present (`--annotate`), an organism can fall **below** the TASS cutoff at the strain, species _and_ genus level, and yet still have one or more Virulence-Factor or AMR genes detected for its genus in that same sample. By default these would be hidden by the score filter, which can mask a real pathogenicity signal.
 
 A **"Show below-cutoff organisms with VF/AMR hits"** checkbox in the Filters sidebar (on by default; visible only when annotations are loaded) brings those organisms back as a **faded, italicised row** marked with a `↓ below cutoff` badge, in both the **Summary → Detections** table and the full **Table** tab. Uncheck it to disable the behaviour.
 
@@ -129,15 +129,15 @@ Multiple **samples** (library-level: e.g. a separate DNA and RNA extraction from
 
 Every cross-sample view (Summary, Heatmap, TASS, Coverage, Table, Explore, the Run Metadata analyses, Map markers, VF/AMR genus/property charts and table, and the top banner's specimen/organism/reads counts) switches from one row per **sample** to one row per **specimen**, aggregating the member samples' rows for the same organism at the current view level:
 
-| Field(s) | Aggregation | Rationale |
-|---|---|---|
-| `# Reads Aligned`, `# Unique Reads Aligned`, `# Reads`, `K2 Reads`, `Mean Depth` | **Sum** across members | Read counts and depth from independent libraries are additive. |
-| `TASS Score`, `Species TASS`, `Genus TASS`, `Coverage`, `Covered Bases`, `Breadth %`, `Breadth Score`, `Breadth of Coverage`, `Gini Coefficient`, `Minhash Score`, `MapQ Score`, `Disparity Score`, `Diamond Identity`, `MicrobeRT Probability` | **Max** across members | The strongest evidence in any one library wins rather than being diluted. |
-| `Mean MapQ`, `Mean BaseQ` | **Read-weighted mean** | Avoids letting a small library's quality figure misstate a much larger merged one. |
-| `% Reads`, `RPM`, `RPKM` | **Recomputed** from the merged aligned-read count against the specimen's combined input/classified reads (visible, non-hidden members only) | Keeps normalized abundance consistent with the merged denominator instead of inheriting one member's ratio. |
-| `High Consequence`, `Passes Threshold` | **OR** (any member true ⇒ true) | A flag detected in any one library should not be lost by merging. |
-| `Mol Type` | `"both"` if members mix DNA and RNA, else the shared value | Surfaces mixed-library specimens explicitly. |
-| Every other column | Taken from the member row with the **highest TASS score** | A single representative row supplies fields with no defined aggregation rule. |
+| Field(s)                                                                                                                                                                                                                                        | Aggregation                                                                                                                                 | Rationale                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `# Reads Aligned`, `# Unique Reads Aligned`, `# Reads`, `K2 Reads`, `Mean Depth`                                                                                                                                                                | **Sum** across members                                                                                                                      | Read counts and depth from independent libraries are additive.                                              |
+| `TASS Score`, `Species TASS`, `Genus TASS`, `Coverage`, `Covered Bases`, `Breadth %`, `Breadth Score`, `Breadth of Coverage`, `Gini Coefficient`, `Minhash Score`, `MapQ Score`, `Disparity Score`, `Diamond Identity`, `MicrobeRT Probability` | **Max** across members                                                                                                                      | The strongest evidence in any one library wins rather than being diluted.                                   |
+| `Mean MapQ`, `Mean BaseQ`                                                                                                                                                                                                                       | **Read-weighted mean**                                                                                                                      | Avoids letting a small library's quality figure misstate a much larger merged one.                          |
+| `% Reads`, `RPM`, `RPKM`                                                                                                                                                                                                                        | **Recomputed** from the merged aligned-read count against the specimen's combined input/classified reads (visible, non-hidden members only) | Keeps normalized abundance consistent with the merged denominator instead of inheriting one member's ratio. |
+| `High Consequence`, `Passes Threshold`                                                                                                                                                                                                          | **OR** (any member true ⇒ true)                                                                                                             | A flag detected in any one library should not be lost by merging.                                           |
+| `Mol Type`                                                                                                                                                                                                                                      | `"both"` if members mix DNA and RNA, else the shared value                                                                                  | Surfaces mixed-library specimens explicitly.                                                                |
+| Every other column                                                                                                                                                                                                                              | Taken from the member row with the **highest TASS score**                                                                                   | A single representative row supplies fields with no defined aggregation rule.                               |
 
 A specimen with only one contributing sample passes through unaggregated. Merged rows carry a small **"merged ×N"** badge (hover to see the member sample names) anywhere a specimen appears, and merged Summary/Table rows are tagged so a collapsed call is distinguishable from a directly-detected one.
 
@@ -168,21 +168,21 @@ Picking a new color updates the box, its member rows, the heatmap/legend, and an
 
 ## Tabs
 
-| Tab | Purpose |
-|---|---|
-| **Summary** | ODR-style summary table across all samples, plus KPI cards (e.g. High Consequence count). The primary at-a-glance view. |
-| **Heatmap** | Organism × sample TASS heatmap with the roll-up rescue markers described above. |
-| **TASS** | TASS-score distribution with the per-sample-type cutoff line. |
-| **Sunburst** | Hierarchical taxonomic composition; slice labels render below the slices. |
-| **Coverage** | Per-organism coverage profiles. |
-| **Histogram** | Per-position genome coverage histogram, pre-filtered to a chosen organism + sample. Hidden/disabled for run-level species or genus views where per-position data is not meaningful. |
-| **Explore** | Scatter/bubble and correlogram exploration of metrics across organisms and samples. |
-| **Table** | Full sortable, paginated data table with configurable columns (all columns shown by default, including **MicrobeRT Probability** / **MicrobeRT Model** when `--microbert` was used). |
-| **Proteins (VF/AMR)** | Virulence-factor and AMR gene annotation table. Hidden unless protein annotations are present. |
-| **Novelty** | Reference-free / open-set detection on the de novo contigs via the chosen backend (kaiju / bracken / mmseqs2): per-sample novelty score & flag, candidate genus+ taxa, a **method-coverage** breakdown (alignment/TASS vs backend rescue vs dark matter), and a **genus TASS-vs-backend** comparison. Column labels track the active backend. Hidden unless `--novelty` produced data. See [Novelty Detection](novelty-detection.md). |
-| **Map** | Geographic view; sample collection map plotted from `latitude` / `longitude`. Hidden unless run metadata supplies coordinates. |
-| **Run Metadata** | Editable per-sample metadata table plus four analysis sub-tabs (Longitudinal, Geographic Comparison, Host & Disease, Cross-Entry Comparison) driven by recognized metadata columns; see [Run Metadata tab and metadata-driven views](#run-metadata-tab-and-metadata-driven-views). Hidden unless samples or metadata are present. |
-| **In-Silico** | Spike-in / dilution-series subsampling suite: the parameters used, a per-dataset **expected-vs-reality** table (target vs observed reads, TP/FP/FN, precision/recall/F1), and a per-organism **dilution-series limit-of-detection** view. Hidden unless `--sim_subsample` produced subsample datasets; see [In-Silico suite tab](#in-silico-suite-tab) and [In-Silico](in-silico.md). |
+| Tab                   | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Summary**           | ODR-style summary table across all samples, plus KPI cards (e.g. High Consequence count). The primary at-a-glance view.                                                                                                                                                                                                                                                                                                               |
+| **Heatmap**           | Organism × sample TASS heatmap with the roll-up rescue markers described above.                                                                                                                                                                                                                                                                                                                                                       |
+| **TASS**              | TASS-score distribution with the per-sample-type cutoff line.                                                                                                                                                                                                                                                                                                                                                                         |
+| **Sunburst**          | Hierarchical taxonomic composition; slice labels render below the slices.                                                                                                                                                                                                                                                                                                                                                             |
+| **Coverage**          | Per-organism coverage profiles.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Histogram**         | Per-position genome coverage histogram, pre-filtered to a chosen organism + sample. Hidden/disabled for run-level species or genus views where per-position data is not meaningful.                                                                                                                                                                                                                                                   |
+| **Explore**           | Scatter/bubble and correlogram exploration of metrics across organisms and samples.                                                                                                                                                                                                                                                                                                                                                   |
+| **Table**             | Full sortable, paginated data table with configurable columns (all columns shown by default, including **MicrobeRT Probability** / **MicrobeRT Model** when `--microbert` was used).                                                                                                                                                                                                                                                  |
+| **Proteins (VF/AMR)** | Virulence-factor and AMR gene annotation table. Hidden unless protein annotations are present.                                                                                                                                                                                                                                                                                                                                        |
+| **Novelty**           | Reference-free / open-set detection on the de novo contigs via the chosen backend (kaiju / bracken / mmseqs2): per-sample novelty score & flag, candidate genus+ taxa, a **method-coverage** breakdown (alignment/TASS vs backend rescue vs dark matter), and a **genus TASS-vs-backend** comparison. Column labels track the active backend. Hidden unless `--novelty` produced data. See [Novelty Detection](novelty-detection.md). |
+| **Map**               | Geographic view; sample collection map plotted from `latitude` / `longitude`. Hidden unless run metadata supplies coordinates.                                                                                                                                                                                                                                                                                                        |
+| **Run Metadata**      | Editable per-sample metadata table plus four analysis sub-tabs (Longitudinal, Geographic Comparison, Host & Disease, Cross-Entry Comparison) driven by recognized metadata columns; see [Run Metadata tab and metadata-driven views](#run-metadata-tab-and-metadata-driven-views). Hidden unless samples or metadata are present.                                                                                                     |
+| **In-Silico**         | Spike-in / dilution-series subsampling suite: the parameters used, a per-dataset **expected-vs-reality** table (target vs observed reads, TP/FP/FN, precision/recall/F1), and a per-organism **dilution-series limit-of-detection** view. Hidden unless `--sim_subsample` produced subsample datasets; see [In-Silico suite tab](#in-silico-suite-tab) and [In-Silico](in-silico.md).                                                 |
 
 ### Summary tab details
 
@@ -205,7 +205,7 @@ The value is linked to each organism by **reference accession** (parsed from the
 
 ## In-Silico suite tab
 
-The **In-Silico** tab appears when the run enabled `--sim_subsample` (see [In-Silico → Subsampling](in-silico.md#subsampling-spike-in--dilution-series-datasets)). Each subsample dataset flows through the pipeline as its own sample, so the report already holds the *observed* result at every dilution; the tab aggregates those into an expected-vs-reality view. It has three parts:
+The **In-Silico** tab appears when the run enabled `--sim_subsample` (see [In-Silico → Subsampling](in-silico.md#subsampling-spike-in--dilution-series-datasets)). Each subsample dataset flows through the pipeline as its own sample, so the report already holds the _observed_ result at every dilution; the tab aggregates those into an expected-vs-reality view. It has three parts:
 
 **Parameters used.** A provenance panel listing the subsampling mode (`consistent` / `randomized`), the read-count series, replicates, seed, master read count, ISS/NanoSim settings, and abundance source. These come from an `insilico_params.json` emitted at report time (with any gaps inferred from the subsample sample names).
 
@@ -225,20 +225,43 @@ The table itself is editable in-browser: **Add column**, **Rows for all samples*
 
 ### Recognized metadata columns and what they drive
 
-| Column | Drives | Notes |
-|---|---|---|
-| `latitude`, `longitude` | **Map** tab, **Geographic Comparison**, *Fill location from lat/long* | Numeric. Presence of any lat/lon pair enables the Map tab (`has_geo`). |
-| `collection_time` | **Longitudinal Analysis** sub-tab (X axis) | ISO (`YYYY-MM-DD[ HH:MM:SS]`) or `M/D/YYYY`. A sample needs a parseable value to appear on the timeline. |
-| `sample_origin_country` | **Geographic Comparison** choropleth (Country level) | Standardized origin field. |
-| `sample_origin_state_province_territory` | **Geographic Comparison** choropleth (State / Province level, which is the default) | Standardized origin field. |
-| `host_scientific_name` | **Host & Disease** (group by host) | |
-| `host_disease` | **Host & Disease** (default grouping) and the **Symptom × Organism** matrix | **Multi-value**: a comma-separated cell (e.g. `runny stool, cramps, cold-like symptoms`) is split into individual symptoms. |
-| `environmental_site` | **Host & Disease** (group by environmental site) | For environmental rather than host-associated samples. |
-| `run_id` | Groups samples by run | Also used in the ODR PDF. |
-| `depth`, `salinity`, `location` | Displayed in the metadata table | `depth` / `salinity` are numeric (m / PSU). |
-| `sequencing_instrument`, `sequencing_platform`, `library_preparation_kit`, `sequencing_protocol_primer_set` | Displayed with friendly labels | Recognized so they render with readable headers. |
+| Column                                                                                                      | Drives                                                                              | Notes                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `latitude`, `longitude`                                                                                     | **Map** tab, **Geographic Comparison**, _Fill location from lat/long_               | Numeric. Presence of any lat/lon pair enables the Map tab (`has_geo`).                                                      |
+| `collection_time`                                                                                           | **Longitudinal Analysis** sub-tab (X axis)                                          | ISO (`YYYY-MM-DD[ HH:MM:SS]`) or `M/D/YYYY`. A sample needs a parseable value to appear on the timeline.                    |
+| `sample_origin_country`                                                                                     | **Geographic Comparison** choropleth (Country level)                                | Standardized origin field.                                                                                                  |
+| `sample_origin_state_province_territory`                                                                    | **Geographic Comparison** choropleth (State / Province level, which is the default) | Standardized origin field.                                                                                                  |
+| `host_scientific_name`                                                                                      | **Host & Disease** (group by host)                                                  |                                                                                                                             |
+| `host_disease`                                                                                              | **Host & Disease** (default grouping) and the **Symptom × Organism** matrix         | **Multi-value**: a comma-separated cell (e.g. `runny stool, cramps, cold-like symptoms`) is split into individual symptoms. |
+| `environmental_site`                                                                                        | **Host & Disease** (group by environmental site)                                    | For environmental rather than host-associated samples.                                                                      |
+| `run_id`                                                                                                    | Groups samples by run                                                               | Also used in the ODR PDF.                                                                                                   |
+| `depth`, `salinity`, `location`                                                                             | Displayed in the metadata table                                                     | `depth` / `salinity` are numeric (m / PSU).                                                                                 |
+| `sequencing_instrument`, `sequencing_platform`, `library_preparation_kit`, `sequencing_protocol_primer_set` | Displayed with friendly labels                                                      | Recognized so they render with readable headers.                                                                            |
 
 Any other column you add is still shown in the table and is available for display/filtering; it just does not feed a dedicated chart.
+
+### Grouping and picker controls
+
+Wherever the report lets you pick from a list that can grow with the run — the
+**Group by** legend (shared bar, map, Group Heatmap, Group Network) and the
+**Longitudinal Analysis** organism picker — the control is a collapsed dropdown
+with a search box rather than a row of chips. One line high whatever the run
+size, and you can type to find an entry instead of scanning a wrapped block.
+
+For the group picker every group starts **ticked** (visible), and it keeps the
+three states the chips had:
+
+| Action              | Effect                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Untick the checkbox | **Hidden** — the group drops out of every grouped view and off the map                                                               |
+| Click the row       | Cycles **normal → highlight → hidden**; highlight emphasises that group, fades the rest, and draws its similarity network on the map |
+| Shift-click the row | Steps **backwards** through the cycle                                                                                                |
+| Alt-click the row   | **Solo** — show only that group (alt-click again to restore)                                                                         |
+| **All** / **None**  | Show or hide every group at once                                                                                                     |
+| **Reset (n)**       | Appears beside the dropdown once anything is off-default; returns all groups to normal                                               |
+
+All four group pickers share one state, so hiding a group in the Group Heatmap
+is reflected immediately in the bar, the map and the network.
 
 ### Analysis sub-tabs
 
@@ -256,6 +279,44 @@ All four respect the sidebar filters and recompute live, so they reflect the cur
 ## TASS Cutoff (per sample type)
 
 The TASS cutoff is **per sample type**, not a single global value. The cutoff slider is pre-populated from the `best_cutoffs` recorded in the input data (the most conservative recommended threshold across loaded samples), drawn from `assets/sampletype_best_thresholds.json` (matched on platform and body site). Moving the slider re-filters every tab live. See [CLI Parameters → `--thresholds_json`](cli-parameters.md#reference-selection-and-assemblies).
+
+---
+
+## Sample QC flags
+
+Every other filter in the report narrows **detections**. Sample QC narrows **samples**: a small rule engine that answers "does this whole sample look usable?" — enough reads, enough distinct organisms above a TASS cutoff, the right metadata — and marks the ones that fail.
+
+The **Sample QC / Flags** block in the right-hand sidebar reports how many samples are flagged and opens the rule builder; the dialog itself lists exactly which samples tripped which rule. Each rule is one `{field} {operator} {value}` clause drawn from four sources:
+
+| Source                            | Examples                                                                                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sample metrics**                | Total reads, aligned reads, organism-assigned reads, species/strain key counts, platform, sample type, control type                       |
+| **Detection counts**              | Distinct organisms above a TASS cutoff, detections passing threshold, high-consequence organisms, distinct genera, highest TASS           |
+| **Metadata column**               | Any column in the Metadata & Mapping table, including ones added or uploaded in the report — `equals`, `contains`, `regex`, `is empty`, … |
+| **Detection column (aggregated)** | Any numeric detection column (Coverage, Mean Depth, RPM …) rolled up per sample by max / min / mean / sum / count                         |
+
+Rules combine with **any** (flag when one matches) or **all** (flag only when every rule matches), and each carries its own action:
+
+- **flag it** — the sample stays fully visible and is marked everywhere.
+- **flag & hide it** — the sample is additionally removed from every chart and table, exactly as the sidebar eye icon hides one. Nothing is deleted: clearing the rule, or the **Hide flagged** checkbox, brings it straight back.
+
+A **Missing values count as a match** switch decides whether a sample with no value at all for a field trips the rule; it is off by default, so a criterion can never flag a sample purely because the field was never populated.
+
+### Where flags appear
+
+| Tab                    | Marker                                                                                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Heatmap**            | The sample's column is outlined in dashed amber with a solid cap under the axis, and its header carries a ⚑ glyph. The cell colours are left untouched, since they _are_ the data. |
+| **Table**              | The sample's group header is tinted, carries a left rule and a `flagged` badge (grouped view).                                                                                     |
+| **Metadata & Mapping** | The sample's row is tinted and its name carries the badge.                                                                                                                         |
+| **Summary**            | A **Flagged Samples** KPI card (hover for the per-sample reasons), plus the same tinted group headers.                                                                             |
+| **Right sidebar**      | A flag icon on each sample row — hover for the reasons, click to open the rule builder.                                                                                            |
+
+Hovering any marker lists exactly which rules the sample tripped and what its actual values were.
+
+### Defaults from the pipeline
+
+Rules can ship with the run: the `--report_flag_*` parameters are baked into the report so it opens with them already applied. **Reset to pipeline defaults** in the dialog restores that set at any time. Live edits are saved with the exported session state, so a saved-and-reloaded report comes back with your rules, not the pipeline's. See [CLI Parameters → Report Sample-QC Flags](cli-parameters.md#report-sample-qc-flags).
 
 ---
 

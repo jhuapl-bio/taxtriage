@@ -3,6 +3,13 @@ name: Docs check
 # Builds and tests the documentation site without deploying it. Runs on pull
 # requests into dev and main so doc breakage is caught in review rather than
 # after a merge triggers a deploy.
+#
+# Both shapes are built:
+#   latest   the full site, including the real Demo Report tab
+#   release  a versioned build, where Demo Report redirects to latest
+#
+# Building both matters: the release shape is only exercised when a release is
+# published, which is exactly when you least want to discover it is broken.
 
 on:
   pull_request:
@@ -12,6 +19,7 @@ on:
       - "mkdocs.yml"
       - "requirements-docs.txt"
       - "scripts/write_docs_ref.py"
+      - "scripts/docs_release_stub.py"
       - "scripts/inline_boot_json.py"
       - "scripts/test_pathogen_table.js"
       - "scripts/test_built_links.py"
@@ -32,6 +40,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [latest, release]
+    name: build (${{ matrix.variant }})
     steps:
       - uses: actions/checkout@v4
 
@@ -56,7 +69,17 @@ jobs:
             --ref "${{ github.event.pull_request.head.sha || github.sha }}" \
             --version "pr-${{ github.event.pull_request.number || 'manual' }}"
 
+      # Fails loudly if a nav entry or page was renamed such that the release
+      # build would silently stop redirecting.
+      - name: Verify demo tab is stubbable
+        run: python scripts/docs_release_stub.py --check
+
+      - name: Redirect demo tab to latest
+        if: matrix.variant == 'release'
+        run: python scripts/docs_release_stub.py
+
       - name: Build interactive report dist
+        if: matrix.variant == 'latest'
         run: |
           python scripts/inline_boot_json.py
           test -s _site/index.html
@@ -68,8 +91,52 @@ jobs:
           npm install --no-fund --no-audit --no-save jsdom
           node scripts/test_pathogen_table.js
 
+      # The Pathogen Sheet renders a "Request an organism" link pointing at an
+      # issue form. The link is built in JS, so a renamed template would only
+      # surface as a 404 for a user — check the referenced file exists.
+      - name: Verify issue template referenced by the site exists
+        run: |
+          set -euo pipefail
+          TMPL="$(sed -nE 's/.*ISSUE_TEMPLATE = "([^"]+)".*/\1/p' docs/javascripts/pathogen_table.js)"
+          test -n "$TMPL" || { echo "::error::could not find ISSUE_TEMPLATE in pathogen_table.js"; exit 1; }
+          test -f ".github/ISSUE_TEMPLATE/$TMPL" \
+            || { echo "::error::.github/ISSUE_TEMPLATE/$TMPL is missing"; exit 1; }
+          python -c "import sys,yaml; yaml.safe_load(open('.github/ISSUE_TEMPLATE/$TMPL'))"
+          echo "Issue form $TMPL present and valid."
+
+      # MkDocs serves extra_javascript/extra_css at stable filenames, so a
+      # browser will reuse the previous deploy's copy and readers see stale
+      # behaviour. Stamp them with the commit so each deploy is a fresh URL.
+      - name: Stamp assets for cache busting
+        run: |
+          set -euo pipefail
+          V="${GITHUB_SHA::12}"
+          {
+            echo "DOCS_JS_REF=javascripts/docs_ref.js?v=$V"
+            echo "DOCS_JS_TABLE=javascripts/pathogen_table.js?v=$V"
+            echo "DOCS_CSS_EXTRA=stylesheets/extra.css?v=$V"
+            echo "DOCS_CSS_TABLE=stylesheets/pathogen_table.css?v=$V"
+          } >> "$GITHUB_ENV"
+          echo "Assets stamped with ?v=$V"
+
       - name: Build site
         run: mkdocs build --strict
 
       - name: Check built links
         run: python scripts/test_built_links.py --site site
+
+      - name: Confirm release build shape
+        if: matrix.variant == 'release'
+        run: |
+          set -euo pipefail
+          grep -q "url=../../latest/demo-report/" site/demo-report/index.html \
+            || { echo "::error::demo-report should redirect to latest"; exit 1; }
+          test ! -e site/demo/index.html \
+            || { echo "::error::release build should not ship the report dist"; exit 1; }
+          # The pathogen sheet is a real page in every version, pinned to its
+          # own ref — it must NOT have been turned into a redirect.
+          grep -q 'id="pathogen-app"' site/pathogen-sheet/index.html \
+            || { echo "::error::pathogen-sheet should be the real table, not a redirect"; exit 1; }
+          ! grep -q "http-equiv=\"refresh\"" site/pathogen-sheet/index.html \
+            || { echo "::error::pathogen-sheet should not redirect"; exit 1; }
+          echo "Demo redirects to latest; pathogen sheet ships version-pinned."
