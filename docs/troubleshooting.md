@@ -84,7 +84,7 @@ Command error:
 
 - The Kraken2 database is larger than available RAM.
 - Solution A: `--low_memory` — reads the DB from disk (much slower)
-- Solution B: `--max_memory 13GB` — explicitly set memory limit
+- Solution B: `--max_memory 13GB` — explicitly set memory limit (Nextflow 24.x–25.x; on 26+ set `process.resourceLimits` in a config instead — see [CLI Parameters](cli-parameters.md#workflow-control-and-execution))
 
 **Invalid or corrupt database:**
 

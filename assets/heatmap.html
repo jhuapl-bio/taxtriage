@@ -3376,7 +3376,7 @@
             class="info-tip-btn"
             id="flag-tip-btn"
             aria-label="Sample QC help"
-            data-tip="&lt;b&gt;Sample QC rules&lt;/b&gt; — filters that act on WHOLE SAMPLES rather than on individual detections.&lt;br&gt;&lt;br&gt;Build any number of rules from four sources: &lt;b&gt;sample metrics&lt;/b&gt; (total / aligned reads, platform, control type), &lt;b&gt;detection counts&lt;/b&gt; (distinct organisms above a TASS cutoff, detections passing threshold, highest TASS), &lt;b&gt;metadata columns&lt;/b&gt; (equals / contains / regex / is empty) and any &lt;b&gt;numeric detection column&lt;/b&gt; rolled up per sample.&lt;br&gt;&lt;br&gt;A matching sample is &lt;b&gt;flagged&lt;/b&gt; — marked in the Heatmap, Table, Metadata &amp;amp; Mapping and Summary tabs but still fully visible — or &lt;b&gt;flagged and hidden&lt;/b&gt;, which drops it from every chart and table exactly as the eye icon does.&lt;br&gt;&lt;br&gt;Defaults come from the pipeline&#39;s &lt;code&gt;--report_flag_*&lt;/code&gt; parameters; everything can be edited here and is saved with the session state."
+            data-tip="&lt;b&gt;Sample QC rules&lt;/b&gt; — filters that act on WHOLE SAMPLES rather than on individual detections.&lt;br&gt;&lt;br&gt;Build any number of rules from four sources: &lt;b&gt;sample metrics&lt;/b&gt; (total / aligned reads, platform, control type), &lt;b&gt;detection counts&lt;/b&gt; (distinct organisms above a TASS cutoff, detections passing threshold, highest TASS), &lt;b&gt;metadata columns&lt;/b&gt; (equals / contains / regex / is empty) and any &lt;b&gt;numeric detection column&lt;/b&gt; rolled up per sample.&lt;br&gt;&lt;br&gt;A matching sample is &lt;b&gt;flagged&lt;/b&gt; — marked in the Heatmap, Table, Metadata &amp;amp; Mapping and Summary tabs but still fully visible — or &lt;b&gt;flagged and hidden&lt;/b&gt;, which drops it from every chart and table exactly as the eye icon does.&lt;br&gt;&lt;br&gt;The dropdown beside &lt;b&gt;Filters…&lt;/b&gt; in this panel switches the whole report between &lt;b&gt;all samples&lt;/b&gt;, &lt;b&gt;hide flagged&lt;/b&gt; and &lt;b&gt;only flagged&lt;/b&gt; &mdash; nothing is ever removed from the data, only from the views.&lt;br&gt;&lt;br&gt;Organism counts are taken over the whole dataset (not just the rows currently displayed) and ignore host by default.&lt;br&gt;&lt;br&gt;These are SAMPLE flags, separate from the per-organism follow-up star.&lt;br&gt;&lt;br&gt;Defaults come from the pipeline&#39;s &lt;code&gt;--report_flag_*&lt;/code&gt; parameters; everything can be edited here and is saved with the session state."
           >
             &#x24D8;
           </button>
@@ -3385,10 +3385,17 @@
           <div id="flag-summary-line" class="flag-line quiet"></div>
           <div id="flag-summary-actions">
             <button type="button" id="flag-open-btn" title="Open the sample filter / flag rule builder">
-              <i class="fas fa-flag"></i> Filters &amp; flags…
+              <i class="fas fa-flag"></i> Filter Samples
             </button>
-            <label id="flag-hide-toggle-lbl" title="Hide every flagged sample from all charts and tables">
-              <input type="checkbox" id="flag-hide-toggle" /> Hide flagged
+            <label
+              id="flag-view-mode-lbl"
+              title="Which samples every chart and table shows: all of them, everything except the flagged ones, or nothing but the flagged ones"
+            >
+              <select id="flag-view-mode">
+                <option value="all">All samples</option>
+                <option value="hide">Hide flagged</option>
+                <option value="only">Only flagged</option>
+              </select>
             </label>
           </div>
         </div>
@@ -3960,8 +3967,10 @@
           <p class="flag-modal-intro">
             These rules act on <b>whole samples</b>, not on individual detections. A sample that matches is
             <b>flagged</b> &mdash; marked in the Heatmap, Table, Metadata &amp; Mapping and Summary tabs but still
-            visible &mdash; or <b>flagged and hidden</b>, which removes it from every view. Changes apply as you make
-            them.
+            visible &mdash; or <b>flagged and hidden</b>, which removes it from every view. <b>Show</b> below sets what
+            the whole report displays: all samples, everything except the flagged ones, or nothing but them. Counts come
+            from the full dataset, not from what the current filters happen to display, and skip the organisms listed
+            under <b>Ignore in counts</b> (host by default). Changes apply as you make them.
           </p>
           <div class="flag-modal-top">
             <label title="Turn the whole rule set off without deleting it">
@@ -3977,8 +3986,29 @@
             <label title="A sample with no value at all for a rule's field counts as matching that rule">
               <input type="checkbox" id="flag-missing-fails" /> Missing values count as a match
             </label>
-            <label title="Promote every flag to a hide, whatever each rule says">
-              <input type="checkbox" id="flag-hide-all" /> Hide all flagged samples
+            <label
+              title="All samples: rules with a 'hide' action still hide their own matches. Hide flagged: promote every flag to a hide. Only flagged: the inverse - show the flagged samples and hide everything that passed."
+            >
+              Show
+              <select id="flag-view-mode-modal">
+                <option value="all">all samples</option>
+                <option value="hide">everything except flagged</option>
+                <option value="only">only flagged samples</option>
+              </select>
+            </label>
+            <label
+              class="flag-exclude-lbl"
+              title="Taxids or organism names that never count toward a 'distinct organisms' figure. Host lives here: on a run without dehosting, human would otherwise count as one of the organisms a low-complexity rule is looking for. Comma-separated; taxids match exactly, names match anywhere in the organism / species / genus text."
+            >
+              Ignore in counts
+              <input
+                type="text"
+                id="flag-exclude-taxids"
+                placeholder="9606"
+                size="18"
+                aria-label="Taxids or organism names excluded from detection counts"
+              />
+              <button type="button" id="flag-exclude-reset" title="Back to the default (9606, human)">reset</button>
             </label>
           </div>
           <div id="flag-rule-list"></div>
@@ -3991,6 +4021,14 @@
               <button type="button" class="flag-preset" data-preset="fewtaxa">Few organisms above TASS</button>
               <button type="button" class="flag-preset" data-preset="nodetect">No passing detections</button>
               <button type="button" class="flag-preset" data-preset="control">Control samples</button>
+              <button
+                type="button"
+                class="flag-preset"
+                data-preset="k2only"
+                title="Flag a sample carrying an organism the classifier called loudly but the aligner barely supports"
+              >
+                Classifier-only organisms
+              </button>
             </span>
           </div>
           <div id="flag-preview"></div>

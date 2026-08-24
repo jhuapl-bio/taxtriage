@@ -1189,6 +1189,20 @@
                     "hint": "Off by default, so a criterion can never flag a sample purely because the field was never populated.",
                     "fa_icon": "fas fa-question"
                 },
+                "report_flag_view": {
+                    "type": "string",
+                    "default": "all",
+                    "enum": ["all", "hide", "only"],
+                    "description": "Which samples the report opens on: all, hide flagged, or only flagged.",
+                    "hint": "'all' shows every sample (a rule with action 'hide' still hides its own matches), 'hide' hides every flagged sample, 'only' shows nothing but the flagged samples. Switchable in the report sidebar at any time.",
+                    "fa_icon": "fas fa-filter"
+                },
+                "report_flag_exclude_taxids": {
+                    "type": ["string", "null"],
+                    "description": "Taxids or organism names never counted toward the report's detection counts. Defaults to 9606 (human).",
+                    "hint": "Keeps host out of every 'distinct organisms' figure, so report_flag_min_organisms means the same thing whether or not the run was dehosted. Comma- or space-separated; taxids match exactly, names match anywhere in the organism / species / genus text. Set to an empty string to count host like any other organism.",
+                    "fa_icon": "fas fa-user-slash"
+                },
                 "report_flag_rules": {
                     "type": ["string", "null"],
                     "format": "file-path",
