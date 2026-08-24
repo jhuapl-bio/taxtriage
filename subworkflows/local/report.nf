@@ -370,6 +370,13 @@ workflow REPORT {
                 ? Channel.fromPath(params.offline_report_files, checkIfExists: true)
                 : Channel.value(file("$projectDir/assets/NO_FILE_embedding"))
 
+            // Optional sample-QC rule list (params.report_flag_rules). Staged like
+            // every other optional input so it resolves inside a container; its own
+            // placeholder name so it can never collide with another path input.
+            ch_flag_rules = params.report_flag_rules
+                ? Channel.value(file(params.report_flag_rules, checkIfExists: true))
+                : Channel.value(file("$projectDir/assets/NO_FILE_flag_rules"))
+
             CREATE_COMPARISON_REPORT(
                 ch_comparison_jsons,
                 ch_template,
@@ -379,7 +386,8 @@ workflow REPORT {
                 pathogens_list.first(),
                 ch_vfamr_taxids.first(),
                 ch_annotate_report_files,
-                ch_offline_report_files
+                ch_offline_report_files,
+                ch_flag_rules
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report

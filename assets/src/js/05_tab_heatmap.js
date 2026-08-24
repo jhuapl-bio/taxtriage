@@ -99,17 +99,46 @@ function drawHeatmap() {
     .range([marginT, marginT + organisms.length * cellH])
     .padding(0.03);
 
+  // ── Sample QC flags ────────────────────────────────────────────────
+  // A flagged sample keeps its column (hiding is a separate, explicit
+  // action) but the whole column is washed amber and its header carries a
+  // flag glyph, so a suspect sample can never be read as a clean one.
+  const _hmFlag = {};
+  if (typeof ttFlagStateFor === "function") {
+    samples.forEach((sp) => {
+      const st = ttFlagStateFor(sp);
+      if (st && st.flagged) _hmFlag[sp] = st;
+    });
+  }
+  const _hmAnyFlag = Object.keys(_hmFlag).length > 0;
+
   // X axis (top)
-  svg
+  const _xAxisG = svg
     .append("g")
     .attr("class", "axis")
     .attr("transform", `translate(0,${marginT})`)
-    .call(d3.axisTop(xScale).tickSize(0))
+    .call(d3.axisTop(xScale).tickSize(0));
+  _xAxisG
     .selectAll("text")
     .attr("transform", "rotate(-45)")
     .style("text-anchor", "start")
     .attr("dx", "0.4em")
     .attr("dy", "-0.2em");
+  if (_hmAnyFlag) {
+    _xAxisG.selectAll(".tick").each(function (sp) {
+      const st = _hmFlag[sp];
+      if (!st) return;
+      const tick = d3.select(this);
+      const label = tick.select("text");
+      label.attr("class", "hm-flag-label").text((st.hide ? "\u{1F6AB} " : "\u2691 ") + sp);
+      label.append("title").text(ttFlagPlainReasons(sp));
+      label
+        .style("cursor", "help")
+        .on("mouseover", (ev) => showTip(ttFlagTipHTML(sp), ev))
+        .on("mousemove", moveTip)
+        .on("mouseout", hideTip);
+    });
+  }
 
   // Y axis — organism labels with rank prefix
   const yGroup = svg.append("g").attr("class", "axis").attr("transform", `translate(${marginL},0)`);
@@ -303,6 +332,37 @@ function drawHeatmap() {
     });
   });
 
+  // ── Flagged-sample column marker ───────────────────────────────────
+  // Deliberately an OUTLINE plus a solid cap, not a translucent wash: the
+  // cell fill is the data here, and tinting a column would change every value
+  // the reader sees in it. Drawn after the cells (an underlay would sit behind
+  // the opaque cell rects) with pointer-events off, so each cell keeps its own
+  // hover tooltip. The cap keeps the marker findable once a long organism list
+  // has scrolled the header out of view.
+  if (_hmAnyFlag) {
+    const flagG = svg.append("g").attr("class", "hm-flag-cols").style("pointer-events", "none");
+    samples.forEach((sp) => {
+      const st = _hmFlag[sp];
+      if (!st) return;
+      const cls = "hm-flag-col" + (st.hide ? " hides" : "");
+      flagG
+        .append("rect")
+        .attr("class", cls + " hm-flag-outline")
+        .attr("x", xScale(sp) - 1.5)
+        .attr("y", marginT - 4)
+        .attr("width", xScale.bandwidth() + 3)
+        .attr("height", organisms.length * cellH + 4)
+        .attr("rx", 2);
+      flagG
+        .append("rect")
+        .attr("class", cls + " hm-flag-cap")
+        .attr("x", xScale(sp) - 1.5)
+        .attr("y", marginT - 4)
+        .attr("width", xScale.bandwidth() + 3)
+        .attr("height", 4);
+    });
+  }
+
   // Colour bar
   const cbW = 12,
     cbH = Math.min(160, H - marginT - marginB);
@@ -352,6 +412,21 @@ function drawHeatmap() {
     .attr("font-size", 9)
     .attr("fill", "#666")
     .text(`Scale: ${scaleMode}`);
+
+  // Sample QC legend — same placement rationale as the rescued-strain
+  // legend below: HTML under the SVG, so it can never overlap the plot.
+  if (_hmAnyFlag) {
+    const nFlag = Object.keys(_hmFlag).length;
+    const fgDiv = document.createElement("div");
+    fgDiv.style.cssText =
+      "display:flex;align-items:center;gap:12px;padding:5px 8px 2px;font-size:0.76em;color:#555;flex-wrap:wrap;";
+    fgDiv.innerHTML =
+      "<span style='font-weight:600;color:#8a5300;'>\u2691 Sample QC:</span>" +
+      `<span style='color:#666;'>${nFlag} flagged sample${nFlag === 1 ? "" : "s"} \u2014 ` +
+      "outlined column, hover the header for the reason</span>" +
+      "<span style='color:#888;font-style:italic;'>edit the rules in the right panel \u2192 Sample QC / Flags</span>";
+    wrap.appendChild(fgDiv);
+  }
 
   // Rescued-strain legend — rendered as HTML below the SVG so it can
   // never overlap the chart axes or cells regardless of chart dimensions.

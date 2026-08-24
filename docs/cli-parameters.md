@@ -51,15 +51,29 @@ Start from reads you have already aligned. Pre-aligned samples skip QC, trimming
 
 ## Workflow Control and Execution
 
-| Parameter                                  | Description                                                                                        |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `-resume`                                  | Resume from cached intermediate results.                                                           |
-| `-latest`                                  | Pull the latest commit from the specified branch at runtime.                                       |
-| `-r [main, stable, 1.x.x]`                 | Specify the GitHub branch or version tag.                                                          |
-| `-profile [local,test,docker,singularity]` | One or more execution profiles, comma-separated.                                                   |
-| `--max_memory <N>GB`                       | Maximum RAM allocated to the pipeline. Kraken2 requires at least as much RAM as the database size. |
-| `--max_cpus <N>`                           | Maximum number of CPU cores.                                                                       |
-| `--low_memory`                             | Load the Kraken2 database from disk via I/O rather than into RAM (much slower but lower memory).   |
+| Parameter                                  | Description                                                                                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-resume`                                  | Resume from cached intermediate results.                                                                                                                |
+| `-latest`                                  | Pull the latest commit from the specified branch at runtime.                                                                                            |
+| `-r [main, stable, 1.x.x]`                 | Specify the GitHub branch or version tag.                                                                                                               |
+| `-profile [local,test,docker,singularity]` | One or more execution profiles, comma-separated.                                                                                                        |
+| `--max_memory <N>GB`                       | **Legacy (Nextflow 24.x–25.x).** Maximum RAM allocated to the pipeline. Kraken2 requires at least as much RAM as the database size. See the note below. |
+| `--max_cpus <N>`                           | **Legacy (Nextflow 24.x–25.x).** Maximum number of CPU cores. See the note below.                                                                       |
+| `--low_memory`                             | Load the Kraken2 database from disk via I/O rather than into RAM (much slower but lower memory).                                                        |
+
+!!! warning "`--max_cpus` / `--max_memory` / `--max_time` are legacy knobs"
+
+    These three parameters are the pre-`resourceLimits` way of capping resources, and they are **deprecated from Nextflow 26 onward** — treat them as applying to Nextflow **24.x and 25.x** only. Nextflow 24.04 introduced the native [`process.resourceLimits`](https://www.nextflow.io/docs/latest/reference/process.html#resourcelimits) directive, and the nf-core template dropped the `max_*` parameters in v3.0.0; the old `check_max()` helper they depended on is gone from this pipeline entirely, because function definitions are rejected by the strict config parser that became the default in Nextflow 26.04.
+
+    On Nextflow 26 and later, set the ceiling natively instead — in a profile or a `-c` config:
+
+    ```groovy
+    process {
+        resourceLimits = [ cpus: 16, memory: '64.GB', time: '24.h' ]
+    }
+    ```
+
+    For now the parameters still take effect on every supported version, because `conf/base.config` feeds them straight into `resourceLimits`. They will not be maintained past the 25.x line, so new configs and new documentation should use `resourceLimits` directly.
 
 > **Air-gapped / no-internet runs:** The pipeline pins `nf-tower@1.17.3` in `nextflow.config` so Nextflow uses the locally cached plugin without fetching remote metadata. If you hit a `Conversion = '4'` error on a machine that has never run the pipeline before, the plugin cache is empty — run once with internet access to populate it, or use `NXF_OFFLINE=false` temporarily. You can also pass Nextflow's native `-offline` flag (single hyphen) to fully suppress all network calls once plugins are cached:
 >
@@ -357,6 +371,92 @@ They appear in the [Interactive Report](interactive-report.md) **Table** tab (vi
 | `--no_subkey`                  | Do not split organisms into species and strain sub-tables.                                                                                                                                                                                                                                                                            |
 | `--offline_report`             | Download the interactive report's CDN libraries (D3, xlsx, jsPDF, Leaflet, Font Awesome) at build time and embed them inline, so `all.odr.html` opens without internet. Requires network on the **pipeline** host. Default: `false`.                                                                                                  |
 | `--offline_report_files <dir>` | Directory of local copies of those libraries (and their fonts/marker images) to embed inline — a fully offline build with **no network**. Takes precedence over `--offline_report`. Prepare it with `python scripts/fetch_offline_report_libs.py`. See [Interactive Report → Offline Reports](interactive-report.md#offline-reports). |
+
+---
+
+## Report Sample-QC Flags
+
+Whole-**sample** criteria that seed the interactive report's **Sample QC / Flags** rule set. These are report _defaults only_: every sample still runs through the full workflow and appears in every output. A sample that matches is marked in the Heatmap, Table, Metadata & Mapping and Summary tabs and, with `--report_flag_action hide`, also removed from those views (reversibly — the report keeps a one-click toggle). Users can edit, add to or delete every rule live in the report.
+
+!!! note "What the counts count"
+
+    The detection-based criteria (`--report_flag_min_organisms`, `--report_flag_min_detections`) are computed from the **whole dataset** in the report, not from whatever the report is currently displaying: an organism suppressed by the TASS slider, a name filter or a hidden column still counts, as long as it clears the criterion's own TASS cutoff. Only two things are left out — species and genus roll-up rows (counting them would inflate every distinct-organism figure two- or three-fold), and anything on `--report_flag_exclude_taxids`, which defaults to human. Detections the *pipeline* never wrote are of course not there to count.
+
+    These sample flags are also entirely separate from the report's per-organism **follow-up list** (the star on a detection): one marks samples, the other marks organism–sample pairs, and neither reads the other's state.
+
+| Parameter                              | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--report_flag_min_reads <n>`          | Flag any sample with fewer than `n` total reads.                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `--report_flag_min_aligned_reads <n>`  | Flag any sample with fewer than `n` aligned reads. Set to `1` to catch samples that produced no alignments at all.                                                                                                                                                                                                                                                                                                                                                          |
+| `--report_flag_min_organisms <n>`      | Flag any sample with fewer than `n` **distinct** organisms scoring at or above `--report_flag_organism_tass`.                                                                                                                                                                                                                                                                                                                                                               |
+| `--report_flag_organism_tass <tass>`   | TASS cutoff (0–100) used by `--report_flag_min_organisms`. Defaults to `--min_conf` when set, else `75`.                                                                                                                                                                                                                                                                                                                                                                    |
+| `--report_flag_min_detections <n>`     | Flag any sample with fewer than `n` detections passing their own threshold.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `--report_flag_metadata <spec>`        | Metadata criteria, `;`-separated. Each clause is `field:op:value` (or the shorthand `field=value`, meaning equals). Operators: `==` `!=` `contains` `!contains` `regex` `empty` `!empty` `<` `<=` `>` `>=`. The field is looked up in the run metadata first, then in the sample metadata.                                                                                                                                                                                  |
+| `--report_flag_logic <any\|all>`       | Flag when **any** criterion matches (default) or only when **all** of them do.                                                                                                                                                                                                                                                                                                                                                                                              |
+| `--report_flag_action <flag\|hide>`    | What happens to a matching sample: `flag` marks it but keeps it visible (default); `hide` also removes it from every chart and table.                                                                                                                                                                                                                                                                                                                                       |
+| `--report_flag_missing`                | Treat a missing or blank value as a match. Off by default, so a criterion can never flag a sample purely because the field was never populated.                                                                                                                                                                                                                                                                                                                             |
+| `--report_flag_view <all\|hide\|only>` | Which samples the report **opens** on. `all` (default) shows everything, with a rule's own `hide` action still applying; `hide` hides every flagged sample; `only` inverts it — the flagged samples are shown and everything that passed is hidden. Switchable at any time from the dropdown beside **Filters…** in the report's Sample QC panel (All samples / Hide flagged / Only flagged), and never destructive: nothing is dropped from the data, only from the views. |
+| `--report_flag_exclude_taxids <ids>`   | Taxids or organism names that never count toward a detection figure — the distinct-organism counts, the detection counts and any aggregated column. Defaults to `9606` (human), so `--report_flag_min_organisms` means the same thing on a dehosted run and on one where human is still in the table. Comma- or space-separated; taxids match exactly, names match anywhere in the organism / species / genus text. Pass `''` to count host like any other organism.        |
+| `--report_flag_rules <file.json>`      | A JSON file holding a full rule list. Replaces every other `--report_flag_*` parameter.                                                                                                                                                                                                                                                                                                                                                                                     |
+
+Example — flag anything shallow, uninformative, or missing its collection site:
+
+```bash
+nextflow run . -profile docker \
+    --input samplesheet.csv \
+    --report_flag_min_reads 500000 \
+    --report_flag_min_organisms 1 --report_flag_organism_tass 75 \
+    --report_flag_metadata "environmental_site:empty:;host_disease:contains:influenza"
+```
+
+### Classifier vs alignment
+
+Three of the `derived` fields compare what Kraken2/Centrifuge assigned (the `K2 Reads` column) against what the aligner corroborated (`# Reads Aligned`) — the gap between the two is the usual signature of a database artefact or a conserved-region pile-up, and neither column shows it alone:
+
+| Field                      | Meaning                                                                                                                                                                                                                                             |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `k2_reads_sum`             | Total classifier reads across the sample's detections. The counterpart to `reads_aligned_sum`.                                                                                                                                                      |
+| `aligned_to_k2_ratio`      | `reads_aligned_sum ÷ k2_reads_sum`. Well below 1 means the classifier is carrying the sample on its own. **Missing** (never `0`) when the sample has no classifier reads at all, so a run without a classifier column cannot trip a ratio rule.     |
+| `unsupported_k2_organisms` | How many distinct organisms the classifier called loudly and the aligner did not back — at least `k2min` classifier reads (default 50) but fewer than 5% of them aligned. Per-organism, so one bad call in an otherwise healthy sample still shows. |
+
+`unsupported_k2_organisms` is usually the more actionable of the three: the sample-level ratio tells you something is off, this tells you how many organisms are responsible. Both honour `--report_flag_exclude_taxids`, which matters here — host is often the loudest classifier call in the sample.
+
+```bash
+nextflow run . -profile docker \
+    --input samplesheet.csv \
+    --report_flag_rules classifier_qc.json     # unsupported_k2_organisms >= 1
+```
+
+### Rules file format
+
+`--report_flag_rules` takes either a bare list of rule objects or an object with `logic`, `missing_fails`, `view`, `exclude_taxids` and `rules` (the two report-wide settings may also be given here instead of on the command line):
+
+```json
+{
+  "logic": "any",
+  "missing_fails": false,
+  "view": "all",
+  "exclude_taxids": ["9606"],
+  "rules": [
+    { "source": "meta", "field": "total_reads", "op": "<", "value": 500000, "action": "hide" },
+    { "source": "derived", "field": "unique_taxids_above_tass", "op": "<", "value": 1, "tass": 75, "action": "flag" },
+    { "source": "runmeta", "field": "sample_origin_country", "op": "empty", "value": "", "action": "flag" },
+    { "source": "data", "field": "Coverage", "agg": "max", "op": "<", "value": 10, "action": "flag" },
+    { "source": "derived", "field": "unsupported_k2_organisms", "op": ">=", "value": 1, "k2min": 50, "action": "flag" }
+  ]
+}
+```
+
+`source` is one of:
+
+| Source    | Reads                                                                                                                                                                                                                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `meta`    | A per-sample pipeline metric: `total_reads`, `aligned_reads`, `total_organism_reads`, `num_keys`, `num_subkeys`, `num_species_groups`, `platform`, `sample_type`, `control_type`, …                                                                                                         |
+| `derived` | A count computed from the detections: `unique_taxids_above_tass` (with `tass`), `unique_taxids`, `passing_detections`, `detections`, `high_consequence`, `unique_genera`, `max_tass`, `reads_aligned_sum`, `k2_reads_sum`, `aligned_to_k2_ratio`, `unsupported_k2_organisms` (with `k2min`) |
+| `runmeta` | Any metadata column (run metadata first, sample metadata as a fallback)                                                                                                                                                                                                                     |
+| `data`    | Any numeric detection column, rolled up per sample by `agg` (`max`, `min`, `mean`, `sum`, `count`)                                                                                                                                                                                          |
+
+A malformed rule is reported on stderr and skipped rather than failing the run. See [Interactive Report → Sample QC flags](interactive-report.md#sample-qc-flags).
 
 ---
 

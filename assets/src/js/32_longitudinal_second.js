@@ -3,7 +3,7 @@
        -     Lives inside the Run Metadata tab. Renders a line plot:
        -        – X axis: collection_time
        -        – Y axis: user-selected metric
-       -        – One line per selected organism (chip selector)
+       -        – One line per selected organism (searchable dropdown picker)
        -        – Per-plot sample visibility independent of the main sidebar
        -          sampleHidden map.
        -     Functions: _parseLongiDate, _buildLongitudinalSection,
@@ -95,23 +95,16 @@ function _buildLongitudinalSection() {
     _longiSelectedOrgs.add(_longiOrgList[0]);
   }
 
-  _populateLongiOrgs(_longiOrgList);
+  _populateLongiOrgs();
   _buildLongiSamplePanel(timedSamples);
 
   // Wire events once
   if (!_longiBuilt) {
     _longiBuilt = true;
-    const orgSearch = document.getElementById("longi-org-search");
     const ySel = document.getElementById("longi-y-sel");
     const scaleSel = document.getElementById("longi-scale-sel");
     if (ySel) ySel.addEventListener("change", _drawLongitudinalPlot);
     if (scaleSel) scaleSel.addEventListener("change", _drawLongitudinalPlot);
-    if (orgSearch)
-      orgSearch.addEventListener("input", () => {
-        const q = (orgSearch.value || "").trim().toLowerCase();
-        _populateLongiOrgs(q ? _longiOrgList.filter((o) => o.toLowerCase().includes(q)) : _longiOrgList);
-      });
-
     // Show All / Hide All (None) buttons in the sample panel header
     const showAllBtn = document.getElementById("longi-show-all");
     const hideAllBtn = document.getElementById("longi-hide-all");
@@ -144,68 +137,71 @@ function _buildLongitudinalSection() {
   _drawLongitudinalPlot();
 }
 
-function _populateLongiOrgs(visibleOrgs) {
+/* Organism picker for the longitudinal plot.
+   A collapsed, searchable dropdown (43_multiselect.js) rather than the chip
+   wall this used to be: a run can carry hundreds of organisms, and the chip
+   list turned choosing two of them into a scroll hunt inside a 110px box.
+   The `visibleOrgs` argument is kept for call-site compatibility but is no
+   longer used to pre-filter — the dropdown owns its own search. */
+function _populateLongiOrgs() {
   const container = document.getElementById("longi-org-list");
   const counter = document.getElementById("longi-org-count");
   if (!container) return;
 
-  container.innerHTML = "";
-  visibleOrgs.forEach((org) => {
-    const selected = _longiSelectedOrgs.has(org);
+  const items = _longiOrgList.map((org) => {
     const color = _longiOrgColors[org] || "#1565c0";
-
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.title = org;
-    chip.style.cssText = [
-      "display:inline-flex;align-items:center;gap:5px",
-      "padding:3px 8px 3px 6px",
-      "border-radius:14px",
-      "font-size:0.76em",
-      "cursor:pointer",
-      "transition:all .12s",
-      "white-space:nowrap",
-      "max-width:190px",
-      selected
-        ? `background:${color};color:#fff;border:1.5px solid ${color};font-weight:600`
-        : "background:#f0f4f9;color:#455a64;border:1.5px solid #ccd6e8;font-weight:400",
-    ].join(";");
-
-    // Colour dot
-    const dot = document.createElement("span");
-    dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;
-            background:${selected ? "#fff" : color};border:1px solid rgba(0,0,0,.18)`;
-
-    // Label (truncated)
-    const lbl = document.createElement("span");
-    lbl.style.cssText = "overflow:hidden;text-overflow:ellipsis;max-width:160px;display:block";
-    lbl.textContent = org;
-
-    chip.appendChild(dot);
-    chip.appendChild(lbl);
-
-    chip.addEventListener("click", () => {
-      if (_longiSelectedOrgs.has(org)) {
-        _longiSelectedOrgs.delete(org);
-      } else {
-        _longiSelectedOrgs.add(org);
-      }
-      // Re-render chips (keeping search filter)
-      const q = (document.getElementById("longi-org-search") || {}).value || "";
-      _populateLongiOrgs(
-        q.trim() ? _longiOrgList.filter((o) => o.toLowerCase().includes(q.trim().toLowerCase())) : _longiOrgList,
-      );
-      _drawLongitudinalPlot();
-    });
-
-    container.appendChild(chip);
+    return {
+      key: org,
+      label: org,
+      checked: _longiSelectedOrgs.has(org),
+      title: org,
+      swatchHTML:
+        `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;flex-shrink:0;` +
+        `background:${color};border:1px solid rgba(0,0,0,.18)"></span>`,
+    };
   });
 
-  // Update counter label
-  if (counter) {
-    const n = _longiSelectedOrgs.size;
-    counter.textContent = n ? `— ${n} selected` : "";
-  }
+  //  "All" is only offered for a list short enough to plot. A run can carry
+  //  hundreds of organisms, and one click that draws hundreds of series would
+  //  lock the tab up — leaving the button out is clearer than letting someone
+  //  press it and wait.
+  const _ALL_PLOT_CAP = 30;
+
+  window.ttMultiSelect.render(container, {
+    icon: "fa-viruses",
+    title: "Choose which organisms to plot over time",
+    placeholder: "Search organisms…",
+    emptyText: "No organisms with a collection date.",
+    summary: (n, total) => (n === 0 ? `Select organisms (${total} available)` : `${n} of ${total} organisms plotted`),
+    items,
+    onToggle: (org, checked) => {
+      if (checked) _longiSelectedOrgs.add(org);
+      else _longiSelectedOrgs.delete(org);
+      _populateLongiOrgs();
+      _drawLongitudinalPlot();
+    },
+    onAll:
+      _longiOrgList.length && _longiOrgList.length <= _ALL_PLOT_CAP
+        ? () => {
+            _longiOrgList.forEach((o) => _longiSelectedOrgs.add(o));
+            _populateLongiOrgs();
+            _drawLongitudinalPlot();
+          }
+        : null,
+    onNone: () => {
+      _longiSelectedOrgs.clear();
+      _populateLongiOrgs();
+      _drawLongitudinalPlot();
+    },
+    footNote:
+      _longiOrgList.length > _ALL_PLOT_CAP
+        ? `<i class="fas fa-circle-info"></i> ${_longiOrgList.length} organisms — search to narrow the list`
+        : "",
+  });
+
+  //  The button already reads "n of N organisms plotted"; a second count in
+  //  the label beside it would just be the same number twice.
+  if (counter) counter.textContent = "";
 }
 
 function _buildLongiSamplePanel(sampleNames) {
@@ -975,12 +971,20 @@ function _buildRunMetaTable() {
             k === "sample_name" && typeof _mergedSampleBadgeHTML === "function"
               ? _mergedSampleBadgeHTML(rec.sample_name)
               : "";
-          return `<td${cls}${editAttrs} style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${dispEsc}${mergedBadge}</td>`;
+          //  Sample QC flag rides on the sample_name cell, next to the merged
+          //  badge, so the run inventory shows the same marker as every other
+          //  tab without needing a dedicated column.
+          const flagBadge =
+            k === "sample_name" && typeof _flagBadgeHTML === "function" ? _flagBadgeHTML(rec.sample_name) : "";
+          return `<td${cls}${editAttrs} style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${dispEsc}${mergedBadge}${flagBadge}</td>`;
         })
         .join("");
+      const _flagSt = typeof ttFlagStateFor === "function" ? ttFlagStateFor(rec.sample_name) : null;
+      const _flagCls =
+        _flagSt && _flagSt.flagged ? ` class="runmeta-flagged${_flagSt.hide ? " runmeta-flag-hidden" : ""}"` : "";
       return `<tr id="runmeta-row-${CSS.escape(
         rec.sample_name,
-      )}" style="background:${bg};outline:${border}">${cells}</tr>`;
+      )}"${_flagCls} style="background:${bg};outline:${border}">${cells}</tr>`;
     })
     .join("");
 

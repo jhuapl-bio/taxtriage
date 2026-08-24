@@ -37,6 +37,27 @@ single self-contained HTML file carrying its own data.
 Full documentation of each panel lives in [Interactive Report](interactive-report.md),
 and the scoring behind the heatmap values is described in [TASS Scoring](tass-scoring.md).
 
+## Try the sample QC rules
+
+The demo opens with two **sample QC rules** already active, so the feature is
+visible rather than hidden behind a dialog. They flag three of the six samples —
+one for shallow read depth, three for having fewer than four distinct organisms
+above TASS 99 — and you can see the effect as an outlined column in the Heatmap,
+a tinted group header in the Table and Summary, and a badge in Metadata &
+Mapping. Hover any marker for the exact reason.
+
+Open **Sample QC / Flags → Filters & flags…** in the right-hand panel to edit
+them: change a threshold and watch the flagged list update as you type, add a
+rule on any metadata column or detection metric, or switch a rule from _flag it_
+to _flag & hide it_ to drop those samples from every view. **Remove all rules**
+clears them entirely.
+
+!!! tip "These thresholds are illustrative"
+
+    They are tuned to trip on the example dataset so the markers are visible.
+    In a real run the defaults come from the pipeline's `--report_flag_*`
+    parameters — see [Report Sample-QC Flags](cli-parameters.md#report-sample-qc-flags).
+
 !!! note "This is example data"
 
     The demo is built from the pipeline's test dataset so the layout and

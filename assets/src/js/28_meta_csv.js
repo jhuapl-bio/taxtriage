@@ -356,6 +356,11 @@ function __ttRunInit() {
   const runmetaBtn = document.getElementById("runmeta-tab-btn");
   if (runmetaBtn) runmetaBtn.classList.remove("hidden");
 
+  // Seed the sample QC rules from the pipeline defaults and apply any
+  // "hide" actions BEFORE the first sample list / redraw, so the very first
+  // paint already reflects them (no flash of unfiltered samples).
+  if (typeof ttFlagsInit === "function") ttFlagsInit();
+
   buildHmValueSel();
   buildSampleList();
   _computeBslLevels(); // inject BSL Level into DATA + ALL_COLS before table is built
@@ -411,30 +416,6 @@ function __ttRunInit() {
 
   // ── Wire up sortable map-panel column headers ──────────────────────
   _initPanelSortHeaders();
-
-  // ── Wire sidebar legend collapse toggle ────────────────────────────
-  const _legendToggle = document.getElementById("sidebar-legend-toggle");
-  const _legendBody = document.getElementById("sidebar-legend-body");
-  if (_legendToggle && _legendBody) {
-    _legendToggle.addEventListener("click", () => {
-      const open = _legendBody.style.display !== "none";
-      _legendBody.style.display = open ? "none" : "";
-      _legendToggle.innerHTML = open ? "&#9660;" : "&#9650;";
-      _legendToggle.title = open ? "Expand legend" : "Collapse legend";
-    });
-  }
-
-  // Also update legend when the global TASS slider changes
-  const _fmin = document.getElementById("filter-min");
-  if (_fmin)
-    _fmin.addEventListener("input", () => {
-      if (typeof _updateSidebarLegend === "function") _updateSidebarLegend();
-    });
-  // Also update when a sample color picker changes
-  document.getElementById("sample-list") &&
-    document.getElementById("sample-list").addEventListener("input", (e) => {
-      if (e.target && e.target.type === "color" && typeof _updateSidebarLegend === "function") _updateSidebarLegend();
-    });
 }
 
 // ── Deferred init scheduler ───────────────────────────────────────────────

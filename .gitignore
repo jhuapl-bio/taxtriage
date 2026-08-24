@@ -36,6 +36,7 @@ test_output/
 # and therefore untracked — likely unintentional, worth a separate look.
 !scripts/test_pathogen_table.js
 !scripts/test_built_links.py
+!scripts/test_sample_flags.js
 ./nf-core
 tmp*
 ./nf-core

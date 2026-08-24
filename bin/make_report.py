@@ -175,6 +175,78 @@ def parse_args(argv=None):
              "data, protein/VF-AMR annotations, novelty) is renamed before the HTML is "
              "written. A header row is auto-detected and skipped if present.",
     )
+    # ── Sample-QC flag defaults ──────────────────────────────────────────────
+    # These seed the report's whole-SAMPLE rule set (the "Sample QC / Flags"
+    # panel). They never drop data: every sample is still written to the report,
+    # it is just marked -- or, with --flag-action hide, additionally removed from
+    # the views. Users can edit every rule live in the report.
+    flg = parser.add_argument_group("sample QC flags (report defaults)")
+    flg.add_argument(
+        "--flag-min-reads", default=None, type=float, metavar="N",
+        help="Flag a sample whose total_reads is below N.",
+    )
+    flg.add_argument(
+        "--flag-min-aligned-reads", default=None, type=float, metavar="N",
+        help="Flag a sample whose aligned_reads is below N.",
+    )
+    flg.add_argument(
+        "--flag-min-organisms", default=None, type=float, metavar="N",
+        help="Flag a sample with fewer than N DISTINCT organisms scoring at or above "
+             "--flag-organism-tass.",
+    )
+    flg.add_argument(
+        "--flag-organism-tass", default=None, type=float, metavar="TASS",
+        help="TASS cutoff used by --flag-min-organisms (default: --min_conf if given, else 75).",
+    )
+    flg.add_argument(
+        "--flag-min-detections", default=None, type=float, metavar="N",
+        help="Flag a sample with fewer than N detections passing their own threshold.",
+    )
+    flg.add_argument(
+        "--flag-metadata", default=None, metavar="SPEC",
+        help="Metadata criteria, ';'-separated. Each is 'field:op:value' (or the shorthand "
+             "'field=value', which means equals). Operators: == != contains !contains regex "
+             "empty !empty < <= > >=. Example: "
+             "\"sample_type:==:nasal;host_disease:contains:influenza;site:!empty:\". "
+             "The field is looked up in the run metadata first, then in the sample metadata.",
+    )
+    flg.add_argument(
+        "--flag-logic", default="any", choices=["any", "all"],
+        help="Flag a sample when ANY rule matches (default) or only when ALL of them do.",
+    )
+    flg.add_argument(
+        "--flag-action", default="flag", choices=["flag", "hide"],
+        help="What happens to a matching sample: 'flag' marks it in the Heatmap / Table / "
+             "Metadata & Mapping / Summary tabs but leaves it fully visible (default); "
+             "'hide' also removes it from every chart and table (reversible in the report).",
+    )
+    flg.add_argument(
+        "--flag-view", default="all", choices=["all", "hide", "only"],
+        help="Which samples the report OPENS on: 'all' (default; a rule with action 'hide' "
+             "still hides its own matches), 'hide' (every flagged sample hidden) or 'only' "
+             "(show the flagged samples and hide everything that passed). Switchable in the "
+             "report's sidebar.",
+    )
+    flg.add_argument(
+        "--flag-exclude-taxids", default=None, metavar="IDS",
+        help="Taxids (or organism names) that never count toward a detection figure -- the "
+             "distinct-organism counts, the detection counts and any aggregated column. "
+             "Defaults to '9606' (human), so --flag-min-organisms means the same thing on a "
+             "run with dehosting and one without. Comma- or space-separated; pass '' (empty) "
+             "to count everything, including host.",
+    )
+    flg.add_argument(
+        "--flag-missing", action="store_true",
+        help="Treat a missing / blank value as a match. Off by default, so a rule can never "
+             "flag a sample purely because the field was never populated.",
+    )
+    flg.add_argument(
+        "--flag-rules", default=None, metavar="JSON",
+        help="A JSON file holding the full rule list -- either a bare list of rule objects or "
+             "{\"logic\":…, \"missing_fails\":…, \"rules\":[…]}. Each rule is "
+             "{source, field, op, value[, agg, tass, action]} with source one of "
+             "meta | derived | runmeta | data. Replaces every other --flag-* criterion.",
+    )
     parser.add_argument(
         "--vfamr-taxids", default=None, metavar="TSV",
         help="Optional: bvbrc specialty-gene reference TSV "
@@ -183,6 +255,213 @@ def parse_args(argv=None):
              "instead of the merged sheet's (often mis-parsed) Genus/Species text.",
     )
     return parser.parse_args(argv)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sample QC flags  (whole-sample rules baked into the report as defaults)
+# ──────────────────────────────────────────────────────────────────────────────
+# The report evaluates these client-side (assets/src/js/41_sample_flags.js), so
+# all we do here is translate the --flag-* CLI surface into the rule objects that
+# module understands and hand them over in the bootstrap payload. Nothing is
+# filtered out of the data: a rule only decides how a sample is PRESENTED.
+#
+#   rule = {source, field, op, value, agg, tass, action}
+#     source  meta     SAMPLE_META metric (total_reads, aligned_reads, platform…)
+#             derived  computed from the detections (organisms above TASS, …)
+#             runmeta  a metadata column (run metadata first, sample metadata as
+#                      a fallback)
+#             data     a numeric detection column, aggregated per sample by `agg`
+#     action  flag  -> marked in the report   |   hide -> also removed from views
+
+_FLAG_OPS = {
+    "==", "!=", "contains", "!contains", "regex",
+    "empty", "!empty", "<", "<=", ">", ">=",
+}
+_FLAG_SOURCES = {"meta", "derived", "runmeta", "data"}
+
+
+def _parse_metadata_flag_specs(spec, action):
+    """Parse --flag-metadata into runmeta rules.
+
+    Accepts 'field:op:value' and the shorthand 'field=value' (equals), separated
+    by ';'. A malformed clause is reported and skipped rather than raising --
+    a typo in one criterion must not cost the user the whole report.
+    """
+    rules = []
+    for raw in str(spec).split(";"):
+        clause = raw.strip()
+        if not clause:
+            continue
+        field = op = value = None
+        if ":" in clause:
+            parts = clause.split(":", 2)
+            if len(parts) == 3 and parts[1].strip() in _FLAG_OPS:
+                field, op, value = parts[0].strip(), parts[1].strip(), parts[2]
+            elif len(parts) >= 2 and parts[1].strip() in ("empty", "!empty"):
+                field, op, value = parts[0].strip(), parts[1].strip(), ""
+        if field is None and "=" in clause:
+            field, value = clause.split("=", 1)
+            field, op = field.strip(), "=="
+        if not field or op not in _FLAG_OPS:
+            print(f"[make_report] WARNING: cannot parse --flag-metadata clause {clause!r}; "
+                  f"expected 'field:op:value' with op in {sorted(_FLAG_OPS)}, or 'field=value'",
+                  file=sys.stderr)
+            continue
+        rules.append({
+            "source": "runmeta",
+            "field": field,
+            "op": op,
+            "value": "" if value is None else str(value).strip(),
+            "action": action,
+        })
+    return rules
+
+
+def _normalize_flag_rule(rule, default_action):
+    """Coerce one rule dict from a --flag-rules JSON file. Returns None if unusable."""
+    if not isinstance(rule, dict):
+        return None
+    source = str(rule.get("source", "")).strip()
+    field = str(rule.get("field", "")).strip()
+    op = str(rule.get("op", "")).strip()
+    if source not in _FLAG_SOURCES or not field or op not in _FLAG_OPS:
+        print(f"[make_report] WARNING: skipping malformed flag rule {rule!r}", file=sys.stderr)
+        return None
+    out = {
+        "on": rule.get("on", True) is not False,
+        "source": source,
+        "field": field,
+        "op": op,
+        "value": "" if rule.get("value") is None else str(rule.get("value")),
+        "action": "hide" if str(rule.get("action", default_action)) == "hide" else "flag",
+    }
+    if source == "data":
+        out["agg"] = str(rule.get("agg") or "max")
+    if rule.get("tass") is not None:
+        out["tass"] = float(rule["tass"])
+    # Minimum classifier reads for the unsupported_k2_organisms field, the way
+    # `tass` qualifies the distinct-organism counts.
+    if rule.get("k2min") is not None:
+        out["k2min"] = float(rule["k2min"])
+    return out
+
+
+def _flag_value(v):
+    """Render a threshold for the rule payload without a spurious ".0".
+
+    The --flag-* thresholds parse as float (so 0.5 works), which turns a plain
+    count like 2000000000 into "2000000000.0" — noise in the report's rule
+    editor and in every "actual:" line it prints.
+    """
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
+#: Host, by default. See --flag-exclude-taxids.
+FLAG_EXCLUDE_DEFAULT = ["9606"]
+
+
+def _parse_flag_exclude(spec):
+    """Split --flag-exclude-taxids into a list; None means "use the default".
+
+    An explicitly empty string is honoured as "exclude nothing" -- that is how a
+    user asks for host to be counted like any other organism.
+    """
+    if spec is None:
+        return list(FLAG_EXCLUDE_DEFAULT)
+    out, seen = [], set()
+    for tok in re.split(r"[,;\s]+", str(spec)):
+        tok = tok.strip()
+        if not tok or tok.lower() in seen:
+            continue
+        seen.add(tok.lower())
+        out.append(tok)
+    return out
+
+
+def build_sample_flag_config(args):
+    """Turn the --flag-* arguments into the report's default rule set.
+
+    Returns None when nothing was requested, so a run with no flag parameters
+    ships a report identical to what it produced before this feature existed.
+    """
+    action = getattr(args, "flag_action", "flag") or "flag"
+    logic = getattr(args, "flag_logic", "any") or "any"
+    missing = bool(getattr(args, "flag_missing", False))
+    rules = []
+
+    # A rules file replaces every individual criterion (the module docs and the
+    # nextflow param both say so) -- it is the escape hatch for rule sets that
+    # the flat CLI surface cannot express.
+    rules_path = getattr(args, "flag_rules", None)
+    if rules_path:
+        try:
+            with open(rules_path) as fh:
+                blob = json.load(fh)
+        except Exception as exc:
+            print(f"[make_report] WARNING: could not read --flag-rules {rules_path}: {exc}",
+                  file=sys.stderr)
+            blob = None
+        if isinstance(blob, dict):
+            logic = blob.get("logic", logic)
+            missing = bool(blob.get("missing_fails", missing))
+            # A rules file may also carry the two whole-report settings.
+            if blob.get("view") is not None:
+                args.flag_view = blob.get("view")
+            elif blob.get("hide_all"):
+                args.flag_view = "hide"
+            if blob.get("exclude_taxids") is not None:
+                ex = blob.get("exclude_taxids")
+                args.flag_exclude_taxids = ",".join(str(x) for x in ex) if isinstance(ex, list) else str(ex)
+            raw_rules = blob.get("rules") or []
+        elif isinstance(blob, list):
+            raw_rules = blob
+        else:
+            raw_rules = []
+        for r in raw_rules:
+            norm = _normalize_flag_rule(r, action)
+            if norm:
+                rules.append(norm)
+    else:
+        if args.flag_min_reads is not None:
+            rules.append({"source": "meta", "field": "total_reads", "op": "<",
+                          "value": _flag_value(args.flag_min_reads), "action": action})
+        if args.flag_min_aligned_reads is not None:
+            rules.append({"source": "meta", "field": "aligned_reads", "op": "<",
+                          "value": _flag_value(args.flag_min_aligned_reads), "action": action})
+        if args.flag_min_organisms is not None:
+            # The organism count is only meaningful next to a score cutoff; fall
+            # back to --min_conf so "organisms above TASS" means the same thing
+            # here as the slider the report opens with.
+            tass = args.flag_organism_tass
+            if tass is None:
+                tass = args.min_conf if args.min_conf is not None else 75.0
+            rules.append({"source": "derived", "field": "unique_taxids_above_tass", "op": "<",
+                          "value": _flag_value(args.flag_min_organisms), "tass": float(tass),
+                          "action": action})
+        if args.flag_min_detections is not None:
+            rules.append({"source": "derived", "field": "passing_detections", "op": "<",
+                          "value": _flag_value(args.flag_min_detections), "action": action})
+        if args.flag_metadata:
+            rules.extend(_parse_metadata_flag_specs(args.flag_metadata, action))
+
+    if not rules:
+        return None
+    view = getattr(args, "flag_view", "all") or "all"
+    if view not in ("all", "hide", "only"):
+        view = "all"
+    return {
+        "enabled": True,
+        "logic": "all" if str(logic) == "all" else "any",
+        "missing_fails": missing,
+        "view": view,
+        # Kept in step with `view` so a report built by this version still opens
+        # correctly in anything that only knows the old boolean.
+        "hide_all": view == "hide",
+        "exclude_taxids": _parse_flag_exclude(getattr(args, "flag_exclude_taxids", None)),
+        "rules": rules,
+    }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Sample metadata (CSV / TSV / XLSX)
@@ -1577,6 +1856,21 @@ def main():
     else:
         print("[make_report] No best_cutoffs found; UI TASS filter will default to 0")
 
+    # ── sample QC flag defaults ───────────────────────────────────────────────
+    sample_flags = build_sample_flag_config(args)
+    if sample_flags:
+        _acts = {r["action"] for r in sample_flags["rules"]}
+        print(f"[make_report] Sample QC: {len(sample_flags['rules'])} default rule(s), "
+              f"logic={sample_flags['logic']}, action(s)={'/'.join(sorted(_acts))}")
+        for _r in sample_flags["rules"]:
+            _t = f" (TASS {_r['tass']:g})" if _r.get("tass") is not None else ""
+            _a = f" agg={_r['agg']}" if _r.get("agg") else ""
+            print(f"[make_report]   - {_r['source']}.{_r['field']}{_t}{_a} "
+                  f"{_r['op']} {_r['value']} -> {_r['action']}")
+    else:
+        print("[make_report] Sample QC: no default rules (no --flag-* criteria given); "
+              "the report's Sample QC panel will start empty.")
+
     # ── build bootstrap payload ───────────────────────────────────────────────
     payload = _sanitize({
         "records":               rows,
@@ -1594,6 +1888,7 @@ def main():
         "novelty_downloads":     novelty_downloads,            # [{label, kind, filename}] for links
         "pathogens":             pathogens,                    # {by_taxid, by_name, by_genus} pathogen lookups
         "has_pathogens":         has_pathogens,                # true if a pathogen sheet was loaded
+        "sample_flags":          sample_flags,                 # default whole-sample QC rules (None when unconfigured)
         "report_generated_at":   datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pipeline_revision":     pipeline_revision,            # global branch/tag or "local"
         "pipeline_commit":       pipeline_commit,              # global commit hash or None

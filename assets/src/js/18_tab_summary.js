@@ -495,6 +495,9 @@ function drawSummary() {
     { label: "High Consequence", value: _fmtInt(hcCount), sub: "flagged pathogens" },
     { label: "TASS Cutoff", value: cutVal, sub: cutSub, tipId: "kpi-tip-tass" },
   ];
+  //  No Sample QC card here: flag state lives in the right panel (Sample QC /
+  //  Flags) and on the sample rows / badges themselves. A KPI tile repeated it
+  //  at the top of every Summary view, which is one place too many.
   const hcColor = hcCount > 0 ? "#c62828" : "#1565c0";
   const kpiRow = document.getElementById("summary-kpi-row");
   const infoIcon = `<i class="fas fa-circle-info" style="font-size:0.7em;opacity:0.45;margin-left:4px;vertical-align:middle"></i>`;
@@ -1064,7 +1067,11 @@ function _renderSummaryTable(fd) {
       lastSample = r["Specimen ID"];
       const _grpSwatchColor = sampleColors[lastSample] || "#90a4ae";
       const _mergedBadge = typeof _mergedSampleBadgeHTML === "function" ? _mergedSampleBadgeHTML(r) : "";
-      html += `<tr class="grp-row"><td colspan="${_visSumCols.length}"> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${_grpSwatchColor};vertical-align:middle;margin:0 5px 1px 0;border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>${lastSample}${_mergedBadge}</td></tr>`;
+      const _flagBadge = typeof _flagBadgeHTML === "function" ? _flagBadgeHTML(r) : "";
+      const _flagSt = typeof ttFlagStateFor === "function" ? ttFlagStateFor(r) : null;
+      const _flagCls =
+        _flagSt && _flagSt.flagged ? " flagged-sample" + (_flagSt.hide ? " flag-hidden-sample" : "") : "";
+      html += `<tr class="grp-row${_flagCls}"><td colspan="${_visSumCols.length}"> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${_grpSwatchColor};vertical-align:middle;margin:0 5px 1px 0;border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>${lastSample}${_mergedBadge}${_flagBadge}</td></tr>`;
     }
     // VF/AMR-only indicator row (sample has no passing detections).
     if (r.__vfamrOnly) {
