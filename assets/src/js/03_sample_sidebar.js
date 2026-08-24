@@ -864,8 +864,6 @@ function buildSampleList() {
   _syncToggleAllSamplesBtn();
   // Rebuild per-sample-type TASS cutoff UI
   buildPerTypeTassUI();
-  // Update the sidebar legend (sample swatches + TASS cutoffs)
-  _updateSidebarLegend();
   // Sample QC summary line + chips, re-rendered from the verdict applied above.
   if (typeof ttFlagRenderSummary === "function") ttFlagRenderSummary();
   if (window.specimenMerge && typeof window.specimenMerge.refreshBar === "function") {
@@ -876,63 +874,6 @@ function buildSampleList() {
   // though buildSampleList() is itself sometimes called FROM redraw()'s
   // callers, because this only fires when visibility actually changed.
   if ((_hideToggleChanged || _flagHideChanged) && typeof redraw === "function") redraw();
-}
-
-/** Rebuild the sidebar legend: sample color swatches + active TASS cutoffs.
- *  Called whenever buildSampleList() runs or TASS thresholds change. */
-function _updateSidebarLegend() {
-  const panel = document.getElementById("sidebar-legend");
-  const samplesEl = document.getElementById("sidebar-legend-samples");
-  const tassEl = document.getElementById("sidebar-legend-tass");
-  if (!panel || !samplesEl || !tassEl) return;
-
-  // ── sample swatches ──────────────────────────────────────────────
-  if (_sampleOrder.length > 0) {
-    let swatchHtml = `<div style="font-size:0.72em;font-weight:600;color:#546e7a;margin-bottom:0.25em">Sample Colors <span style="font-weight:400;color:#90a4ae">(current page)</span></div>`;
-    swatchHtml += '<div style="display:flex;flex-direction:column;gap:0.18em">';
-    _sampleListPageIds.forEach((id) => {
-      const col = sampleColors[id] || "#888";
-      const hidden = sampleHidden[id];
-      swatchHtml +=
-        `<div style="display:flex;align-items:center;gap:0.4em;opacity:${hidden ? 0.4 : 1}">` +
-        `<span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:${col};border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>` +
-        `<span style="font-size:0.78em;color:#37474f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px" title="${id}">${id}</span>` +
-        `</div>`;
-    });
-    if (!_sampleListPageIds.length) {
-      swatchHtml += '<div style="font-size:0.75em;color:#90a4ae;font-style:italic">No matching samples.</div>';
-    }
-    swatchHtml += "</div>";
-    samplesEl.innerHTML = swatchHtml;
-    panel.style.display = "";
-  } else {
-    samplesEl.innerHTML = "";
-    panel.style.display = "none";
-  }
-
-  // ── TASS cutoffs ─────────────────────────────────────────────────
-  const cs = _tassCutoffSummary();
-  let tassHtml =
-    '<div style="font-size:0.72em;font-weight:600;color:#546e7a;margin:0.45em 0 0.25em">TASS Cutoffs</div>';
-  if (cs.mode === "byType" && cs.items.length) {
-    tassHtml += '<div style="display:flex;flex-direction:column;gap:0.15em">';
-    cs.items.forEach(({ type, applied }) => {
-      tassHtml +=
-        `<div style="display:flex;align-items:center;gap:0.4em">` +
-        `<span style="display:inline-block;width:11px;height:2px;background:#f59f00;flex-shrink:0;border-radius:1px"></span>` +
-        `<span style="font-size:0.78em;color:#37474f">${type}: <b>${applied}</b></span>` +
-        `</div>`;
-    });
-    tassHtml += "</div>";
-  } else {
-    const v = cs.global || 0;
-    tassHtml +=
-      `<div style="display:flex;align-items:center;gap:0.4em">` +
-      `<span style="display:inline-block;width:11px;height:2px;background:#f59f00;flex-shrink:0;border-radius:1px"></span>` +
-      `<span style="font-size:0.78em;color:#37474f">Global: <b>${v}</b></span>` +
-      `</div>`;
-  }
-  tassEl.innerHTML = tassHtml;
 }
 
 /* ── Per-sample-type TASS helpers ────────────────────────────────────── */
@@ -1223,7 +1164,6 @@ function buildPerTypeTassUI() {
       _invalidateFilterCache();
       redraw();
       if (window._resetHistSelectors) window._resetHistSelectors();
-      _updateSidebarLegend();
     });
   }
 }

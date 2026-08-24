@@ -327,6 +327,18 @@ def _normalize_flag_rule(rule, default_action):
     return out
 
 
+def _flag_value(v):
+    """Render a threshold for the rule payload without a spurious ".0".
+
+    The --flag-* thresholds parse as float (so 0.5 works), which turns a plain
+    count like 2000000000 into "2000000000.0" — noise in the report's rule
+    editor and in every "actual:" line it prints.
+    """
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
 def build_sample_flag_config(args):
     """Turn the --flag-* arguments into the report's default rule set.
 
@@ -365,10 +377,10 @@ def build_sample_flag_config(args):
     else:
         if args.flag_min_reads is not None:
             rules.append({"source": "meta", "field": "total_reads", "op": "<",
-                          "value": str(args.flag_min_reads), "action": action})
+                          "value": _flag_value(args.flag_min_reads), "action": action})
         if args.flag_min_aligned_reads is not None:
             rules.append({"source": "meta", "field": "aligned_reads", "op": "<",
-                          "value": str(args.flag_min_aligned_reads), "action": action})
+                          "value": _flag_value(args.flag_min_aligned_reads), "action": action})
         if args.flag_min_organisms is not None:
             # The organism count is only meaningful next to a score cutoff; fall
             # back to --min_conf so "organisms above TASS" means the same thing
@@ -377,11 +389,11 @@ def build_sample_flag_config(args):
             if tass is None:
                 tass = args.min_conf if args.min_conf is not None else 75.0
             rules.append({"source": "derived", "field": "unique_taxids_above_tass", "op": "<",
-                          "value": str(args.flag_min_organisms), "tass": float(tass),
+                          "value": _flag_value(args.flag_min_organisms), "tass": float(tass),
                           "action": action})
         if args.flag_min_detections is not None:
             rules.append({"source": "derived", "field": "passing_detections", "op": "<",
-                          "value": str(args.flag_min_detections), "action": action})
+                          "value": _flag_value(args.flag_min_detections), "action": action})
         if args.flag_metadata:
             rules.extend(_parse_metadata_flag_specs(args.flag_metadata, action))
 
@@ -1794,6 +1806,14 @@ def main():
         _acts = {r["action"] for r in sample_flags["rules"]}
         print(f"[make_report] Sample QC: {len(sample_flags['rules'])} default rule(s), "
               f"logic={sample_flags['logic']}, action(s)={'/'.join(sorted(_acts))}")
+        for _r in sample_flags["rules"]:
+            _t = f" (TASS {_r['tass']:g})" if _r.get("tass") is not None else ""
+            _a = f" agg={_r['agg']}" if _r.get("agg") else ""
+            print(f"[make_report]   - {_r['source']}.{_r['field']}{_t}{_a} "
+                  f"{_r['op']} {_r['value']} -> {_r['action']}")
+    else:
+        print("[make_report] Sample QC: no default rules (no --flag-* criteria given); "
+              "the report's Sample QC panel will start empty.")
 
     # ── build bootstrap payload ───────────────────────────────────────────────
     payload = _sanitize({

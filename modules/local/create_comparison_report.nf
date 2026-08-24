@@ -175,9 +175,13 @@ process CREATE_COMPARISON_REPORT {
         if (params.report_flag_min_detections != null)    flag_bits << "--flag-min-detections ${params.report_flag_min_detections}"
         if (params.report_flag_metadata)                  flag_bits << "--flag-metadata '${params.report_flag_metadata}'"
     }
-    if (params.report_flag_logic)  flag_bits << "--flag-logic ${params.report_flag_logic}"
-    if (params.report_flag_action) flag_bits << "--flag-action ${params.report_flag_action}"
-    if (params.report_flag_missing) flag_bits << "--flag-missing"
+    // Only meaningful alongside a criterion; emitting them on their own made a
+    // run with NO rules look configured in .command.sh.
+    if (flag_bits) {
+        if (params.report_flag_logic)  flag_bits << "--flag-logic ${params.report_flag_logic}"
+        if (params.report_flag_action) flag_bits << "--flag-action ${params.report_flag_action}"
+        if (params.report_flag_missing) flag_bits << "--flag-missing"
+    }
     def flag_arg = flag_bits.join(' ')
 
     """
