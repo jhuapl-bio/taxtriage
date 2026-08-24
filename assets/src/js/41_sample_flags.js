@@ -34,9 +34,87 @@ let TT_FLAG_RULES = []; // [{ id, on, source, field, op, value, agg, tass, actio
 let TT_FLAG_LOGIC = "any"; // "any" = flag if ANY rule trips, "all" = only if every rule trips
 let TT_FLAG_ENABLED = true; // master switch for the whole engine
 let TT_FLAG_MISSING_FAILS = false; // treat a missing/blank value as a trip
-let TT_FLAG_HIDE_ALL = false; // sidebar "Hide flagged" — promotes every flag to a hide
+/*  Sample view mode — the sidebar's All / Hide flagged / Only flagged control.
+      "all"   every sample visible; a rule with action "hide" still hides its own
+      "hide"  promote EVERY flag to a hide (the old TT_FLAG_HIDE_ALL === true)
+      "only"  the inverse: show flagged samples and hide everything else. Per-rule
+              "hide" actions are ignored here — asking to see only the flagged
+              samples and then hiding half of them satisfies nobody.
+    Persisted as `view`; `hide_all` is still read and written for older sessions. */
+let TT_FLAG_VIEW = "all";
 let _TT_FLAG_SEQ = 0; // rule id counter
 const _flagAutoHidden = new Set(); // ids WE hid (mirrors _filterAutoHidden's contract)
+
+const TT_FLAG_VIEWS = [
+  { key: "all", label: "All samples" },
+  { key: "hide", label: "Hide flagged" },
+  { key: "only", label: "Only flagged" },
+];
+
+/** Coerce anything (including the legacy hide_all boolean) into a view mode. */
+function ttFlagNormalizeView(v) {
+  if (v === true) return "hide";
+  if (v === false || v == null) return "all";
+  const s = String(v).toLowerCase();
+  return TT_FLAG_VIEWS.some((m) => m.key === s) ? s : "all";
+}
+
+/** Set the view mode. Returns true when it actually changed. */
+function ttFlagSetView(v) {
+  const next = ttFlagNormalizeView(v);
+  if (next === TT_FLAG_VIEW) return false;
+  TT_FLAG_VIEW = next;
+  return true;
+}
+
+/*  Taxids / organism names that never count toward a "distinct organisms"
+    figure. Host is the reason this exists: with dehosting off (no
+    --remove_taxids, no host genome) human sits in DATA as an ordinary
+    detection, so a host-only sample reports 1-2 "organisms" and sails past the
+    low-complexity rule that was meant to catch exactly that sample. Seeded from
+    BOOT.sample_flags.exclude_taxids (params.report_flag_exclude_taxids).     */
+const TT_FLAG_EXCLUDE_DEFAULT = ["9606"];
+let TT_FLAG_EXCLUDE = TT_FLAG_EXCLUDE_DEFAULT.slice();
+
+/** Normalize the exclusion list: taxids or organism names, any separator. */
+function ttFlagParseExclude(spec) {
+  if (spec == null || spec === "") return [];
+  const list = Array.isArray(spec) ? spec : String(spec).split(/[,;\s]+/);
+  const out = [],
+    seen = new Set();
+  list.forEach((v) => {
+    const s = String(v == null ? "" : v).trim();
+    if (!s || seen.has(s.toLowerCase())) return;
+    seen.add(s.toLowerCase());
+    out.push(s);
+  });
+  return out;
+}
+
+/** Does this detection row name something on the exclusion list? Matched on the
+ *  taxid (exact) and then, so a run that never wrote taxids still excludes
+ *  host, on the organism / species / genus text. A bare number never matches
+ *  text — a silent substring filter on digits would be impossible to debug. */
+function _ttFlagRowExcluded(r) {
+  if (!TT_FLAG_EXCLUDE.length) return false;
+  const tid = String(r["Taxonomic ID #"] == null ? "" : r["Taxonomic ID #"]).trim();
+  let names = null;
+  for (let i = 0; i < TT_FLAG_EXCLUDE.length; i++) {
+    const ex = TT_FLAG_EXCLUDE[i];
+    if (tid && tid === ex) return true;
+    if (/^\d+$/.test(ex)) continue;
+    if (!names) {
+      names = [r["Detected Organism"], r["Species"], r["Genus"]].map((v) =>
+        String(v == null ? "" : v)
+          .trim()
+          .toLowerCase(),
+      );
+    }
+    const exl = ex.toLowerCase();
+    for (let j = 0; j < names.length; j++) if (names[j] && names[j].includes(exl)) return true;
+  }
+  return false;
+}
 
 /* ── Operators ───────────────────────────────────────────────────────────── */
 /*  num:  true  → numeric only        false → text only        null → both
@@ -72,8 +150,15 @@ const TT_FLAG_META_FIELDS = [
   { key: "specimen", label: "Specimen group", num: false },
 ];
 
+/*  An organism counts as "classifier-only" when the aligner recovered less
+    than this fraction of the reads Kraken2/Centrifuge assigned to it. 5% is
+    deliberately generous: a real organism at low depth still aligns well above
+    it, while a database artefact or a conserved-region pile-up does not.   */
+const TT_FLAG_K2_SUPPORT_FRAC = 0.05;
+
 /*  Counts computed from DATA. `needsTass` fields take an extra TASS cutoff
-    so "> 3 organisms above TASS 75" is one rule rather than two.          */
+    so "> 3 organisms above TASS 75" is one rule rather than two;
+    `needsK2Min` fields take a minimum classifier read count the same way.  */
 const TT_FLAG_DERIVED_FIELDS = [
   { key: "unique_taxids_above_tass", label: "Distinct organisms above TASS", num: true, needsTass: true },
   { key: "unique_taxids", label: "Distinct organisms (any TASS)", num: true },
@@ -83,6 +168,9 @@ const TT_FLAG_DERIVED_FIELDS = [
   { key: "unique_genera", label: "Distinct genera", num: true },
   { key: "max_tass", label: "Highest TASS score", num: true },
   { key: "reads_aligned_sum", label: "Sum of # Reads Aligned", num: true },
+  { key: "k2_reads_sum", label: "Sum of K2 Reads (classifier)", num: true },
+  { key: "aligned_to_k2_ratio", label: "Aligned ÷ classifier reads", num: true },
+  { key: "unsupported_k2_organisms", label: "Classifier-only organisms", num: true, needsK2Min: true },
 ];
 
 /** The sources a rule may name. Anything else is rejected on load. */
@@ -201,6 +289,7 @@ function ttFlagNewRule(seed) {
       value: "10000",
       agg: "max",
       tass: 75,
+      k2min: 50,
       action: "flag",
     },
     seed || {},
@@ -219,6 +308,7 @@ function ttFlagRuleLabel(rule) {
   let name = def.label;
   if (rule.source === "data") name = `${rule.agg || "max"}(${name})`;
   if (rule.source === "derived" && def.needsTass) name = `${name} ${_ttFlagNum(rule.tass)}`;
+  if (rule.source === "derived" && def.needsK2Min) name = `${name} (≥ ${_ttFlagFmt(_ttFlagNum(rule.k2min))} K2 reads)`;
   return opDef.novalue ? `${name} ${opDef.label}` : `${name} ${opDef.label} ${_ttFlagFmt(rule.value)}`;
 }
 
@@ -294,7 +384,11 @@ function _ttFlagAllSamples() {
 }
 
 /* ── Value resolution ────────────────────────────────────────────────────── */
-function _ttFlagDerivedValue(field, rows, rule) {
+function _ttFlagDerivedValue(field, allRows, rule) {
+  //  Host (and anything else on the exclusion list) goes BEFORE any count is
+  //  taken, so every derived figure means "organisms that are not the host"
+  //  whether or not the run was dehosted upstream.
+  const rows = TT_FLAG_EXCLUDE.length ? allRows.filter((r) => !_ttFlagRowExcluded(r)) : allRows;
   const n = typeof num === "function" ? num : (v) => (isNaN(parseFloat(v)) ? 0 : parseFloat(v));
   const truthy = typeof isTruthy === "function" ? isTruthy : (v) => !!v;
   const orgKey = (r) => String(r["Taxonomic ID #"] || r["Detected Organism"] || "");
@@ -329,11 +423,37 @@ function _ttFlagDerivedValue(field, rows, rule) {
       return rows.length ? _ttMax(rows.map((r) => n(r["TASS Score"]))) : 0;
     case "reads_aligned_sum":
       return rows.reduce((s, r) => s + n(r["# Reads Aligned"]), 0);
+    case "k2_reads_sum":
+      return rows.reduce((s, r) => s + n(r["K2 Reads"]), 0);
+    case "aligned_to_k2_ratio": {
+      //  How much of what the classifier called did the aligner corroborate?
+      //  Well below 1 means Kraken2 is carrying the sample on its own.
+      const k2 = rows.reduce((s, r) => s + n(r["K2 Reads"]), 0);
+      if (!k2) return null; // no classifier reads at all → undefined, not zero
+      return rows.reduce((s, r) => s + n(r["# Reads Aligned"]), 0) / k2;
+    }
+    case "unsupported_k2_organisms": {
+      //  Per-organism rather than per-sample: one loud false positive in an
+      //  otherwise healthy sample is exactly what the ratio above dilutes.
+      const minK2 = _ttFlagNum(rule && rule.k2min);
+      const s = new Set();
+      rows.forEach((r) => {
+        const k2 = n(r["K2 Reads"]);
+        if (k2 < minK2 || k2 <= 0) return;
+        if (n(r["# Reads Aligned"]) >= k2 * TT_FLAG_K2_SUPPORT_FRAC) return;
+        const k = orgKey(r);
+        if (k) s.add(k);
+      });
+      return s.size;
+    }
   }
   return null;
 }
 
-function _ttFlagAggValue(rows, col, agg) {
+function _ttFlagAggValue(allRows, col, agg) {
+  //  Same exclusion as the derived counts: on an un-dehosted run a
+  //  "max(# Reads Aligned)" rule would otherwise only ever describe the host.
+  const rows = TT_FLAG_EXCLUDE.length ? allRows.filter((r) => !_ttFlagRowExcluded(r)) : allRows;
   const vals = [];
   for (let i = 0; i < rows.length; i++) {
     const v = parseFloat(rows[i][col]);
@@ -452,12 +572,13 @@ function _ttFlagSignature(samples) {
     TT_FLAG_ENABLED ? 1 : 0,
     TT_FLAG_LOGIC,
     TT_FLAG_MISSING_FAILS ? 1 : 0,
-    TT_FLAG_HIDE_ALL ? 1 : 0,
+    TT_FLAG_VIEW,
+    TT_FLAG_EXCLUDE.join(","),
     (typeof DATA !== "undefined" && DATA ? DATA.length : 0) + "",
     samples.length + "",
   ];
   TT_FLAG_RULES.forEach((r) => {
-    parts.push([r.on ? 1 : 0, r.source, r.field, r.op, r.value, r.agg, r.tass, r.action].join("~"));
+    parts.push([r.on ? 1 : 0, r.source, r.field, r.op, r.value, r.agg, r.tass, r.k2min, r.action].join("~"));
   });
   //  Only metadata sources can change without DATA.length changing.
   const watched = TT_FLAG_RULES.filter((r) => r.on && (r.source === "meta" || r.source === "runmeta"));
@@ -503,7 +624,13 @@ function ttFlagEvaluate() {
     //  ANY: one trip is enough. ALL: every enabled rule must trip (a sample
     //  with no rules at all is never flagged).
     const flagged = active.length > 0 && (TT_FLAG_LOGIC === "all" ? tripped === active.length : tripped > 0);
-    const hide = flagged && (TT_FLAG_HIDE_ALL || hits.some((h) => h.rule.action === "hide"));
+    //  "only" is the one mode where a FLAGGED sample is never hidden; what it
+    //  hides (every unflagged sample) is decided in ttFlagApplyHide, since
+    //  those samples carry no flag state of their own to hang it on.
+    const hide =
+      TT_FLAG_VIEW === "only"
+        ? false
+        : flagged && (TT_FLAG_VIEW === "hide" || hits.some((h) => h.rule.action === "hide"));
     out.set(s, { flagged, hide, hits: flagged ? hits : [] });
   });
 
@@ -567,7 +694,18 @@ function ttFlagCounts() {
     if (v.flagged) flagged++;
     if (v.hide) hidden++;
   });
-  return { flagged, hidden, total, rules: TT_FLAG_RULES.filter((r) => r.on).length };
+  //  In "only flagged" mode nothing carries hide=true; what is out of view is
+  //  every unflagged sample, and the summary line needs that number.
+  const onlyActive = TT_FLAG_VIEW === "only" && flagged > 0;
+  if (onlyActive) hidden = total - flagged;
+  return {
+    flagged,
+    hidden,
+    total,
+    view: TT_FLAG_VIEW,
+    onlyActive,
+    rules: TT_FLAG_RULES.filter((r) => r.on).length,
+  };
 }
 
 /* ── Shared visual: the badge + its tooltip ──────────────────────────────── */
@@ -618,8 +756,16 @@ function ttFlagTipHTML(sample) {
 function ttFlagApplyHide() {
   const st = ttFlagEvaluate();
   let changed = false;
+  //  "Only flagged" with nothing flagged would blank the entire report, which
+  //  reads as a broken page rather than as an empty filter — fall back to
+  //  showing everything (the dialog greys the option out in the same case).
+  let anyFlagged = false;
+  st.forEach((v) => {
+    if (v.flagged) anyFlagged = true;
+  });
+  const onlyMode = TT_FLAG_VIEW === "only" && anyFlagged;
   _ttFlagAllSamples().forEach((id) => {
-    const want = !!(st.get(id) || {}).hide;
+    const want = onlyMode ? !(st.get(id) || {}).flagged : !!(st.get(id) || {}).hide;
     if (want) {
       if (!sampleHidden[id]) {
         sampleHidden[id] = true;
@@ -665,13 +811,18 @@ function ttFlagLoadConfig(cfg) {
     TT_FLAG_ENABLED = true;
     TT_FLAG_LOGIC = "any";
     TT_FLAG_MISSING_FAILS = false;
-    TT_FLAG_HIDE_ALL = false;
+    TT_FLAG_VIEW = "all";
+    TT_FLAG_EXCLUDE = TT_FLAG_EXCLUDE_DEFAULT.slice();
     return;
   }
   TT_FLAG_ENABLED = cfg.enabled !== false;
   TT_FLAG_LOGIC = cfg.logic === "all" ? "all" : "any";
   TT_FLAG_MISSING_FAILS = !!cfg.missing_fails;
-  TT_FLAG_HIDE_ALL = !!cfg.hide_all;
+  //  `view` is authoritative; `hide_all` is the pre-tri-state spelling, still
+  //  honoured so a session saved by an older report loads unchanged.
+  TT_FLAG_VIEW = ttFlagNormalizeView(cfg.view != null ? cfg.view : cfg.hide_all ? "hide" : "all");
+  TT_FLAG_EXCLUDE =
+    cfg.exclude_taxids === undefined ? TT_FLAG_EXCLUDE_DEFAULT.slice() : ttFlagParseExclude(cfg.exclude_taxids);
   (Array.isArray(cfg.rules) ? cfg.rules : []).forEach((r) => {
     //  Reject anything that could never match rather than installing a rule
     //  that silently does nothing: an unknown source resolves to undefined and
@@ -695,6 +846,7 @@ function ttFlagLoadConfig(cfg) {
         value: r.value == null ? "" : String(r.value),
         agg: r.agg || "max",
         tass: r.tass != null ? Number(r.tass) : 75,
+        k2min: r.k2min != null ? Number(r.k2min) : 50,
         action: r.action === "hide" ? "hide" : "flag",
       }),
     );
@@ -707,7 +859,9 @@ function ttFlagCaptureConfig() {
     enabled: TT_FLAG_ENABLED,
     logic: TT_FLAG_LOGIC,
     missing_fails: TT_FLAG_MISSING_FAILS,
-    hide_all: TT_FLAG_HIDE_ALL,
+    view: TT_FLAG_VIEW,
+    hide_all: TT_FLAG_VIEW === "hide", // back-compat for readers of the old key
+    exclude_taxids: TT_FLAG_EXCLUDE.slice(),
     rules: TT_FLAG_RULES.map((r) => ({
       on: r.on,
       source: r.source,
@@ -716,6 +870,7 @@ function ttFlagCaptureConfig() {
       value: r.value,
       agg: r.agg,
       tass: r.tass,
+      k2min: r.k2min,
       action: r.action,
     })),
   };

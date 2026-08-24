@@ -196,6 +196,21 @@ Override memory and CPU defaults:
 --low_memory         # Read Kraken2 DB from disk instead of loading into RAM (slower)
 ```
 
+!!! warning "`--max_memory` / `--max_cpus` / `--max_time` apply to Nextflow 24.x–25.x"
+
+    They are deprecated from Nextflow 26 onward. Nextflow 24.04 added the native `process.resourceLimits` directive, which is what this pipeline uses internally (`conf/base.config`), and the `max_*` parameters are simply fed into it. On Nextflow 26+, set the ceiling directly instead of using these flags:
+
+    ```groovy
+    // limits.config  →  nextflow run . -c limits.config
+    process {
+        resourceLimits = [ cpus: 3, memory: '10.GB', time: '24.h' ]
+    }
+    ```
+
+    `--low_memory` is unaffected — it changes how Kraken2 reads its database, not how resources are capped.
+
+    See [CLI Parameters → Workflow Control and Execution](cli-parameters.md#workflow-control-and-execution) for the full note.
+
 ---
 
 ## Removing Host Reads

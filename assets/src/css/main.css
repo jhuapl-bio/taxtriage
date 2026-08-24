@@ -5067,15 +5067,21 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   cursor: default;
   opacity: 0.75;
 }
+/*  Button and view-mode dropdown share one row. At the default 220px sidebar
+    that is a squeeze (≈193px of usable width), which is why the button label
+    is short and neither control carries a caption; below about 200px the row
+    wraps to two full-width rows rather than clipping either control. */
 #flag-summary-actions {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 0.5em;
   flex-wrap: wrap;
+  gap: 0.3em;
   margin-top: 0.4em;
 }
 #flag-open-btn {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  white-space: nowrap;
   font-size: 0.95em;
   padding: 3px 10px;
   border: 1px solid #1565c0;
@@ -5100,6 +5106,68 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
 }
 #flag-hide-toggle-lbl input {
   margin: 0;
+  cursor: pointer;
+}
+/*  #sidebar label / #sidebar select both carry an id + type selector, which
+    outranks a bare id — hence the #sidebar prefixes here. */
+#sidebar #flag-view-mode-lbl {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  flex: 1 1 7em;
+  min-width: 0;
+  margin: 0;
+  font-size: 1em;
+  font-weight: 400;
+  color: #7b8794;
+  cursor: pointer;
+}
+#sidebar #flag-view-mode {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  font-size: 0.95em;
+  line-height: 1.5;
+  padding: 3px 2px 3px 5px;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  background: #fff;
+  color: #3e4c59;
+  cursor: pointer;
+}
+#sidebar #flag-view-mode:focus-visible {
+  outline: 2px solid #1565c0;
+  outline-offset: 1px;
+}
+/*  Any mode other than "all" is an active filter on the whole report — worth
+    the same amber the flag badges use, so it is obvious why a sample is gone. */
+/*  No bold here: at 220px the row has ~2px of slack and a bolder face clips
+    "Only flagged". Colour alone carries it. */
+#sidebar #flag-view-mode.filtering {
+  border-color: #d99400;
+  background: #fff4e0;
+  color: #8a5300;
+}
+/*  "Only flagged" is inert with nothing flagged — greyed, not hidden. */
+#flag-view-mode option:disabled,
+#flag-view-mode-modal option:disabled {
+  color: #9aa5b1;
+}
+.flag-exclude-lbl input[type="text"] {
+  font-size: 0.92em;
+  padding: 2px 5px;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+}
+#flag-exclude-reset {
+  font-size: 0.82em;
+  padding: 1px 6px;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #52606d;
   cursor: pointer;
 }
 
@@ -5170,6 +5238,16 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   background: #fff;
   font-size: 0.95em;
 }
+/*  Same amber cue as the sidebar copy of this control. */
+.flag-modal-top select#flag-view-mode-modal.filtering {
+  border-color: #d99400;
+  background: #fff4e0;
+  color: #8a5300;
+  font-weight: 600;
+}
+.flag-modal-top .flag-exclude-lbl {
+  gap: 0.4em;
+}
 
 #flag-rule-list {
   display: flex;
@@ -5229,7 +5307,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
 .flag-rule .flag-rule-value {
   flex: 0 1 120px;
 }
-.flag-rule .flag-rule-tass {
+.flag-rule .flag-rule-tass,
+.flag-rule .flag-rule-k2min {
   flex: 0 0 68px;
 }
 .flag-rule .flag-rule-novalue {

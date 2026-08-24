@@ -13,13 +13,11 @@
 /* ── Sidebar summary ─────────────────────────────────────────────────────── */
 function ttFlagRenderSummary() {
   const line = document.getElementById("flag-summary-line");
-  const toggle = document.getElementById("flag-hide-toggle");
   const btn = document.getElementById("flag-open-btn");
   if (!line) return;
 
   const c = ttFlagCounts();
-  if (toggle) toggle.checked = !!TT_FLAG_HIDE_ALL;
-  if (toggle) toggle.disabled = c.flagged === 0;
+  _ttFlagSyncViewControls(c);
   if (btn) btn.classList.toggle("has-flags", c.flagged > 0);
 
   if (!c.rules) {
@@ -42,9 +40,36 @@ function ttFlagRenderSummary() {
     line.className = "flag-line warn";
     line.innerHTML =
       `<i class="fas fa-flag"></i> <b>${c.flagged}</b> of ${c.total} sample${c.total === 1 ? "" : "s"} flagged` +
-      (c.hidden ? ` · <b>${c.hidden}</b> hidden` : "") +
-      `<span class="flag-line-sub">by ${c.rules} rule${c.rules === 1 ? "" : "s"}</span>`;
+      (c.hidden ? ` · <b>${c.hidden}</b> ${c.onlyActive ? "hidden (unflagged)" : "hidden"}` : "") +
+      `<span class="flag-line-sub">by ${c.rules} rule${c.rules === 1 ? "" : "s"}${
+        c.onlyActive ? " · showing flagged only" : ""
+      }</span>`;
   }
+}
+
+/** Keep every copy of the All / Hide flagged / Only flagged control in step —
+ *  the sidebar select, the dialog's select, and the legacy "Hide flagged"
+ *  checkbox that a report template built before the tri-state still carries. */
+function _ttFlagSyncViewControls(counts) {
+  const c = counts || ttFlagCounts();
+  ["flag-view-mode", "flag-view-mode-modal"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = TT_FLAG_VIEW;
+    //  Anything but "all" is an active filter on the whole report: wear the
+    //  same amber as the flag badges so a missing sample has a visible cause.
+    el.classList.toggle("filtering", TT_FLAG_VIEW !== "all");
+    //  "Only flagged" with nothing flagged is inert (see ttFlagApplyHide) —
+    //  say so in the control rather than letting it look like a broken filter.
+    const only = el.querySelector('option[value="only"]');
+    if (only) only.disabled = c.flagged === 0;
+  });
+  ["flag-hide-toggle", "flag-hide-all"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el || el.tagName !== "INPUT") return;
+    el.checked = TT_FLAG_VIEW === "hide";
+    el.disabled = c.flagged === 0;
+  });
 }
 
 /* ── Dialog: open / close ────────────────────────────────────────────────── */
@@ -71,11 +96,13 @@ function _ttFlagSyncTopControls() {
   const en = document.getElementById("flag-enabled");
   const lg = document.getElementById("flag-logic");
   const mf = document.getElementById("flag-missing-fails");
-  const ha = document.getElementById("flag-hide-all");
+  const ex = document.getElementById("flag-exclude-taxids");
   if (en) en.checked = !!TT_FLAG_ENABLED;
   if (lg) lg.value = TT_FLAG_LOGIC;
   if (mf) mf.checked = !!TT_FLAG_MISSING_FAILS;
-  if (ha) ha.checked = !!TT_FLAG_HIDE_ALL;
+  //  Never yank the text out from under someone mid-edit.
+  if (ex && document.activeElement !== ex) ex.value = TT_FLAG_EXCLUDE.join(", ");
+  _ttFlagSyncViewControls();
 }
 
 /* ── Dialog: the rule rows ───────────────────────────────────────────────── */
@@ -160,6 +187,11 @@ function ttFlagRenderRules() {
         ? `<input type="number" class="flag-rule-tass" value="${_ttFlagNum(
             r.tass,
           )}" min="0" max="100" step="1" title="TASS cutoff used when counting organisms" />`
+        : "") +
+      (def.needsK2Min
+        ? `<input type="number" class="flag-rule-k2min" value="${_ttFlagNum(
+            r.k2min,
+          )}" min="0" step="10" title="Only organisms with at least this many classifier (K2) reads are considered — below it, the aligned/classified comparison is noise" />`
         : "") +
       `<select class="flag-rule-op">${_ttFlagOptions(ops, r.op, "op", "label")}</select>` +
       (opDef.novalue
@@ -250,6 +282,14 @@ const TT_FLAG_PRESETS = {
   },
   control: { source: "meta", field: "control_type", op: "!empty", value: "", action: "flag" },
   nodetect: { source: "derived", field: "passing_detections", op: "<", value: "1", action: "flag" },
+  k2only: {
+    source: "derived",
+    field: "unsupported_k2_organisms",
+    op: ">=",
+    value: "1",
+    k2min: 50,
+    action: "flag",
+  },
 };
 
 /* ── Wiring ──────────────────────────────────────────────────────────────── */
@@ -320,19 +360,45 @@ const TT_FLAG_PRESETS = {
         _apply();
       });
     }
-    const ha = document.getElementById("flag-hide-all");
-    if (ha && !ha._wired) {
-      ha._wired = true;
-      ha.addEventListener("change", () => {
-        TT_FLAG_HIDE_ALL = ha.checked;
+    //  View mode: the sidebar select and the dialog select are one control in
+    //  two places, so either writes TT_FLAG_VIEW and both re-sync afterwards.
+    ["flag-view-mode", "flag-view-mode-modal"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el || el._wired) return;
+      el._wired = true;
+      el.addEventListener("change", () => {
+        ttFlagSetView(el.value);
+        _ttFlagSyncViewControls();
         _apply();
       });
+    });
+    //  Legacy checkboxes from a pre-tri-state template: checked === "hide".
+    ["flag-hide-all", "flag-hide-toggle"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el || el.tagName !== "INPUT" || el._wired) return;
+      el._wired = true;
+      el.addEventListener("change", () => {
+        ttFlagSetView(el.checked ? "hide" : "all");
+        _ttFlagSyncTopControls();
+        _apply();
+      });
+    });
+    //  Organisms ignored by every count (host by default).
+    const ex = document.getElementById("flag-exclude-taxids");
+    if (ex && !ex._wired) {
+      ex._wired = true;
+      const commit = () => {
+        TT_FLAG_EXCLUDE = ttFlagParseExclude(ex.value);
+        _applyDebounced();
+      };
+      ex.addEventListener("input", commit);
+      ex.addEventListener("change", commit);
     }
-    const sideToggle = document.getElementById("flag-hide-toggle");
-    if (sideToggle && !sideToggle._wired) {
-      sideToggle._wired = true;
-      sideToggle.addEventListener("change", () => {
-        TT_FLAG_HIDE_ALL = sideToggle.checked;
+    const exReset = document.getElementById("flag-exclude-reset");
+    if (exReset && !exReset._wired) {
+      exReset._wired = true;
+      exReset.addEventListener("click", () => {
+        TT_FLAG_EXCLUDE = TT_FLAG_EXCLUDE_DEFAULT.slice();
         _ttFlagSyncTopControls();
         _apply();
       });
@@ -410,6 +476,7 @@ const TT_FLAG_PRESETS = {
         else if (t.classList.contains("flag-rule-agg")) r.agg = t.value;
         else if (t.classList.contains("flag-rule-action")) r.action = t.value === "hide" ? "hide" : "flag";
         else if (t.classList.contains("flag-rule-tass")) r.tass = Number(t.value);
+        else if (t.classList.contains("flag-rule-k2min")) r.k2min = Number(t.value);
         else if (t.classList.contains("flag-rule-value")) r.value = t.value;
         ttFlagRenderRules(); // shape of the row can change (agg / tass / value)
         _apply();
@@ -420,6 +487,7 @@ const TT_FLAG_PRESETS = {
         if (!r) return;
         if (e.target.classList.contains("flag-rule-value")) r.value = e.target.value;
         else if (e.target.classList.contains("flag-rule-tass")) r.tass = Number(e.target.value);
+        else if (e.target.classList.contains("flag-rule-k2min")) r.k2min = Number(e.target.value);
         else return;
         _applyDebounced();
       });

@@ -221,6 +221,21 @@ def parse_args(argv=None):
              "'hide' also removes it from every chart and table (reversible in the report).",
     )
     flg.add_argument(
+        "--flag-view", default="all", choices=["all", "hide", "only"],
+        help="Which samples the report OPENS on: 'all' (default; a rule with action 'hide' "
+             "still hides its own matches), 'hide' (every flagged sample hidden) or 'only' "
+             "(show the flagged samples and hide everything that passed). Switchable in the "
+             "report's sidebar.",
+    )
+    flg.add_argument(
+        "--flag-exclude-taxids", default=None, metavar="IDS",
+        help="Taxids (or organism names) that never count toward a detection figure -- the "
+             "distinct-organism counts, the detection counts and any aggregated column. "
+             "Defaults to '9606' (human), so --flag-min-organisms means the same thing on a "
+             "run with dehosting and one without. Comma- or space-separated; pass '' (empty) "
+             "to count everything, including host.",
+    )
+    flg.add_argument(
         "--flag-missing", action="store_true",
         help="Treat a missing / blank value as a match. Off by default, so a rule can never "
              "flag a sample purely because the field was never populated.",
@@ -324,6 +339,10 @@ def _normalize_flag_rule(rule, default_action):
         out["agg"] = str(rule.get("agg") or "max")
     if rule.get("tass") is not None:
         out["tass"] = float(rule["tass"])
+    # Minimum classifier reads for the unsupported_k2_organisms field, the way
+    # `tass` qualifies the distinct-organism counts.
+    if rule.get("k2min") is not None:
+        out["k2min"] = float(rule["k2min"])
     return out
 
 
@@ -337,6 +356,28 @@ def _flag_value(v):
     if isinstance(v, float) and v.is_integer():
         return str(int(v))
     return str(v)
+
+
+#: Host, by default. See --flag-exclude-taxids.
+FLAG_EXCLUDE_DEFAULT = ["9606"]
+
+
+def _parse_flag_exclude(spec):
+    """Split --flag-exclude-taxids into a list; None means "use the default".
+
+    An explicitly empty string is honoured as "exclude nothing" -- that is how a
+    user asks for host to be counted like any other organism.
+    """
+    if spec is None:
+        return list(FLAG_EXCLUDE_DEFAULT)
+    out, seen = [], set()
+    for tok in re.split(r"[,;\s]+", str(spec)):
+        tok = tok.strip()
+        if not tok or tok.lower() in seen:
+            continue
+        seen.add(tok.lower())
+        out.append(tok)
+    return out
 
 
 def build_sample_flag_config(args):
@@ -365,6 +406,14 @@ def build_sample_flag_config(args):
         if isinstance(blob, dict):
             logic = blob.get("logic", logic)
             missing = bool(blob.get("missing_fails", missing))
+            # A rules file may also carry the two whole-report settings.
+            if blob.get("view") is not None:
+                args.flag_view = blob.get("view")
+            elif blob.get("hide_all"):
+                args.flag_view = "hide"
+            if blob.get("exclude_taxids") is not None:
+                ex = blob.get("exclude_taxids")
+                args.flag_exclude_taxids = ",".join(str(x) for x in ex) if isinstance(ex, list) else str(ex)
             raw_rules = blob.get("rules") or []
         elif isinstance(blob, list):
             raw_rules = blob
@@ -399,11 +448,18 @@ def build_sample_flag_config(args):
 
     if not rules:
         return None
+    view = getattr(args, "flag_view", "all") or "all"
+    if view not in ("all", "hide", "only"):
+        view = "all"
     return {
         "enabled": True,
         "logic": "all" if str(logic) == "all" else "any",
         "missing_fails": missing,
-        "hide_all": False,
+        "view": view,
+        # Kept in step with `view` so a report built by this version still opens
+        # correctly in anything that only knows the old boolean.
+        "hide_all": view == "hide",
+        "exclude_taxids": _parse_flag_exclude(getattr(args, "flag_exclude_taxids", None)),
         "rules": rules,
     }
 

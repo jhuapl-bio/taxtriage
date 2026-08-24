@@ -495,18 +495,9 @@ function drawSummary() {
     { label: "High Consequence", value: _fmtInt(hcCount), sub: "flagged pathogens" },
     { label: "TASS Cutoff", value: cutVal, sub: cutSub, tipId: "kpi-tip-tass" },
   ];
-  // Sample QC card — appended only when rules are actually active, so a run
-  // with no flag configuration shows exactly the KPI row it always did.
-  const _flagKpi = typeof ttFlagCounts === "function" ? ttFlagCounts() : { rules: 0 };
-  if (_flagKpi.rules) {
-    cards.push({
-      label: "Flagged Samples",
-      value: _fmtInt(_flagKpi.flagged),
-      sub: `of ${_flagKpi.total} · ${_flagKpi.rules} rule${_flagKpi.rules === 1 ? "" : "s"}`,
-      sub2: _flagKpi.hidden ? `${_flagKpi.hidden} hidden from all views` : "",
-      tipId: "kpi-tip-flags",
-    });
-  }
+  //  No Sample QC card here: flag state lives in the right panel (Sample QC /
+  //  Flags) and on the sample rows / badges themselves. A KPI tile repeated it
+  //  at the top of every Summary view, which is one place too many.
   const hcColor = hcCount > 0 ? "#c62828" : "#1565c0";
   const kpiRow = document.getElementById("summary-kpi-row");
   const infoIcon = `<i class="fas fa-circle-info" style="font-size:0.7em;opacity:0.45;margin-left:4px;vertical-align:middle"></i>`;
@@ -656,45 +647,6 @@ function drawSummary() {
   }
 
   // ── KPI tooltips: TASS Cutoff ──────────────────────────────────────
-  // Sample QC KPI hover: which samples tripped which rule.
-  const flagCard = document.getElementById("kpi-tip-flags");
-  if (flagCard) {
-    const _flagged = typeof ttFlagFlaggedSamples === "function" ? ttFlagFlaggedSamples() : [];
-    let flagTip =
-      `<b style="color:#ffd580">Sample QC flags</b><br>` +
-      `<span style="color:#ccc;font-size:0.88em">Rules that act on whole samples rather than on ` +
-      `individual detections. Edit them in the right panel under <b>Sample QC / Flags</b>.</span>`;
-    if (!_flagged.length) {
-      flagTip += `<br><br><span style="color:#b9e6c4">Every sample passes the active rules.</span>`;
-    } else {
-      flagTip +=
-        `<table style="margin-top:6px;border-collapse:collapse;width:100%;font-size:0.85em">` +
-        _flagged
-          .slice(0, 12)
-          .map((s) => {
-            const st = ttFlagStateFor(s) || { hits: [] };
-            return (
-              `<tr><td style="text-align:left;padding-right:10px;color:${
-                st.hide ? "#ffb3b3" : "#ffd580"
-              };font-weight:600;vertical-align:top">${s}</td>` +
-              `<td style="text-align:left;color:#ccc">${st.hits.map((h) => h.text).join("<br>")}</td></tr>`
-            );
-          })
-          .join("") +
-        `</table>`;
-      if (_flagged.length > 12)
-        flagTip += `<span style="color:#aaa;font-size:0.82em">+ ${_flagged.length - 12} more…</span>`;
-    }
-    flagCard.style.cursor = "help";
-    flagCard.addEventListener("mouseover", (ev) => showTip(flagTip, ev));
-    flagCard.addEventListener("mousemove", moveTip);
-    flagCard.addEventListener("mouseout", hideTip);
-    flagCard.addEventListener("click", () => {
-      hideTip();
-      if (typeof ttFlagOpenModal === "function") ttFlagOpenModal();
-    });
-  }
-
   const tassCard = document.getElementById("kpi-tip-tass");
   if (tassCard) {
     let tassTip =

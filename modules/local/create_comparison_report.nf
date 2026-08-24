@@ -181,6 +181,10 @@ process CREATE_COMPARISON_REPORT {
         if (params.report_flag_logic)  flag_bits << "--flag-logic ${params.report_flag_logic}"
         if (params.report_flag_action) flag_bits << "--flag-action ${params.report_flag_action}"
         if (params.report_flag_missing) flag_bits << "--flag-missing"
+        if (params.report_flag_view && params.report_flag_view != 'all') flag_bits << "--flag-view ${params.report_flag_view}"
+        // An empty string is a real setting ("count host too"), so test for null
+        // rather than truthiness -- otherwise it would silently fall back to 9606.
+        if (params.report_flag_exclude_taxids != null) flag_bits << "--flag-exclude-taxids '${params.report_flag_exclude_taxids}'"
     }
     def flag_arg = flag_bits.join(' ')
 
