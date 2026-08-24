@@ -135,8 +135,10 @@ jobs:
             || { echo "::error::release build should not ship the report dist"; exit 1; }
           # The pathogen sheet is a real page in every version, pinned to its
           # own ref — it must NOT have been turned into a redirect.
-          grep -q 'id="pathogen-app"' site/pathogen-sheet/index.html \
+          # mkdocs-minify strips quotes from attributes that do not need them
+          # (id="pathogen-app" -> id=pathogen-app), so match either form.
+          grep -qE 'id="?pathogen-app"?' site/pathogen-sheet/index.html \
             || { echo "::error::pathogen-sheet should be the real table, not a redirect"; exit 1; }
-          ! grep -q "http-equiv=\"refresh\"" site/pathogen-sheet/index.html \
+          ! grep -qE 'http-equiv="?refresh"?' site/pathogen-sheet/index.html \
             || { echo "::error::pathogen-sheet should not redirect"; exit 1; }
           echo "Demo redirects to latest; pathogen sheet ships version-pinned."
