@@ -1177,7 +1177,7 @@ function closeMapPanel() {
   if (_leafletMap) setTimeout(() => _leafletMap.invalidateSize(), 50);
 }
 
-// "View" button: jump to Run Metadata tab and highlight this sample's row
+// "View" button: jump to the Metadata tab and highlight this sample's row
 function viewSampleInMetaTab() {
   if (!_selectedSample) return;
   _runmetaHighlightSample = _selectedSample;

@@ -1487,7 +1487,7 @@ function _tabLabel(tab) {
 async function _renderMetaSubTabsForPdf() {
   // "ghm" / "net" are the grouping-driven views; they only render when the
   // user has an active grouping, and _switchMetaSub skips disabled tabs below.
-  const subIds = ["longi", "geo", "host", "ghm", "net", "cmp"];
+  const subIds = ["longi", "host", "ghm", "net", "cmp"];
   const originalSub = _activeMetaSub;
   for (const id of subIds) {
     const btn = document.querySelector(`.meta-subtab[data-metasub="${id}"]`);
@@ -1557,7 +1557,9 @@ async function _renderTabsForPdf() {
       if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
       if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
       await _pdfDelay(80);
-      _setPdfProgress("Rendering metadata sub-tabs…", i, tabs.length);
+    } else if (tab === "trends") {
+      if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+      _setPdfProgress("Rendering trends sub-tabs…", i, tabs.length);
       await _renderMetaSubTabsForPdf();
       // Make all rendered sub-tab snapshots visible for print
       const snap = document.getElementById("cmp-print-snapshots");
@@ -1574,6 +1576,10 @@ async function _renderTabsForPdf() {
         }
         await _pdfDelay(900);
       }
+      // The geo view owns the choropleth + the drawn-region report.
+      if (typeof _buildGeoComparison === "function") _buildGeoComparison();
+      if (typeof _ttRegionRefresh === "function") _ttRegionRefresh();
+      await _pdfDelay(200);
     } else {
       const pane = document.getElementById(`pane-${tab}`);
       const hasRenderedContent = !!(pane && pane.querySelector("svg,table"));
@@ -1883,13 +1889,18 @@ const PDF_SECTION_INFO = {
   },
   map: {
     group: "Provenance & Geography",
-    what: "Geographic placement of samples that carry latitude/longitude metadata.",
-    how: "Each pin is a sampling site, coloured by sample. Use it to track spread across locations for surveillance.",
+    what: "Geographic placement of samples that carry latitude/longitude metadata, plus the country / state choropleth.",
+    how: "Each pin is a sampling site, coloured by sample or by the shared grouping. Draw a lasso or rectangle to summarise an area and compare regions against each other.",
   },
   runmeta: {
     group: "Provenance & Geography",
     what: "Per-sample run provenance — sample type, sequencing platform, and any uploaded metadata fields — collected in one table.",
-    how: "Use it to confirm each sample's origin and sequencing context when interpreting the detections above.",
+    how: "Use it to confirm each sample's origin and sequencing context when interpreting the detections above. The Group by bar at the bottom is shared with the Mapping and Trends tabs.",
+  },
+  trends: {
+    group: "Provenance & Geography",
+    what: "Time-series, host/site breakdowns and the group-level heatmap, network and cross-entry comparison — everything driven by the shared Group by selection.",
+    how: "Pick the metadata columns to group on, then read each sub-tab as a different cut of those groups: change over time, host/site composition, group × organism matrix, and group similarity.",
   },
 };
 

@@ -140,9 +140,25 @@
         class="tab-btn"
         id="runmeta-tab-btn"
         data-tab="runmeta"
-        title="Per-sample metadata and mapping. Add latitude/longitude or country/state here to plot samples."
+        title="The per-sample metadata table. Add or edit columns here — including latitude/longitude, which enable the Mapping tab."
       >
-        <i class="fas fa-map-location-dot"></i> Metadata &amp; Mapping
+        <i class="fas fa-table-list"></i> Metadata
+      </button>
+      <button
+        class="tab-btn"
+        id="map-tab-btn"
+        data-tab="map"
+        title="Map samples by coordinates, or aggregate detections by country / state. Draw regions to summarise an area."
+      >
+        <i class="fas fa-map-location-dot"></i> Mapping
+      </button>
+      <button
+        class="tab-btn"
+        id="trends-tab-btn"
+        data-tab="trends"
+        title="Longitudinal trends, host &amp; disease breakdowns, and the group heatmap / network / cross-entry views."
+      >
+        <i class="fas fa-chart-line"></i> Trends
       </button>
     </div>
 
@@ -247,7 +263,7 @@
           </div>
 
           <div class="sum-inner-pane active" id="sum-inner-detections">
-            <div class="chart-wrap">
+            <div class="chart-wrap" id="summary-det-wrap">
               <div class="chart-title">
                 <i class="fas fa-triangle-exclamation"></i> Detections
                 <button
@@ -442,7 +458,7 @@
                   <i class="fas fa-times"></i> Unpin All
                 </button>
               </div>
-              <div id="summary-top-wrap" style="overflow: auto"></div>
+              <div id="summary-top-wrap"></div>
             </div>
           </div>
           <!-- end sum-inner-detections -->
@@ -489,7 +505,7 @@
                 </button>
               </div>
               <div id="summary-annot-cards" class="summary-kpi-row" style="margin-bottom: 0.8em"></div>
-              <div id="summary-annot-genus" style="overflow: auto"></div>
+              <div id="summary-annot-genus"></div>
             </div>
           </div>
           <!-- end sum-inner-vfamr -->
@@ -1072,7 +1088,10 @@
                 style="flex: 1; font-size: 0.92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
               ></strong>
               <button
-                onclick="document.getElementById('prot-detail-panel').style.display='none';document.getElementById('prot-detail-panel').classList.remove('open')"
+                onclick="
+                  document.getElementById('prot-detail-panel').style.display = 'none';
+                  document.getElementById('prot-detail-panel').classList.remove('open');
+                "
                 style="
                   background: transparent;
                   border: 1px solid rgba(255, 255, 255, 0.5);
@@ -1838,8 +1857,8 @@
                 z-index: 10;
                 transition: background 0.15s;
               "
-              onmouseenter="this.style.background='linear-gradient(180deg,#90b8e8,#b8d4f5,#90b8e8)'"
-              onmouseleave="this.style.background='linear-gradient(180deg,#c5d8f5,#e0ecff,#c5d8f5)'"
+              onmouseenter="this.style.background = 'linear-gradient(180deg,#90b8e8,#b8d4f5,#90b8e8)'"
+              onmouseleave="this.style.background = 'linear-gradient(180deg,#c5d8f5,#e0ecff,#c5d8f5)'"
             >
               <div
                 style="
@@ -2148,9 +2167,11 @@
           <div class="optional-hint">
             <i class="fas fa-circle-info"></i>
             <span
-              ><strong>Optional tab.</strong> This view appears whenever samples or metadata are present. Add per-sample
-              metadata columns here — including <code>latitude</code> / <code>longitude</code>, which also enable the
-              <strong>Map</strong> tab.</span
+              ><strong>The metadata table.</strong> One row per sample — edit any cell, add columns, or upload a
+              metadata CSV. Adding <code>latitude</code> / <code>longitude</code> (or
+              <code>sample_origin_country</code> / <code>…state…</code>) lights up the <strong>Mapping</strong> tab; a
+              <code>collection_time</code> column lights up <strong>Trends</strong>. The <strong>Group by</strong> bar
+              underneath is shared — whatever you pick here also drives the Mapping and Trends tabs.</span
             >
           </div>
           <div class="chart-wrap" style="padding-bottom: 0.5em">
@@ -2229,200 +2250,25 @@
             style="display: none; align-items: center; gap: 0.35em; margin: 0.5em 0 0; font-size: 0.82em"
           ></div>
 
-          <!-- ══ Shared "Group by" bar ═════════════════════════════════════
-               One grouping selection drives EVERY view below (map markers,
-               group heatmap, network / chord). Selecting more than one column
-               means UNION: the composite key is the joined value, so
-               environmental_site + sequencing_platform yields groups like
-               "Agricultural │ MiSeq". Candidate columns are detected from
-               RUN_META at runtime, so arbitrary columns from a samplesheet or
-               an uploaded meta.csv appear here automatically. ═════════════ -->
-          <div id="mg-bar">
-            <div id="mg-bar-row">
-              <span id="mg-bar-label"><i class="fas fa-layer-group"></i> Group by</span>
-              <div id="mg-field-wrap">
-                <button id="mg-field-btn" type="button" title="Choose one or more metadata columns to group on">
-                  <span>Select columns</span>
-                  <i class="fas fa-caret-down"></i>
-                </button>
-                <div id="mg-field-pop">
-                  <div id="mg-field-pop-head">
-                    Pick one or more columns. Multiple columns combine as a
-                    <strong>union</strong> &mdash; one group per observed combination.
-                  </div>
-                  <div id="mg-field-list"></div>
-                </div>
-              </div>
-              <div id="mg-summary"></div>
-              <button id="mg-clear" type="button" style="display: none" title="Clear the grouping">
-                <i class="fas fa-xmark"></i> Clear
-              </button>
-            </div>
-            <div id="mg-legend"></div>
-          </div>
+          <!-- Shared "Group by" bar — mounted by _mgMountGroupBars() (38_meta_grouping.js).
+               This is the PRIMARY instance; the Mapping and Trends tabs mount mirrors of it
+               that read and write the same selection. -->
+          <div class="mg-bar-mount" data-mg-mount="meta"></div>
+        </div>
+        <!-- /pane-runmeta -->
 
-          <!-- ── Analysis sub-tabs ── -->
-          <div id="meta-subtabs">
-            <button class="meta-subtab" data-metasub="longi">
-              <i class="fas fa-chart-line"></i> Longitudinal Analysis
-            </button>
-            <button class="meta-subtab" data-metasub="geo">
-              <i class="fas fa-earth-americas"></i> Mapping &amp; Geography
-            </button>
-            <button class="meta-subtab" data-metasub="host">
-              <i class="fas fa-virus-covid"></i> Host &amp; Disease
-            </button>
-            <button class="meta-subtab" data-metasub="ghm"><i class="fas fa-border-all"></i> Group Heatmap</button>
-            <button class="meta-subtab" data-metasub="net"><i class="fas fa-circle-nodes"></i> Group Network</button>
-            <button class="meta-subtab" data-metasub="cmp">
-              <i class="fas fa-diagram-project"></i> Cross-Entry Comparison
-            </button>
+        <div class="pane" id="pane-map">
+          <div class="optional-hint">
+            <i class="fas fa-circle-info"></i>
+            <span
+              ><strong>Mapping.</strong> Plot samples at their coordinates or aggregate them by country / state.
+              Coordinates and geography come from the <strong>Metadata</strong> tab — the
+              <a href="#" class="mg-goto-meta-link">metadata table</a> is where you add or edit them.</span
+            >
           </div>
-
-          <!-- ── Longitudinal Analysis sub-pane ── -->
-          <div class="meta-subpane" id="meta-subpane-longi">
-            <div id="meta-subtab-warn-longi" class="meta-subtab-warn" style="display: none">
-              <i class="fas fa-triangle-exclamation"></i>
-              <span id="meta-subtab-warn-longi-msg"></span>
-            </div>
-            <div id="longi-section">
-              <div class="chart-title" style="margin-bottom: 1em">
-                <i class="fas fa-chart-line"></i> Longitudinal Analysis
-              </div>
-              <!-- Controls row -->
-              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
-                <div style="display: flex; flex-direction: column; gap: 0.3em; min-width: 200px; flex: 2">
-                  <label style="font-size: 0.81em; font-weight: 600; color: #555">
-                    Organisms
-                    <span id="longi-org-count" style="font-weight: 400; color: #888; font-size: 0.9em"></span>
-                  </label>
-                  <!-- Collapsed, searchable organism picker (see
-                       43_multiselect.js). Was a scrollable chip wall, which a
-                       run with hundreds of organisms turned into a scroll
-                       hunt. -->
-                  <div id="longi-org-list"></div>
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 0.3em">
-                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Axis</label>
-                  <select
-                    id="longi-y-sel"
-                    style="
-                      border: 1px solid #ccd6e8;
-                      border-radius: 6px;
-                      padding: 5px 9px;
-                      font-size: 0.82em;
-                      background: #fff;
-                    "
-                  >
-                    <option value="TASS Score" selected>TASS Score</option>
-                    <option value="Coverage">Coverage (%)</option>
-                    <option value="Breadth %">Breadth (%)</option>
-                    <option value="# Reads Aligned"># Reads Aligned</option>
-                    <option value="Mean Depth">Mean Depth</option>
-                    <option value="Minhash Score">Minhash Score</option>
-                  </select>
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 0.3em">
-                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Scale</label>
-                  <select
-                    id="longi-scale-sel"
-                    style="
-                      border: 1px solid #ccd6e8;
-                      border-radius: 6px;
-                      padding: 5px 9px;
-                      font-size: 0.82em;
-                      background: #fff;
-                    "
-                  >
-                    <option value="linear" selected>Linear</option>
-                    <option value="log">Log</option>
-                    <option value="sqrt">Square Root</option>
-                  </select>
-                </div>
-              </div>
-              <!-- Chart + right sample panel -->
-              <div style="display: flex; gap: 0.8em; align-items: flex-start">
-                <div id="longi-chart-wrap" style="flex: 1; min-width: 0; position: relative; overflow: visible"></div>
-                <div
-                  id="longi-sample-panel"
-                  style="
-                    width: 155px;
-                    flex-shrink: 0;
-                    border: 1px solid #dce7f5;
-                    border-radius: 8px;
-                    padding: 0.65em;
-                    background: #f8fbff;
-                    max-height: 340px;
-                    overflow-y: auto;
-                  "
-                >
-                  <div
-                    style="
-                      font-size: 0.77em;
-                      font-weight: 700;
-                      color: #1565c0;
-                      margin-bottom: 0.45em;
-                      border-bottom: 1px solid #dce7f5;
-                      padding-bottom: 0.3em;
-                      display: flex;
-                      align-items: center;
-                      justify-content: space-between;
-                    "
-                  >
-                    <span>Show / Hide</span>
-                    <span style="display: flex; gap: 5px">
-                      <button
-                        id="longi-show-all"
-                        title="Show all samples"
-                        style="
-                          font-size: 0.82em;
-                          padding: 1px 6px;
-                          border: 1px solid #90caf9;
-                          border-radius: 4px;
-                          background: #e3f2fd;
-                          color: #1565c0;
-                          cursor: pointer;
-                          font-weight: 600;
-                          line-height: 1.5;
-                        "
-                      >
-                        All
-                      </button>
-                      <button
-                        id="longi-hide-all"
-                        title="Hide all samples"
-                        style="
-                          font-size: 0.82em;
-                          padding: 1px 6px;
-                          border: 1px solid #b0bec5;
-                          border-radius: 4px;
-                          background: #f5f5f5;
-                          color: #546e7a;
-                          cursor: pointer;
-                          font-weight: 600;
-                          line-height: 1.5;
-                        "
-                      >
-                        None
-                      </button>
-                    </span>
-                  </div>
-                  <div id="longi-sample-list"></div>
-                </div>
-              </div>
-              <div
-                id="longi-no-data"
-                style="display: none; text-align: center; padding: 2.5em 1em; color: #999; font-size: 0.88em"
-              >
-                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
-                No data for this organism / metric in the visible samples.
-              </div>
-            </div>
-          </div>
-          <!-- /meta-subpane-longi -->
-
+          <div class="mg-bar-mount" data-mg-mount="map"></div>
           <!-- ── Geographic Comparison sub-pane ── -->
-          <div class="meta-subpane" id="meta-subpane-geo">
+          <div class="meta-subpane active" id="meta-subpane-geo">
             <div id="meta-subtab-warn-geo" class="meta-subtab-warn" style="display: none">
               <i class="fas fa-triangle-exclamation"></i>
               <span id="meta-subtab-warn-geo-msg"></span>
@@ -2434,7 +2280,8 @@
               <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
                 Plot samples at their precise coordinates, or aggregate the visible detections by country or state /
                 province / territory. Add <code>latitude</code> / <code>longitude</code> or
-                <code>sample_origin_country</code> / <code>…state…</code> in the table above to populate this view.
+                <code>sample_origin_country</code> / <code>…state…</code> in the
+                <a href="#" class="mg-goto-meta-link">Metadata tab</a> to populate this view.
               </div>
               <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
                 <div style="display: flex; flex-direction: column; gap: 0.3em">
@@ -2509,7 +2356,58 @@
                 <!-- The map-only sample show/hide picker used to live here. It
                      is now a collapsible section of the map side panel — see
                      #map-sample-picker inside #map-panel. -->
+                <!-- ══ Region drawing toolbar ═══════════════════════════════
+                     Optional. Off until the user arms a draw tool; regions the
+                     user has drawn survive toggling the overlay off and back
+                     on (see 44_map_regions.js). ═══════════════════════════ -->
+                <div id="mapdraw-bar">
+                  <div id="mapdraw-bar-row">
+                    <span id="mapdraw-label"><i class="fas fa-draw-polygon"></i> Regions</span>
+                    <button
+                      type="button"
+                      class="mapdraw-btn"
+                      id="mapdraw-lasso"
+                      data-draw="lasso"
+                      title="Freehand lasso — hold the mouse down on the map and trace an area"
+                    >
+                      <i class="fas fa-signature"></i> Lasso
+                    </button>
+                    <button
+                      type="button"
+                      class="mapdraw-btn"
+                      id="mapdraw-rect"
+                      data-draw="rect"
+                      title="Rectangle — click and drag a box on the map"
+                    >
+                      <i class="far fa-square"></i> Rectangle
+                    </button>
+                    <label
+                      id="mapdraw-toggle-wrap"
+                      title="Hide the drawn regions without deleting them — flip it back on to bring them straight back"
+                    >
+                      <input type="checkbox" id="mapdraw-toggle" checked />
+                      <span>Show regions</span>
+                      <span id="mapdraw-count"></span>
+                    </label>
+                    <label
+                      id="mapdraw-group-wrap"
+                      title="Add a map_region metadata column from the drawn regions so the Group by bar, group heatmap, network and cross-entry views can use them"
+                    >
+                      <input type="checkbox" id="mapdraw-group" />
+                      <span>Group by region</span>
+                    </label>
+                    <button type="button" class="mapdraw-btn mapdraw-danger" id="mapdraw-clear" style="display: none">
+                      <i class="fas fa-trash"></i> Clear all
+                    </button>
+                    <span id="mapdraw-hint"></span>
+                  </div>
+                  <div id="mapdraw-chips"></div>
+                </div>
                 <div id="geo-precise-slot"></div>
+                <!-- ── Per-region summaries + cross-region comparison.
+                     Rendered by _ttRegionRenderPanel(); empty until the user
+                     draws something. ── -->
+                <div id="mapdraw-report" style="display: none"></div>
                 <div
                   id="geo-precise-no-data"
                   style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
@@ -2519,7 +2417,8 @@
                     style="font-size: 1.6em; display: block; margin-bottom: 0.4em; opacity: 0.4"
                   ></i>
                   No <code>latitude</code> / <code>longitude</code> in the visible samples. Add coordinate columns in
-                  the table above (or switch the Level to Country / State) to map your samples.
+                  the <a href="#" class="mg-goto-meta-link">Metadata tab</a> (or switch the Level to Country / State) to
+                  map your samples.
                 </div>
               </div>
 
@@ -2613,6 +2512,191 @@
             </div>
           </div>
           <!-- /meta-subpane-geo -->
+        </div>
+        <!-- /pane-map -->
+
+        <div class="pane" id="pane-trends">
+          <div class="optional-hint">
+            <i class="fas fa-circle-info"></i>
+            <span
+              ><strong>Trends &amp; group analysis.</strong> Time series, host / site breakdowns and the group-level
+              heatmap, network and cross-entry comparison. All of them read the <strong>Group by</strong> selection
+              below, which is shared with the <a href="#" class="mg-goto-meta-link">Metadata</a> and Mapping tabs.</span
+            >
+          </div>
+          <div class="mg-bar-mount" data-mg-mount="trends"></div>
+          <!-- ── Analysis sub-tabs (Mapping now has its own top-level tab) ── -->
+          <div id="meta-subtabs">
+            <button class="meta-subtab" data-metasub="longi">
+              <i class="fas fa-chart-line"></i> Longitudinal Analysis
+            </button>
+            <button class="meta-subtab" data-metasub="host">
+              <i class="fas fa-virus-covid"></i> Host &amp; Disease
+            </button>
+            <button class="meta-subtab" data-metasub="ghm"><i class="fas fa-border-all"></i> Group Heatmap</button>
+            <button class="meta-subtab" data-metasub="net"><i class="fas fa-circle-nodes"></i> Group Network</button>
+            <button class="meta-subtab" data-metasub="cmp">
+              <i class="fas fa-diagram-project"></i> Cross-Entry Comparison
+            </button>
+          </div>
+          <!-- ── Longitudinal Analysis sub-pane ── -->
+          <div class="meta-subpane" id="meta-subpane-longi">
+            <div id="meta-subtab-warn-longi" class="meta-subtab-warn" style="display: none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-longi-msg"></span>
+            </div>
+            <div id="longi-section">
+              <div class="chart-title" style="margin-bottom: 1em">
+                <i class="fas fa-chart-line"></i> Longitudinal Analysis
+              </div>
+              <!-- Controls row -->
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div style="display: flex; flex-direction: column; gap: 0.3em; min-width: 200px; flex: 2">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">
+                    Organisms
+                    <span id="longi-org-count" style="font-weight: 400; color: #888; font-size: 0.9em"></span>
+                  </label>
+                  <!-- Collapsed, searchable organism picker (see
+                       43_multiselect.js). Was a scrollable chip wall, which a
+                       run with hundreds of organisms turned into a scroll
+                       hunt. -->
+                  <div id="longi-org-list"></div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Axis</label>
+                  <select
+                    id="longi-y-sel"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="TASS Score" selected>TASS Score</option>
+                    <option value="Coverage">Coverage (%)</option>
+                    <option value="Breadth %">Breadth (%)</option>
+                    <option value="# Reads Aligned"># Reads Aligned</option>
+                    <option value="Mean Depth">Mean Depth</option>
+                    <option value="Minhash Score">Minhash Score</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Scale</label>
+                  <select
+                    id="longi-scale-sel"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="linear" selected>Linear</option>
+                    <option value="log">Log</option>
+                    <option value="sqrt">Square Root</option>
+                  </select>
+                </div>
+                <!-- Area fill under each line. Off by default: with many
+                     organisms selected the fills stack up, so it is opt-in
+                     for the two-or-three-series reading where the shape of
+                     the trend matters more than the exact points. -->
+                <label id="longi-fill-wrap" title="Shade the area under each organism's line down to the baseline">
+                  <input type="checkbox" id="longi-fill-toggle" />
+                  <span>Fill area</span>
+                </label>
+              </div>
+              <!-- Chart + right sample panel -->
+              <div style="display: flex; gap: 0.8em; align-items: flex-start">
+                <div id="longi-chart-wrap" style="flex: 1; min-width: 0; position: relative; overflow: visible"></div>
+                <div
+                  id="longi-sample-panel"
+                  style="
+                    width: 186px;
+                    flex-shrink: 0;
+                    border: 1px solid #dce7f5;
+                    border-radius: 8px;
+                    padding: 0.65em;
+                    background: #f8fbff;
+                  "
+                >
+                  <div
+                    style="
+                      font-size: 0.77em;
+                      font-weight: 700;
+                      color: #1565c0;
+                      margin-bottom: 0.45em;
+                      border-bottom: 1px solid #dce7f5;
+                      padding-bottom: 0.3em;
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                    "
+                  >
+                    <span>Show / Hide <span id="longi-sample-count"></span></span>
+                    <span style="display: flex; gap: 5px">
+                      <button
+                        id="longi-show-all"
+                        title="Show all samples"
+                        style="
+                          font-size: 0.82em;
+                          padding: 1px 6px;
+                          border: 1px solid #90caf9;
+                          border-radius: 4px;
+                          background: #e3f2fd;
+                          color: #1565c0;
+                          cursor: pointer;
+                          font-weight: 600;
+                          line-height: 1.5;
+                        "
+                      >
+                        All
+                      </button>
+                      <button
+                        id="longi-hide-all"
+                        title="Hide all samples"
+                        style="
+                          font-size: 0.82em;
+                          padding: 1px 6px;
+                          border: 1px solid #b0bec5;
+                          border-radius: 4px;
+                          background: #f5f5f5;
+                          color: #546e7a;
+                          cursor: pointer;
+                          font-weight: 600;
+                          line-height: 1.5;
+                        "
+                      >
+                        None
+                      </button>
+                    </span>
+                  </div>
+                  <!-- Search + pager for the sample list. Same matcher as the
+                       sidebar filters: plain text is a substring, a valid
+                       regular expression is used as one. All / None act on
+                       whatever the search currently matches. -->
+                  <input
+                    type="search"
+                    id="longi-sample-search"
+                    placeholder="Find a sample…"
+                    title="Filter this list — plain text or a regular expression, e.g. Site1|Site2_A. All / None apply to what matches."
+                  />
+                  <div id="longi-sample-list"></div>
+                  <div id="longi-sample-pager"></div>
+                </div>
+              </div>
+              <div
+                id="longi-no-data"
+                style="display: none; text-align: center; padding: 2.5em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                No data for this organism / metric in the visible samples.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-longi -->
 
           <!-- ── Host &amp; Disease sub-pane ── -->
           <div class="meta-subpane" id="meta-subpane-host">
@@ -2997,6 +3081,7 @@
           </div>
           <!-- /meta-subpane-cmp -->
         </div>
+        <!-- /pane-trends -->
       </div>
       <!-- /content -->
 
@@ -3648,10 +3733,16 @@
         <h3>Upload Data</h3>
         <div
           id="upload-zone"
-          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragover="
+            event.preventDefault();
+            this.classList.add('drag-over');
+          "
           ondragleave="this.classList.remove('drag-over')"
           ondrop="handleUploadDrop(event)"
-          onclick="if(event.target.tagName!=='LABEL'&&event.target.tagName!=='INPUT')document.getElementById('file-upload-input').click()"
+          onclick="
+            if (event.target.tagName !== 'LABEL' && event.target.tagName !== 'INPUT')
+              document.getElementById('file-upload-input').click();
+          "
         >
           <i class="fas fa-cloud-upload-alt" style="font-size: 1.4em; color: #6c9abf"></i>
           <span style="display: block; font-size: 0.78em; margin: 0.3em 0 0.5em"
@@ -3676,10 +3767,16 @@
         <h3 style="margin-top: 1em">Upload Metadata File</h3>
         <div
           id="meta-upload-zone"
-          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragover="
+            event.preventDefault();
+            this.classList.add('drag-over');
+          "
           ondragleave="this.classList.remove('drag-over')"
           ondrop="handleMetaDrop(event)"
-          onclick="if(event.target.tagName!=='LABEL'&&event.target.tagName!=='INPUT')document.getElementById('meta-upload-input').click()"
+          onclick="
+            if (event.target.tagName !== 'LABEL' && event.target.tagName !== 'INPUT')
+              document.getElementById('meta-upload-input').click();
+          "
           style="
             border: 2px dashed #b0cce8;
             border-radius: 8px;
@@ -4089,6 +4186,7 @@
     <script src="src/js/41_sample_flags.js"></script>
     <script src="src/js/42_sample_flags_ui.js"></script>
     <script src="src/js/43_multiselect.js"></script>
+    <script src="src/js/44_map_regions.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

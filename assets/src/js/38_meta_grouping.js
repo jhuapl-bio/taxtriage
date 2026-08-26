@@ -62,6 +62,10 @@
   // `environmental_site` is the AMD-P/Talos standard name; the rest are the
   // generic spellings submitters actually use for the same concept.
   const PREFERRED = [
+    // Published by the map's region drawing tool (44_map_regions.js) when the
+    // user turns on "Group by region" — curated so it is never rejected as an
+    // identifier on a run where every sample sits in its own region.
+    "map_region",
     "sample_type",
     "specimen_type",
     "environmental_site",
@@ -884,23 +888,88 @@
   }
   window._mgEsc = _esc;
 
-  /* ── Shared "Group by" bar ─────────────────────────────────────────────
+  /* ── Shared "Group by" bar (multi-instance) ────────────────────────────
      A multi-select popover over the detected candidate columns. Selecting
      more than one column means UNION (composite key), which is what lets a
-     user combine, say, environmental_site with sequencing_platform.          */
-  let _barWired = false;
+     user combine, say, environmental_site with sequencing_platform.
+
+     The bar is MOUNTED, not authored: every `<div class="mg-bar-mount"
+     data-mg-mount="…">` in the document gets its own copy of the same
+     control, and all copies read and write the ONE selection held in
+     `_fields`. That is what lets the Metadata tab own the grouping while the
+     Mapping and Trends tabs carry a live mirror of it — change it in any of
+     them and all three update together.
+
+     Instance ids: "meta" (the primary, in the Metadata tab), "map", "trends".
+     Mirrors also get a "Manage columns in Metadata →" link so the table that
+     defines the columns is one click away from wherever you're looking.      */
+
+  function _mgBarHtml(inst) {
+    const isPrimary = inst === "meta";
+    const link = isPrimary
+      ? '<span class="mg-shared-note" title="This selection also drives the Mapping and Trends tabs">' +
+        '<i class="fas fa-link"></i> shared with Mapping &amp; Trends</span>'
+      : '<a href="#" class="mg-goto-meta mg-goto-meta-link" ' +
+        'title="Open the Metadata tab to add, edit or import the columns you group on">' +
+        '<i class="fas fa-table-list"></i> Manage columns in Metadata</a>';
+    return (
+      '<div class="mg-bar" id="mg-bar-' +
+      inst +
+      '" data-mg-inst="' +
+      inst +
+      '">' +
+      '<div class="mg-bar-row">' +
+      '<span class="mg-bar-label"><i class="fas fa-layer-group"></i> Group by</span>' +
+      '<div class="mg-field-wrap">' +
+      '<button class="mg-field-btn" type="button" title="Choose one or more metadata columns to group on">' +
+      '<span>Select columns</span><i class="fas fa-caret-down"></i></button>' +
+      '<div class="mg-field-pop">' +
+      '<div class="mg-field-pop-head">Pick one or more columns. Multiple columns combine as a ' +
+      "<strong>union</strong> &mdash; one group per observed combination.</div>" +
+      '<div class="mg-field-list"></div>' +
+      "</div></div>" +
+      '<div class="mg-summary"></div>' +
+      '<button class="mg-clear" type="button" style="display:none" title="Clear the grouping">' +
+      '<i class="fas fa-xmark"></i> Clear</button>' +
+      '<span class="mg-bar-spacer"></span>' +
+      link +
+      "</div>" +
+      '<div class="mg-legend" id="mg-legend-' +
+      inst +
+      '"></div>' +
+      "</div>"
+    );
+  }
+
+  /* Fill every .mg-bar-mount that has not been filled yet, then wire it.
+     Safe to call repeatedly (mount points remember they are done).           */
+  window._mgMountGroupBars = function () {
+    document.querySelectorAll(".mg-bar-mount").forEach((mount) => {
+      if (mount.getAttribute("data-mg-mounted")) return;
+      const inst = mount.getAttribute("data-mg-mount") || "meta";
+      mount.innerHTML = _mgBarHtml(inst);
+      mount.setAttribute("data-mg-mounted", "1");
+    });
+    window._mgWireGroupBar();
+  };
+
+  function _mgBars() {
+    return Array.from(document.querySelectorAll(".mg-bar"));
+  }
 
   function _renderGroupBar() {
-    const list = document.getElementById("mg-field-list");
-    if (!list) return;
+    const lists = document.querySelectorAll(".mg-bar .mg-field-list");
+    if (!lists.length) return;
     const cands = _mgColumnStats();
     const active = new Set(_fields);
 
-    if (!cands.length) {
-      list.innerHTML =
-        '<div class="mg-empty">No groupable metadata columns found. Add columns in the table above, ' +
-        "or upload a metadata CSV with categorical fields.</div>";
-    } else {
+    lists.forEach((list) => {
+      if (!cands.length) {
+        list.innerHTML =
+          '<div class="mg-empty">No groupable metadata columns found. Add columns in the Metadata tab, ' +
+          "or upload a metadata CSV with categorical fields.</div>";
+        return;
+      }
       list.innerHTML = cands
         .map((c) => {
           const pct = Math.round(c.coverage * 100);
@@ -927,25 +996,35 @@
           api.setFields(ordered);
         });
       });
-    }
+    });
     _renderGroupSummary();
   }
 
   function _renderGroupSummary() {
-    const sum = document.getElementById("mg-summary");
-    if (!sum) return;
-    if (!_fields.length) {
-      sum.innerHTML = '<span class="mg-none">No grouping — views show individual samples</span>';
-    } else {
-      const m = api.model();
-      sum.innerHTML =
-        `<span class="mg-chips">` +
-        _fields.map((f) => `<span class="mg-chip">${_esc(_label(f))}</span>`).join('<span class="mg-plus">+</span>') +
-        `</span><span class="mg-count">${m.order.length} group${m.order.length === 1 ? "" : "s"}</span>`;
-    }
-    const clr = document.getElementById("mg-clear");
-    if (clr) clr.style.display = _fields.length ? "inline-flex" : "none";
-    _mgRenderLegend("mg-legend");
+    const html = !_fields.length
+      ? '<span class="mg-none">No grouping — views show individual samples</span>'
+      : (() => {
+          const m = api.model();
+          return (
+            `<span class="mg-chips">` +
+            _fields
+              .map((f) => `<span class="mg-chip">${_esc(_label(f))}</span>`)
+              .join('<span class="mg-plus">+</span>') +
+            `</span><span class="mg-count">${m.order.length} group${m.order.length === 1 ? "" : "s"}</span>`
+          );
+        })();
+    document.querySelectorAll(".mg-bar .mg-summary").forEach((sum) => {
+      sum.innerHTML = html;
+    });
+    document.querySelectorAll(".mg-bar .mg-clear").forEach((clr) => {
+      clr.style.display = _fields.length ? "inline-flex" : "none";
+    });
+    // One legend per mounted bar, each registered under its own id so the
+    // shared refresh loop keeps every copy in step.
+    _mgBars().forEach((bar) => {
+      const lg = bar.querySelector(".mg-legend[id]");
+      if (lg) _mgRenderLegend(lg.id);
+    });
   }
 
   window._mgSyncGroupBar = function () {
@@ -953,31 +1032,77 @@
     _renderGroupBar();
   };
 
-  window._mgWireGroupBar = function () {
-    if (_barWired) return;
-    const btn = document.getElementById("mg-field-btn");
-    const pop = document.getElementById("mg-field-pop");
-    if (!btn || !pop) return;
-    _barWired = true;
-
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const open = pop.style.display === "block";
-      pop.style.display = open ? "none" : "block";
-      if (!open) _renderGroupBar();
-    });
-    document.addEventListener("click", (e) => {
-      if (pop.style.display === "block" && !pop.contains(e.target) && e.target !== btn) pop.style.display = "none";
-    });
-    const clr = document.getElementById("mg-clear");
-    if (clr) clr.addEventListener("click", () => api.setFields([]));
-
-    api.onChange(() => {
-      _renderGroupSummary();
-      _mgBroadcastRedraw();
-    });
-    _renderGroupBar();
+  /* Jump to the Metadata tab and flash the table — used by the mirrors' link
+     and by the "add a column" prompts scattered through the metadata views. */
+  window._mgGotoMetaTable = function () {
+    const btn = document.getElementById("runmeta-tab-btn");
+    if (btn) btn.click();
+    const wrap = document.getElementById("runmeta-table-wrap");
+    const bar = document.getElementById("runmeta-toolbar");
+    setTimeout(() => {
+      if (wrap && wrap.scrollIntoView) wrap.scrollIntoView({ behavior: "smooth", block: "center" });
+      [bar, wrap].forEach((el) => {
+        if (!el) return;
+        el.classList.remove("mg-flash");
+        // reflow so the animation restarts on a repeat click
+        void el.offsetWidth;
+        el.classList.add("mg-flash");
+        setTimeout(() => el.classList.remove("mg-flash"), 1600);
+      });
+    }, 80);
   };
+
+  // Any link anywhere in the report can carry .mg-goto-meta-link to reach the
+  // metadata table — delegated so markup added later still works.
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest && e.target.closest(".mg-goto-meta-link, .mg-goto-meta");
+    if (!a) return;
+    e.preventDefault();
+    window._mgGotoMetaTable();
+  });
+
+  window._mgWireGroupBar = function () {
+    _mgBars().forEach((bar) => {
+      if (bar.getAttribute("data-mg-wired")) return;
+      const btn = bar.querySelector(".mg-field-btn");
+      const pop = bar.querySelector(".mg-field-pop");
+      if (!btn || !pop) return;
+      bar.setAttribute("data-mg-wired", "1");
+
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = pop.style.display === "block";
+        // Only one popover open at a time, whichever bar it belongs to.
+        document.querySelectorAll(".mg-bar .mg-field-pop").forEach((p) => (p.style.display = "none"));
+        pop.style.display = open ? "none" : "block";
+        if (!open) _renderGroupBar();
+      });
+      document.addEventListener("click", (e) => {
+        if (pop.style.display === "block" && !pop.contains(e.target) && e.target !== btn) pop.style.display = "none";
+      });
+      const clr = bar.querySelector(".mg-clear");
+      if (clr) clr.addEventListener("click", () => api.setFields([]));
+    });
+
+    if (!_barWired && _mgBars().length) {
+      _barWired = true;
+      api.onChange(() => {
+        _renderGroupSummary();
+        _mgBroadcastRedraw();
+      });
+    }
+    if (_mgBars().length) _renderGroupBar();
+  };
+
+  let _barWired = false;
+
+  // Mount as soon as the DOM is there — the panes are static markup, so this
+  // runs once and every later _mgSyncGroupBar() call just refreshes content.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => window._mgMountGroupBars());
+  } else {
+    window._mgMountGroupBars();
+  }
 
   // Ask every grouping-aware view to re-render. Each guard is defensive: the
   // views live in later files and may not exist in a stripped build.
