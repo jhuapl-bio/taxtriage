@@ -798,7 +798,9 @@ let _fsCtlAdded = false;
 function _addMapFullscreenControl() {
   if (typeof L.Control === "undefined" || _fsCtlAdded || !_leafletMap) return;
   const Ctl = L.Control.extend({
-    options: { position: "topleft" },
+    // Top-RIGHT, with the basemap picker: the top-left column is the zoom
+    // control's, and the floating region cards dock just to the right of it.
+    options: { position: "topright" },
     onAdd: function () {
       const div = L.DomUtil.create("div", "leaflet-bar tt-fullscreen-ctl");
       const btn = L.DomUtil.create("button", "tt-fullscreen-btn", div);

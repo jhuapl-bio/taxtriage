@@ -5759,11 +5759,15 @@ text.hm-flag-label {
 }
 
 /* ══ Map region drawing ════════════════════════════════════════════════ */
+/* Same panel treatment as the shared "Group by" bar (.mg-bar): a control bar
+   in this report reads as a tinted, bordered strip. The near-white version
+   this used to have was indistinguishable from the page behind it, so the
+   controls looked like loose browser-default widgets sitting on the page. */
 #mapdraw-bar {
   margin: 0 0 0.6em;
-  padding: 0.55em 0.7em;
-  background: #fbfdff;
-  border: 1px solid #e2ebf5;
+  padding: 0.6em 0.8em;
+  background: linear-gradient(180deg, #f7fafd, #eef4fb);
+  border: 1px solid #dae5f2;
   border-radius: 8px;
 }
 #mapdraw-bar-row {
@@ -5773,7 +5777,7 @@ text.hm-flag-label {
   gap: 0.5em;
 }
 #mapdraw-label {
-  font-size: 0.82em;
+  font-size: 0.84em;
   font-weight: 700;
   color: #37474f;
   display: inline-flex;
@@ -5784,40 +5788,77 @@ text.hm-flag-label {
 #mapdraw-label i {
   color: #1565c0;
 }
+/* Matches .runmeta-tool-btn — the report's standard toolbar button — so the
+   region tools read as part of the same UI rather than as raw <button>s.
+   font-family: inherit matters here: a <button> otherwise falls back to the
+   browser's system UI font, which is what made these look like stray form
+   controls next to the rest of the report. */
 .mapdraw-btn {
-  border: 1px solid #ccd6e8;
-  border-radius: 6px;
-  background: #fff;
-  padding: 4px 10px;
-  font-size: 0.8em;
-  color: #37474f;
-  cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 0.35em;
+  border: 1px solid #ccd6e8;
+  border-radius: 5px;
+  background: #fff;
+  padding: 0.3em 0.7em;
+  font-family: inherit;
+  font-size: 0.82em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #1565c0;
+  cursor: pointer;
 }
 .mapdraw-btn:hover {
+  background: #eef4ff;
   border-color: #1565c0;
-  color: #1565c0;
 }
-.mapdraw-btn.armed {
+.mapdraw-btn:focus-visible {
+  outline: 2px solid #1565c0;
+  outline-offset: 1px;
+}
+.mapdraw-btn.armed,
+.mapdraw-btn.armed:hover {
   background: #1565c0;
   border-color: #1565c0;
   color: #fff;
+  box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.18);
+}
+.mapdraw-btn.mapdraw-danger {
+  color: #b3261e;
 }
 .mapdraw-btn.mapdraw-danger:hover {
   border-color: #ef9a9a;
+  background: #fdeeee;
   color: #c62828;
 }
+/* The two switches get the same pill as the buttons, so a row of mixed
+   controls lines up instead of alternating between chrome and bare form
+   widgets. */
 #mapdraw-toggle-wrap,
 #mapdraw-group-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 0.35em;
-  font-size: 0.8em;
+  gap: 0.4em;
+  border: 1px solid #dbe4ee;
+  border-radius: 5px;
+  background: #fff;
+  padding: 0.28em 0.65em;
+  font-size: 0.82em;
+  font-weight: 600;
+  line-height: 1.35;
   color: #37474f;
   cursor: pointer;
   user-select: none;
+}
+#mapdraw-toggle-wrap:hover,
+#mapdraw-group-wrap:hover {
+  border-color: #1565c0;
+}
+#mapdraw-toggle-wrap input,
+#mapdraw-group-wrap input {
+  accent-color: #1565c0;
+  margin: 0;
+  cursor: pointer;
 }
 #mapdraw-count {
   color: #789;
@@ -5858,6 +5899,7 @@ text.hm-flag-label {
   color: #78909c;
 }
 .mapdraw-chip button {
+  font-family: inherit;
   border: 0;
   background: none;
   cursor: pointer;
@@ -6066,6 +6108,7 @@ text.hm-flag-label {
    lands when looking for "show me this". */
 .mapdraw-chart-btn,
 .mapdraw-card-zoom {
+  font-family: inherit;
   position: absolute;
   top: -2px;
   border: 1px solid #dbe4ee;
@@ -6141,10 +6184,15 @@ text.hm-flag-label {
   background: #fff;
   border-radius: 5px;
   padding: 2px 7px;
+  font-family: inherit;
   font-size: 0.92em;
-  color: #546e7a;
+  font-weight: 600;
+  color: #1565c0;
   cursor: pointer;
   white-space: nowrap;
+}
+.mapdraw-view-btn:hover {
+  background: #eef4ff;
 }
 .mapdraw-view-btn.active {
   background: #1565c0;
@@ -6152,6 +6200,7 @@ text.hm-flag-label {
   color: #fff;
 }
 #mapdraw-chart-close {
+  font-family: inherit;
   border: 0;
   background: none;
   color: #90a4ae;
@@ -6274,6 +6323,7 @@ body.report-pdf-printing #mapdraw-chart {
   color: #546e7a;
 }
 .longi-legend-pager button {
+  font-family: inherit;
   border: 1px solid #ccd6e8;
   background: #fff;
   border-radius: 5px;
@@ -6384,6 +6434,7 @@ body.report-pdf-printing .longi-legend-pager {
   border-top: 0;
 }
 #longi-sample-pager button {
+  font-family: inherit;
   border: 1px solid #ccd6e8;
   background: #fff;
   border-radius: 5px;
@@ -6412,9 +6463,8 @@ body.report-pdf-printing .longi-legend-pager {
 .tt-basemap-ctl {
   background: #fff;
   padding: 5px 8px;
-  font:
-    12px system-ui,
-    sans-serif;
+  font-family: inherit;
+  font-size: 12px;
   color: #333;
   line-height: 1.3;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
@@ -6465,15 +6515,14 @@ body.report-pdf-printing .longi-legend-pager {
   align-items: center;
   gap: 0.35em;
   background: #fff;
-  border: 0;
-  border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  border: 1px solid #ccd6e8;
+  border-radius: 5px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
   padding: 5px 9px;
-  font:
-    12px system-ui,
-    sans-serif;
+  font-family: inherit;
+  font-size: 12px;
   font-weight: 600;
-  color: #37474f;
+  color: #1565c0;
   cursor: pointer;
   white-space: nowrap;
 }
