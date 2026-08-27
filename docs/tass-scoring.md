@@ -186,6 +186,25 @@ The actual values passed to `build_removed_ids_best_alignment()` differ by mode:
 
 In `--compare_references` mode the ANI dominance term ($\Omega_{\text{ani}}$) does all the heavy lifting, so `penalize_weight` is set to 0. In the standard bedgraph path, `as_weight` is disabled (0.0) and the competing-contig penalty is 23.0.
 
+#### CLI flags that control removal
+
+The weights above are internal. These `match_paths.py` flags are what you actually set on the command line to change, disable, or audit removal:
+
+| Flag                                | Default | Effect                                                                                                                                                                                                                                                                                            |
+| ----------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--dominance_protect_ratio <float>` | `2.0`   | Read-count ratio (dominant ÷ runner-up) within a conflict group above which the dominant reference is **fully exempt** from base (`min_cov`) removal. Dominance is decided on the raw read count in the shared region. Lower = protect more aggressively; set `0` or a very large value (e.g. `999`) to disable protection and restore unconditional base removal. |
+| `--no_read_removal`                 | off     | Disable conflict read removal **entirely for scoring**. Conflict regions and breadth-change stats are still computed and written to disk (reference lengths and reports stay intact), but no reads are removed: coverage, Gini, `numreads` and the full TASS score all derive from the complete original alignment set. |
+| `--skip_read_removal_scoring`       | off     | Identical in effect to `--no_read_removal`; kept as the original spelling. `--no_read_removal` is the clearer name and is preferred for new commands.                                                                                                                                              |
+| `--taxid_removal_stats`             | off     | In addition to the standard `removal_stats.xlsx`, write a taxid-aggregated `removal_stats_by_taxid.xlsx` in which accessions are grouped by taxid. Requires `--match` (it supplies the accession → taxid mapping).                                                                                  |
+
+!!! tip "On/off TASS comparison"
+
+    `--no_read_removal` is the flag to reach for when post-removal coverage collapses and you want to know how much of the score change is removal and how much is the organism. Run the same sample twice — once normally, once with `--no_read_removal` — and diff the resulting TASS scores. Because conflict detection still runs, the `removal_stats` reports from the second run tell you exactly which reads *would* have been removed.
+
+!!! warning "Removal protection interacts with roll-up"
+
+    `--dominance_protect_ratio` acts at the **strain** level, before the LCA-aware species/genus logic in [11.1](#111-lca-aware-read-removal-speciesgenus). If you are chasing under-called species in a group of near-identical strains, adjust the roll-up behaviour first; loosening the protection ratio changes which strain wins, not whether the species survives.
+
 ### 3.7 Comparison Metrics (Δ Breadth)
 
 After read removal, `compare_metrics()` calculates how much each reference changed. The results are written to the conflict-comparison xlsx/csv. Each row represents one reference and includes:
@@ -280,6 +299,50 @@ After the shared-window search, `compute_shared_window_stats()` aggregates the p
 | `shared_bp`           | `sum(w.end - w.start for w in windows)` (windows may overlap; approximate)       |
 
 `max_window_jaccard` is the value used as $J_{\max}$ in the ANI dominance formula, so it directly affects which organism "wins" when reads are ambiguous (Section 3.6).
+
+### 3.12 Reference Exclusion, Removal Reporting and Control Samples
+
+Three groups of `match_paths.py` flags sit alongside the removal machinery. They do not change the TASS formula, but they change which references reach it and what auditing output is produced.
+
+#### Description-based exclusion
+
+| Flag                                   | Default | Effect                                                                                                                                                                                                                                                                     |
+| -------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--exclude_descriptions <regex> [...]` | none    | One or more regex patterns matched against the reference **descriptions** taken from `--match`. Any accession whose description matches **any** pattern is dropped from the analysis and its reads discarded. Passing the flag with no patterns filters nothing, as does omitting it. |
+
+This runs before conflict detection, so excluded accessions never compete for reads. The usual targets are database entries that are technically valid references but scientifically noisy — unplaced scaffolds, organelle sequences, plasmid-only records:
+
+```bash
+match_paths.py ... --exclude_descriptions 'unplaced genomic scaffold' 'mitochondrion'
+```
+
+Patterns are ordinary Python regexes, so anchor them (`'^Homo sapiens'`) when a loose substring would over-match.
+
+#### Removal and confusion reporting
+
+| Flag                       | Default                                    | Effect                                                                                                                                                                                                                                        |
+| -------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--report_metrics`         | off                                        | Compute per-organism TP/FP metrics against ground-truth read IDs. Emits a JSON file plus an stdout table with per-organism TASS, TP/FP status, overall precision / recall / F1, and a threshold sweep showing what percentage of TPs and FPs pass at each TASS cutoff. Requires ground truth (`--abu_file` or `--apply_ground_truth`). |
+| `--report_confusion_xlsx`  | off                                        | Write an XLSX containing confusion-matrix statistics and the false-positive reads that survived removal.                                                                                                                                       |
+| `--confusion_xlsx <path>`  | `<output_dir>/alignment_confusion_report.xlsx` | Output path for the report above.                                                                                                                                                                                                         |
+
+These are benchmarking aids: `--report_metrics` is what you use when tuning weights against a known mock community, and the confusion XLSX is the drill-down for *which reads* are responsible for a false positive that removal did not clear.
+
+#### Control samples
+
+`match_paths.py` can compare a sample against previously scored control runs. Controls are supplied as the JSON output of an earlier `match_paths.py` run, one file per control sample.
+
+| Flag                              | Default                             | Effect                                                                                                                                                                                                                                    |
+| --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--negative_controls <json> [...]` | none                                | One or more negative-control JSONs. Organisms whose TASS / read counts fall within `--control_fold_threshold` of the controls are flagged `within_negative`.                                                                               |
+| `--positive_controls <json> [...]` | none                                | One or more positive-control JSONs. Used for the spark-bar comparison in the report.                                                                                                                                                      |
+| `--control_fold_threshold <float>` | `2.0`                               | Fold-change cutoff for the negative comparison: if `sample TASS ÷ max(negative TASS) < threshold`, the organism is flagged `within_negative`.                                                                                             |
+| `--control_type <positive\|negative>` | none                            | Mark **this** sample as a control. Recorded in the output JSON metadata as `control_type`. Omit for ordinary samples.                                                                                                                      |
+| `--missing_pos_levels <level> [...]` | `toplevelkey`                     | Hierarchy level(s) at which to detect missing positive controls. One or more of `toplevelkey` (genus), `key`, `subkey` (species).                                                                                                          |
+| `--hide_missing_pos_controls`     | off                                 | Suppress detection and output of missing positive-control organisms entirely.                                                                                                                                                             |
+| `--insilico_controls <json> [...]` | none                                | One or more JSONs from in-silico simulated control samples, used to compare simulated vs real TASS scores and read counts per organism. See [In-Silico Simulation](in-silico.md).                                                          |
+
+At pipeline level these are wired up from the samplesheet's `positive` / `negative` columns rather than set by hand; see [Samplesheet](samplesheet.md#metadata-support). The flags above are the direct interface for running `match_paths.py` outside Nextflow.
 
 ## 4. Stage 3: Score Computation (`optimize_weights.py`)
 
@@ -1016,7 +1079,7 @@ The combined effect is "MAPQ relief": e.g. in the _Salmonella_ test, species-lev
 
 A related fix injects each reference's mean conflict MAPQ into the shared-windows cluster-dominance record so the dominant-organism gate floor in `optimize_weights.py` activates on that path too (previously a missing value silently forced the floor to 0).
 
-> **Disabling removal for comparison.** `--no_read_removal` (a clearer alias of `--skip_read_removal_scoring`) computes conflict regions and writes the stats to disk but applies **no** read removal to the scoring inputs, so coverage, Gini, numreads and TASS all derive from the complete original alignment set. Useful for an on/off TASS comparison when post-removal coverage is very low.
+> **Disabling removal for comparison.** `--no_read_removal` (a clearer alias of `--skip_read_removal_scoring`) computes conflict regions and writes the stats to disk but applies **no** read removal to the scoring inputs, so coverage, Gini, numreads and TASS all derive from the complete original alignment set. Useful for an on/off TASS comparison when post-removal coverage is very low. See [3.6 → CLI flags that control removal](#cli-flags-that-control-removal) for this and the related removal flags.
 
 ### 11.3 Size eligibility for the representative-coverage maximum
 
