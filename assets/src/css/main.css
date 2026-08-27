@@ -6407,3 +6407,106 @@ body.report-pdf-printing .longi-legend-pager {
   color: #90a4ae;
   font-size: 0.84em;
 }
+
+/* ══ Basemap picker + failover notice ═══════════════════════════════════ */
+.tt-basemap-ctl {
+  background: #fff;
+  padding: 5px 8px;
+  font:
+    12px system-ui,
+    sans-serif;
+  color: #333;
+  line-height: 1.3;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+}
+.tt-basemap-ctl label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.tt-basemap-ctl select {
+  border: 1px solid #ccd6e8;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font: inherit;
+  background: #fff;
+  color: #37474f;
+  max-width: 150px;
+}
+#map-basemap-note {
+  margin: 0 0 0.6em;
+  padding: 0.5em 0.7em;
+  border: 1px solid #ffe0b2;
+  border-left: 4px solid #f59f00;
+  border-radius: 6px;
+  background: #fffaf2;
+  font-size: 0.79em;
+  color: #6d4c41;
+  line-height: 1.5;
+}
+#map-basemap-note i {
+  color: #f59f00;
+  margin-right: 0.35em;
+}
+
+/* ══ Map full screen ═══════════════════════════════════════════════════
+   Two paths to the same look: the real Fullscreen API, and a fixed overlay
+   for the (common) case of a report viewed inside something that forbids it.
+   Both keep the same DOM, so the side panel, region cards and chart overlay
+   come along and nothing is rebuilt. */
+.tt-fullscreen-ctl {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.tt-fullscreen-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  background: #fff;
+  border: 0;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  padding: 5px 9px;
+  font:
+    12px system-ui,
+    sans-serif;
+  font-weight: 600;
+  color: #37474f;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tt-fullscreen-btn:hover {
+  color: #1565c0;
+}
+#map-split:fullscreen,
+#map-split.tt-map-maximised {
+  height: 100% !important;
+  width: 100% !important;
+  background: #fff;
+}
+/* !important throughout: #map-split carries inline `position: relative` and
+   `height: 560px` from the markup, and an inline declaration beats any
+   selector no matter how specific. */
+#map-split.tt-map-maximised {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 4000;
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0;
+}
+/* The report's own chrome must not sit on top of the maximised map. */
+body.tt-map-maximised-body #tabbar,
+body.tt-map-maximised-body #sidebar,
+body.tt-map-maximised-body #sidebar-resizer,
+body.tt-map-maximised-body #banner {
+  z-index: 1 !important;
+}
+/* In full screen the map takes the height the inline style would otherwise
+   cap at 560px, and the side panel keeps its share. */
+#map-split:fullscreen #map-container,
+#map-split.tt-map-maximised #map-container {
+  height: 100% !important;
+}
