@@ -34,16 +34,18 @@
   var IS_CURRENT = !/^\d+\.\d+(\.\d+)?/.test(DOCS_VERSION);
 
   var ISSUE_TEMPLATE = "add_organism.yml";
+  var UPDATE_TEMPLATE = "update_organism.yml";
   var ISSUES_NEW = "https://github.com/jhuapl-bio/taxtriage/issues/new";
 
   // GitHub issue forms are static — they cannot repeat a field group, so
   // requesting several organisms at once has to be assembled here and handed
   // over as a single prefilled issue body. The guided single-organism form
   // remains for people who start from the Issues tab instead.
-  function templateUrl(name) {
-    var params = ["template=" + encodeURIComponent(ISSUE_TEMPLATE)];
+  function templateUrl(name, kind) {
+    var upd = kind === "update";
+    var params = ["template=" + encodeURIComponent(upd ? UPDATE_TEMPLATE : ISSUE_TEMPLATE)];
     if (name) {
-      params.push("title=" + encodeURIComponent("Add organism: " + name));
+      params.push("title=" + encodeURIComponent((upd ? "Update organism: " : "Add organism: ") + name));
       params.push("organism=" + encodeURIComponent(name));
     }
     return ISSUES_NEW + "?" + params.join("&");
@@ -132,29 +134,71 @@
     return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
   }
 
-  function requestBody(entries) {
-    var lines = [
-      "### Organisms requested",
-      "",
-      "Assembled from the [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/).",
-      "Taxonomic lineage is omitted — it is derived from the tax ID.",
-      "",
-    ];
+  function isUpdate(e) {
+    return e.__mode === "update";
+  }
 
-    entries.forEach(function (e, i) {
-      lines.push("#### " + (i + 1) + ". " + (e.name || "(unnamed)"), "");
-      REQUEST_FIELDS.forEach(function (f) {
-        if (f.id === "name") return;
-        var v = e[f.id];
-        if (!v) return;
-        lines.push("- **" + f.label + ":** " + v);
-      });
-      lines.push("");
+  // Display-ready snapshot of a sheet row, keyed by column, so the form and the
+  // diff both work against plain strings rather than the parsed row.
+  function snapshot(row) {
+    var o = {};
+    ALL_COLS.forEach(function (c) {
+      o[c] = displayValue(row[c]);
     });
+    return o;
+  }
 
-    // A paste-ready block in pathogen_sheet.csv column order.
-    lines.push("### Draft CSV rows", "", "```csv");
-    lines.push(ALL_COLS.join(","));
+  // Order-insensitive for the comma-separated columns: re-selecting the same
+  // sites in a different order is not a change.
+  function normValue(id, v) {
+    v = (v == null ? "" : String(v)).trim();
+    if (LIST_COLS.indexOf(id) === -1) return v;
+    return v
+      .split(",")
+      .map(function (t) {
+        return t.trim();
+      })
+      .filter(Boolean)
+      .sort()
+      .join(", ");
+  }
+
+  // The whole point of an update request: only the fields that actually moved.
+  function diffEntry(entry) {
+    var base = entry.__base || {};
+    var out = [];
+    REQUEST_FIELDS.forEach(function (f) {
+      if (f.id === "request_type") return;
+      var before = base[f.id] || "";
+      var after = entry[f.id] || "";
+      if (normValue(f.id, before) !== normValue(f.id, after)) {
+        out.push({ id: f.id, label: f.label, before: before, after: after });
+      }
+    });
+    return out;
+  }
+
+  // The proposed full row: the current record with the edited fields applied,
+  // so lineage and anything the form does not expose survives untouched.
+  function mergedRow(entry) {
+    var out = {};
+    ALL_COLS.forEach(function (c) {
+      out[c] = (entry.__base && entry.__base[c]) || "";
+    });
+    REQUEST_FIELDS.forEach(function (f) {
+      if (f.id === "request_type") return; // provenance of the existing row stands
+      if (entry[f.id] !== undefined) out[f.id] = entry[f.id];
+    });
+    return out;
+  }
+
+  function mdCell(v) {
+    v = (v == null ? "" : String(v)).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+    return v === "" ? "_(empty)_" : v;
+  }
+
+  function csvBlock(entries) {
+    var lines = ["```csv", ALL_COLS.join(",")];
     entries.forEach(function (e) {
       lines.push(
         ALL_COLS.map(function (c) {
@@ -163,19 +207,93 @@
       );
     });
     lines.push("```", "");
+    return lines;
+  }
+
+  function requestBody(entries) {
+    var adds = entries.filter(function (e) {
+      return !isUpdate(e);
+    });
+    var ups = entries.filter(isUpdate);
+
+    var lines = [
+      "Assembled from the [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/).",
+      "Taxonomic lineage is omitted — it is derived from the tax ID.",
+      "",
+    ];
+
+    if (adds.length) {
+      lines.push("### Organisms requested (" + adds.length + " new)", "");
+      adds.forEach(function (e, i) {
+        lines.push("#### " + (i + 1) + ". " + (e.name || "(unnamed)"), "");
+        REQUEST_FIELDS.forEach(function (f) {
+          if (f.id === "name") return;
+          var v = e[f.id];
+          if (!v) return;
+          lines.push("- **" + f.label + ":** " + v);
+        });
+        lines.push("");
+      });
+      // A paste-ready block in pathogen_sheet.csv column order.
+      lines.push("#### Draft CSV rows", "");
+      lines = lines.concat(csvBlock(adds));
+    }
+
+    if (ups.length) {
+      lines.push("### Updates requested (" + ups.length + ")", "");
+      lines.push(
+        "Only the fields listed below should change; everything else stays as it is, " +
+          "including `request_type`, which records how the existing row first arrived.",
+        "",
+      );
+      ups.forEach(function (e, i) {
+        var base = e.__base || {};
+        lines.push(
+          "#### " + (i + 1) + ". " + (e.name || base.name || "(unnamed)") + " (taxid " + (base.taxid || "—") + ")",
+          "",
+        );
+        if (e.__reason) lines.push("**Reason:** " + e.__reason, "");
+        lines.push("| Field | Current | Proposed |", "| --- | --- | --- |");
+        diffEntry(e).forEach(function (c) {
+          lines.push("| `" + c.id + "` | " + mdCell(c.before) + " | " + mdCell(c.after) + " |");
+        });
+        lines.push("");
+        lines.push("<details><summary>Full row — current, then proposed</summary>", "");
+        lines = lines.concat(csvBlock([base, mergedRow(e)]));
+        lines.push("</details>", "");
+      });
+    }
+
     return lines.join("\n");
   }
 
+  function requestTitle(entries) {
+    var adds = entries.filter(function (e) {
+      return !isUpdate(e);
+    });
+    var ups = entries.filter(isUpdate);
+    function plural(n, w) {
+      return n + " " + w + (n === 1 ? "" : "s");
+    }
+    if (ups.length && !adds.length) {
+      return ups.length === 1
+        ? "Update organism: " + (ups[0].name || (ups[0].__base || {}).name || "")
+        : "Update " + ups.length + " organisms in the pathogen sheet";
+    }
+    if (adds.length && !ups.length) {
+      return adds.length === 1
+        ? "Add organism: " + adds[0].name
+        : "Add " + adds.length + " organisms to the pathogen sheet";
+    }
+    return "Pathogen sheet: " + plural(adds.length, "addition") + ", " + plural(ups.length, "update");
+  }
+
   function requestIssueUrl(entries) {
-    var title =
-      entries.length === 1
-        ? "Add organism: " + entries[0].name
-        : "Add " + entries.length + " organisms to the pathogen sheet";
     return (
       ISSUES_NEW +
       "?labels=pathogen-sheet" +
       "&title=" +
-      encodeURIComponent(title) +
+      encodeURIComponent(requestTitle(entries)) +
       "&body=" +
       encodeURIComponent(requestBody(entries))
     );
@@ -466,6 +584,7 @@
       exportBtn: root.querySelector(".pt-export"),
       drawer: root.querySelector(".pt-drawer"),
       request: root.querySelector(".pt-request-drawer"),
+      confirm: root.querySelector(".pt-confirm"),
     };
 
     /* ── filtering ────────────────────────────────────────────────────── */
@@ -824,7 +943,12 @@
         esc(row.name) +
         '</h3><dl class="pt-dl">' +
         body +
-        "</dl>";
+        "</dl>" +
+        (IS_CURRENT
+          ? '<p class="pt-drawer-cta"><button class="pt-btn pt-request" data-mode="update" data-name="' +
+            esc(row.name) +
+            '">Request an update to this entry</button></p>'
+          : "");
       el.drawer.classList.add("is-open");
     }
 
@@ -839,19 +963,38 @@
      */
 
     var staged = [];
+    var mode = "add"; // "add" | "update"
+    var baseRow = null; // snapshot of the organism being updated
+    var pending = null; // { list, wantsFile } awaiting confirmation
 
-    function fieldControl(f) {
-      var req = f.required ? " required" : "";
+    var organismOptions = rows
+      .map(function (r) {
+        return '<option value="' + esc(r.name) + '"></option>';
+      })
+      .join("");
+
+    var byName = new Map();
+    rows.forEach(function (r) {
+      byName.set(r.name.toLowerCase(), r);
+    });
+
+    function fieldControl(f, current) {
+      current = current == null ? "" : String(current);
+      // Required markers only bind in add mode — an update supplies whichever
+      // fields it changes, and leaves the rest alone.
+      var req = f.required && mode === "add" ? " required" : "";
       if (f.type === "select") {
+        var opts = f.options.slice();
+        if (current && opts.indexOf(current) === -1) opts.push(current);
         return (
           '<select data-f="' +
           f.id +
           '"' +
           req +
           '><option value="">—</option>' +
-          f.options
+          opts
             .map(function (o) {
-              return '<option value="' + esc(o) + '">' + esc(o) + "</option>";
+              return '<option value="' + esc(o) + '"' + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
             })
             .join("") +
           "</select>"
@@ -880,87 +1023,190 @@
         );
       }
       if (f.type === "sites") {
+        // Values already in the sheet are offered even when they are not in the
+        // canonical list, so loading a record never silently drops a site.
+        var chosen = current
+          .split(",")
+          .map(function (t) {
+            return t.trim();
+          })
+          .filter(Boolean);
+        var all = SITES.slice();
+        chosen.forEach(function (c) {
+          if (all.indexOf(c) === -1) all.push(c);
+        });
         return (
           '<select data-f="' +
           f.id +
           '" multiple size="4">' +
-          SITES.map(function (o) {
-            return '<option value="' + esc(o) + '">' + esc(o) + "</option>";
-          }).join("") +
+          all
+            .map(function (o) {
+              return (
+                '<option value="' +
+                esc(o) +
+                '"' +
+                (chosen.indexOf(o) !== -1 ? " selected" : "") +
+                ">" +
+                esc(o) +
+                "</option>"
+              );
+            })
+            .join("") +
           "</select>"
         );
       }
       if (f.type === "textarea") {
-        return '<textarea data-f="' + f.id + '" rows="2"' + req + "></textarea>";
+        return '<textarea data-f="' + f.id + '" rows="2"' + req + ">" + esc(current) + "</textarea>";
       }
-      return '<input type="text" data-f="' + f.id + '" placeholder="' + esc(f.ph || "") + '"' + req + ">";
+      return (
+        '<input type="text" data-f="' +
+        f.id +
+        '" value="' +
+        esc(current) +
+        '" placeholder="' +
+        esc(f.ph || "") +
+        '"' +
+        req +
+        ">"
+      );
     }
 
-    function renderRequest() {
-      var fields = REQUEST_FIELDS.map(function (f) {
-        return (
-          '<label class="pt-rq-field' +
-          (f.type === "textarea" || f.type === "sites" ? " pt-rq-wide" : "") +
-          '"><span>' +
-          esc(f.label) +
-          (f.required ? ' <em aria-hidden="true">*</em>' : "") +
-          "</span>" +
-          fieldControl(f) +
-          "</label>"
-        );
-      }).join("");
+    function renderRequest(values) {
+      values = values || {};
+      var isUpd = mode === "update";
+      var loaded = isUpd && baseRow;
+
+      var modes =
+        '<div class="pt-rq-modes" role="group" aria-label="Kind of request">' +
+        '<button type="button" class="pt-rq-mode' +
+        (isUpd ? "" : " is-on") +
+        '" data-mode="add" aria-pressed="' +
+        (isUpd ? "false" : "true") +
+        '">Add new organisms</button>' +
+        '<button type="button" class="pt-rq-mode' +
+        (isUpd ? " is-on" : "") +
+        '" data-mode="update" aria-pressed="' +
+        (isUpd ? "true" : "false") +
+        '">Update existing entries</button>' +
+        "</div>";
+
+      var intro = isUpd
+        ? '<p class="pt-rq-intro">Pick an organism already in the sheet, correct whatever is wrong, and only the fields you actually changed are requested. Queue as many as you like, then review everything before it leaves the page.</p>'
+        : '<p class="pt-rq-intro">Queue as many as you like, then review before opening a single issue. Fields marked <em>*</em> are required; the rest help but can be left blank.</p>';
+
+      var picker = isUpd
+        ? '<label class="pt-rq-field pt-rq-wide pt-rq-target-field"><span>Organism to update <em aria-hidden="true">*</em></span>' +
+          '<input type="text" class="pt-rq-target" list="pt-rq-organisms" autocomplete="off" placeholder="Start typing an organism already in the sheet…" value="' +
+          esc(values.__target || "") +
+          '">' +
+          '<datalist id="pt-rq-organisms">' +
+          organismOptions +
+          "</datalist></label>"
+        : "";
+
+      var fields =
+        isUpd && !loaded
+          ? '<p class="pt-rq-empty">Choose an organism above to load its current values.</p>'
+          : REQUEST_FIELDS.filter(function (f) {
+              // request_type records how a row first arrived; an update to an
+              // existing row does not change that, so it is not offered here.
+              return !(isUpd && f.id === "request_type");
+            })
+              .map(function (f) {
+                return (
+                  '<label class="pt-rq-field' +
+                  (f.type === "textarea" || f.type === "sites" ? " pt-rq-wide" : "") +
+                  '"><span>' +
+                  esc(f.label) +
+                  (f.required && !isUpd ? ' <em aria-hidden="true">*</em>' : "") +
+                  "</span>" +
+                  fieldControl(f, values[f.id]) +
+                  "</label>"
+                );
+              })
+              .join("");
+
+      var reason = loaded
+        ? '<label class="pt-rq-field pt-rq-wide"><span>Reason for the change <em aria-hidden="true">*</em></span>' +
+          '<textarea data-f="__reason" rows="2" placeholder="What is wrong today, and what should it say instead?">' +
+          esc(values.__reason || "") +
+          "</textarea></label>"
+        : "";
+
+      var live = loaded ? '<p class="pt-rq-live" aria-live="polite"></p>' : "";
 
       var list = staged.length
         ? '<ol class="pt-rq-list">' +
           staged
             .map(function (e, i) {
+              var isU = isUpdate(e);
+              var n = isU ? diffEntry(e).length : 0;
+              var meta = isU
+                ? n + " field" + (n === 1 ? "" : "s") + " changed"
+                : "taxid " + esc(e.taxid) + ", " + esc(e.general_classification);
               return (
-                "<li><span><strong>" +
-                esc(e.name) +
-                "</strong> — taxid " +
-                esc(e.taxid) +
-                ", " +
-                esc(e.general_classification) +
+                '<li><span><span class="pt-rq-badge pt-rq-badge-' +
+                (isU ? "update" : "add") +
+                '">' +
+                (isU ? "update" : "add") +
+                "</span> <strong>" +
+                esc(e.name || (e.__base || {}).name || "") +
+                "</strong> — " +
+                meta +
                 '</span><button type="button" class="pt-rq-del" data-i="' +
                 i +
                 '" aria-label="Remove ' +
-                esc(e.name) +
+                esc(e.name || "") +
                 '">✕</button></li>'
               );
             })
             .join("") +
           "</ol>"
-        : '<p class="pt-rq-empty">Nothing staged yet. Fill the fields above and choose <strong>Add another</strong> to queue more than one.</p>';
+        : '<p class="pt-rq-empty">Nothing staged yet. Fill the fields above and use <strong>' +
+          (isUpd ? "Stage this update" : "Add another") +
+          "</strong> to queue more than one.</p>";
 
       el.request.innerHTML =
         '<button class="pt-drawer-close" aria-label="Close">✕</button>' +
-        "<h3>Request organisms</h3>" +
-        '<p class="pt-rq-intro">Queue as many as you like, then open a single issue. Fields marked <em>*</em> are required; the rest help but can be left blank.</p>' +
+        "<h3>Request changes</h3>" +
+        modes +
+        intro +
         '<div class="pt-rq-form">' +
+        picker +
         fields +
+        reason +
         "</div>" +
+        live +
         '<p class="pt-rq-error" role="alert" hidden></p>' +
         '<div class="pt-rq-actions">' +
-        '<button type="button" class="pt-btn pt-rq-add">Add another</button>' +
-        '<button type="button" class="pt-btn pt-rq-open">Open issue' +
+        '<button type="button" class="pt-btn pt-rq-add">' +
+        (isUpd ? "Stage this update" : "Add another") +
+        "</button>" +
+        '<button type="button" class="pt-btn pt-rq-open">Review &amp; open issue' +
         (staged.length ? " (" + staged.length + ")" : "") +
         "</button>" +
-        '<button type="button" class="pt-btn pt-rq-download">Download</button>' +
+        '<button type="button" class="pt-btn pt-rq-download">Review &amp; download</button>' +
         "</div>" +
-        '<p class="pt-rq-note" id="pt-rq-type-note">A public GitHub issue is the fastest route. If the ' +
-        "request is sensitive, <strong>Download</strong> saves the same content as a " +
+        '<p class="pt-rq-note" id="pt-rq-type-note">Either route shows you everything that will be submitted before it leaves this page. ' +
+        "A public GitHub issue is the fastest; if the request is sensitive, <strong>Download</strong> saves the same content as a " +
         "file you can email privately instead.<br>" +
-        "<code>request_type</code> follows whichever you choose — " +
-        "<strong>Open issue</strong> records <code>" +
-        TYPE_FOR_ISSUE +
-        "</code>, <strong>Download</strong> records <code>" +
-        TYPE_FOR_FILE +
-        "</code>.</p>" +
+        (isUpd
+          ? "<code>request_type</code> is left as it stands on the existing row — it records how that entry first arrived, which an update does not change."
+          : "<code>request_type</code> follows whichever you choose — <strong>Open issue</strong> records <code>" +
+            TYPE_FOR_ISSUE +
+            "</code>, <strong>Download</strong> records <code>" +
+            TYPE_FOR_FILE +
+            "</code>.") +
+        "</p>" +
         "<h4>Staged</h4>" +
         list +
         '<p class="pt-rq-alt">Prefer GitHub\'s guided form for a single organism? <a href="' +
-        templateUrl("") +
-        '" target="_blank" rel="noopener">Use the issue template</a>.</p>';
+        templateUrl("", isUpd ? "update" : "add") +
+        '" target="_blank" rel="noopener">Use the ' +
+        (isUpd ? "update" : "add") +
+        " issue template</a>.</p>";
+
+      updateLive();
     }
 
     function readForm() {
@@ -981,18 +1227,88 @@
           entry[f.id] = (node.value || "").trim();
         }
       });
+      var target = el.request.querySelector(".pt-rq-target");
+      if (target) entry.__target = target.value.trim();
+      var reason = el.request.querySelector('[data-f="__reason"]');
+      if (reason) entry.__reason = reason.value.trim();
+      if (mode === "update") {
+        entry.__mode = "update";
+        entry.__base = baseRow;
+      } else {
+        entry.__mode = "add";
+      }
       return entry;
     }
 
     function showError(msg) {
       var p = el.request.querySelector(".pt-rq-error");
+      if (!p) return;
       p.textContent = msg;
       p.hidden = !msg;
+    }
+
+    // Running count of what an update would actually change, so the diff is
+    // never a surprise at the confirmation step.
+    function updateLive() {
+      var node = el.request.querySelector(".pt-rq-live");
+      if (!node) return;
+      var n = diffEntry(readForm()).length;
+      node.textContent = n
+        ? n + " field" + (n === 1 ? "" : "s") + " changed against the current record."
+        : "No changes yet — edit a field to request an update.";
+      node.classList.toggle("is-on", !!n);
+    }
+
+    // Loads an organism into the form. Unknown names clear the loaded record
+    // rather than half-filling the form from a previous one.
+    function pickTarget(name) {
+      var row = byName.get(
+        String(name || "")
+          .trim()
+          .toLowerCase(),
+      );
+      if (!row) {
+        if (!baseRow) return;
+        baseRow = null;
+        renderRequest({ __target: name });
+        return;
+      }
+      if (baseRow && baseRow.name === row.name) return;
+      baseRow = snapshot(row);
+      var values = {};
+      REQUEST_FIELDS.forEach(function (f) {
+        values[f.id] = baseRow[f.id] || "";
+      });
+      values.__target = row.name;
+      renderRequest(values);
+      showError("");
     }
 
     // Returns the entry, or null after reporting what is missing.
     function takeEntry() {
       var entry = readForm();
+      if (mode === "update") {
+        if (!baseRow) {
+          showError("Pick an organism to update first.");
+          return null;
+        }
+        entry.name = entry.name || baseRow.name;
+        if (!diffEntry(entry).length) {
+          showError("Change at least one field before staging this update.");
+          return null;
+        }
+        if (!entry.__reason) {
+          showError("Add a short reason so a maintainer can review the change.");
+          return null;
+        }
+        if (entry.taxid && !/^\d+$/.test(entry.taxid)) {
+          showError("Tax ID should be numeric, e.g. 1313.");
+          return null;
+        }
+        showError("");
+        return entry;
+      }
+
       var missing = REQUEST_FIELDS.filter(function (f) {
         return f.required && !entry[f.id];
       });
@@ -1021,31 +1337,184 @@
     function collectEntries() {
       var list = staged.slice();
       var current = readForm();
-      var started = REQUEST_FIELDS.some(function (f) {
-        return f.required && current[f.id];
-      });
+      var started =
+        mode === "update"
+          ? !!baseRow && diffEntry(current).length > 0
+          : REQUEST_FIELDS.some(function (f) {
+              return f.required && current[f.id];
+            });
       if (started) {
         var last = takeEntry();
         if (!last) return null;
         list.push(last);
       }
       if (!list.length) {
-        showError("Add at least one organism first.");
+        showError(mode === "update" ? "Stage at least one update first." : "Add at least one organism first.");
         return null;
       }
       return list;
     }
 
-    function openRequest(prefillName) {
+    function openRequest(prefillName, wantMode) {
+      mode = wantMode === "update" ? "update" : "add";
+      baseRow = null;
       renderRequest();
       if (prefillName) {
-        var n = el.request.querySelector('[data-f="name"]');
-        if (n) n.value = prefillName;
+        if (mode === "update") {
+          var t = el.request.querySelector(".pt-rq-target");
+          if (t) t.value = prefillName;
+          pickTarget(prefillName);
+        } else {
+          var n = el.request.querySelector('[data-f="name"]');
+          if (n) n.value = prefillName;
+        }
       }
       el.request.classList.add("is-open");
       var first = el.request.querySelector("input,select,textarea");
       if (first && first.focus) first.focus();
     }
+
+    /* ── confirmation ─────────────────────────────────────────────────────
+     * Nothing leaves the page — no issue tab, no download — until the exact
+     * content has been shown: full records for additions, and a current vs
+     * proposed table of only the changed fields for updates.
+     */
+
+    function confirmMarkup(list, wantsFile) {
+      var adds = list.filter(function (e) {
+        return !isUpdate(e);
+      });
+      var ups = list.filter(isUpdate);
+      var out = [];
+
+      out.push('<div class="pt-cf-card" role="dialog" aria-modal="true" aria-labelledby="pt-cf-title">');
+      out.push('<button class="pt-drawer-close pt-cf-cancel" aria-label="Back to editing">✕</button>');
+      out.push('<h3 id="pt-cf-title">Review before submitting</h3>');
+      out.push(
+        '<p class="pt-cf-sum">' +
+          (adds.length ? "<strong>" + adds.length + "</strong> new organism" + (adds.length === 1 ? "" : "s") : "") +
+          (adds.length && ups.length ? " and " : "") +
+          (ups.length ? "<strong>" + ups.length + "</strong> update" + (ups.length === 1 ? "" : "s") : "") +
+          " — " +
+          (wantsFile ? "saved as a Markdown file you can send privately." : "opened as a prefilled GitHub issue.") +
+          (adds.length
+            ? " New entries are recorded as <code>" + (wantsFile ? TYPE_FOR_FILE : TYPE_FOR_ISSUE) + "</code>."
+            : "") +
+          (ups.length ? " Updates leave <code>request_type</code> on the existing row untouched." : "") +
+          "</p>",
+      );
+      out.push('<div class="pt-cf-body">');
+
+      adds.forEach(function (e) {
+        out.push('<section class="pt-cf-entry">');
+        out.push('<h4><span class="pt-rq-badge pt-rq-badge-add">add</span> ' + esc(e.name) + "</h4>");
+        out.push('<dl class="pt-dl pt-cf-dl">');
+        REQUEST_FIELDS.forEach(function (f) {
+          if (f.id === "name" || !e[f.id]) return;
+          out.push("<dt>" + esc(f.label) + "</dt><dd>" + esc(e[f.id]) + "</dd>");
+        });
+        out.push("</dl></section>");
+      });
+
+      ups.forEach(function (e) {
+        var base = e.__base || {};
+        out.push('<section class="pt-cf-entry">');
+        out.push(
+          '<h4><span class="pt-rq-badge pt-rq-badge-update">update</span> ' +
+            esc(e.name || base.name || "") +
+            ' <span class="pt-cf-taxid">taxid ' +
+            esc(base.taxid || "—") +
+            "</span></h4>",
+        );
+        if (e.__reason) out.push('<p class="pt-cf-reason">' + esc(e.__reason) + "</p>");
+        out.push(
+          '<table class="pt-cf-diff"><thead><tr><th>Field</th><th>Current</th><th>Proposed</th></tr></thead><tbody>',
+        );
+        diffEntry(e).forEach(function (c) {
+          out.push(
+            "<tr><td>" +
+              esc(c.label) +
+              '</td><td class="pt-cf-before">' +
+              (c.before ? esc(c.before) : "<em>empty</em>") +
+              '</td><td class="pt-cf-after">' +
+              (c.after ? esc(c.after) : "<em>empty</em>") +
+              "</td></tr>",
+          );
+        });
+        out.push("</tbody></table>");
+        out.push('<p class="pt-cf-note">Every other field stays exactly as it is today.</p>');
+        out.push("</section>");
+      });
+
+      out.push("</div>");
+      out.push(
+        '<div class="pt-cf-actions">' +
+          '<button type="button" class="pt-btn pt-cf-cancel">Back to editing</button>' +
+          '<button type="button" class="pt-btn pt-cf-go">' +
+          (wantsFile ? "Confirm &amp; download" : "Confirm &amp; open issue") +
+          "</button></div>",
+      );
+      out.push("</div>");
+      return out.join("");
+    }
+
+    function openConfirm(list, wantsFile) {
+      pending = { list: list, wantsFile: wantsFile };
+      el.confirm.innerHTML = confirmMarkup(list, wantsFile);
+      el.confirm.classList.add("is-open");
+      var go = el.confirm.querySelector(".pt-cf-go");
+      if (go && go.focus) go.focus();
+    }
+
+    function closeConfirm() {
+      el.confirm.classList.remove("is-open");
+      el.confirm.innerHTML = "";
+      pending = null;
+    }
+
+    function submitRequest(list, wantsFile) {
+      if (wantsFile) {
+        // Same content as the issue, as a file that can be sent privately.
+        var onlyUpdates = list.every(isUpdate);
+        downloadFile(
+          onlyUpdates ? "taxtriage-organism-update.md" : "taxtriage-organism-request.md",
+          requestBody(list),
+          "text/markdown",
+        );
+        return;
+      }
+      window.open(requestIssueUrl(list), "_blank", "noopener");
+    }
+
+    el.confirm.addEventListener("click", function (e) {
+      if (e.target.closest(".pt-cf-cancel") || e.target === el.confirm) {
+        closeConfirm();
+        return;
+      }
+      if (e.target.closest(".pt-cf-go") && pending) {
+        var p = pending;
+        closeConfirm();
+        submitRequest(p.list, p.wantsFile);
+      }
+    });
+
+    el.request.addEventListener("change", function (e) {
+      if (e.target.classList.contains("pt-rq-target")) {
+        pickTarget(e.target.value);
+        return;
+      }
+      updateLive();
+    });
+
+    el.request.addEventListener("input", function (e) {
+      // A datalist pick fires input, not change — load it as soon as the value
+      // is an exact match so the form fills without waiting for a blur.
+      if (e.target.classList.contains("pt-rq-target")) {
+        if (byName.has(e.target.value.trim().toLowerCase())) pickTarget(e.target.value);
+        return;
+      }
+      updateLive();
+    });
 
     el.request.addEventListener("click", function (e) {
       if (e.target.closest(".pt-drawer-close")) {
@@ -1053,15 +1522,21 @@
         return;
       }
 
+      var modeBtn = e.target.closest(".pt-rq-mode");
+      if (modeBtn) {
+        if (modeBtn.dataset.mode === mode) return;
+        mode = modeBtn.dataset.mode;
+        baseRow = null;
+        renderRequest();
+        showError("");
+        return;
+      }
+
       var del = e.target.closest(".pt-rq-del");
       if (del) {
         staged.splice(Number(del.dataset.i), 1);
         var keep = readForm();
-        renderRequest();
-        REQUEST_FIELDS.forEach(function (f) {
-          var node = el.request.querySelector('[data-f="' + f.id + '"]');
-          if (node && f.type !== "sites" && keep[f.id]) node.value = keep[f.id];
-        });
+        renderRequest(keep);
         return;
       }
 
@@ -1069,6 +1544,7 @@
         var entry = takeEntry();
         if (!entry) return;
         staged.push(entry);
+        baseRow = null;
         renderRequest(); // clears the form, ready for the next one
         return;
       }
@@ -1079,29 +1555,24 @@
         var list = collectEntries();
         if (!list) return;
 
-        // The picker is a preview; the route is the truth. Overriding here
-        // means request_type always records how the request actually arrived.
-        list = list.map(function (e) {
-          e.request_type = wantsFile ? TYPE_FOR_FILE : TYPE_FOR_ISSUE;
-          return e;
+        // The picker is a preview; the route is the truth. Stamping here means
+        // request_type always records how the request actually arrived, and the
+        // confirmation shows the value that will really be filed.
+        list = list.map(function (x) {
+          if (!isUpdate(x)) x.request_type = wantsFile ? TYPE_FOR_FILE : TYPE_FOR_ISSUE;
+          return x;
         });
 
-        if (wantsFile) {
-          // Same content as the issue, as a file that can be sent privately.
-          downloadFile("taxtriage-organism-request.md", requestBody(list), "text/markdown");
-          return;
-        }
-
-        var url = requestIssueUrl(list);
-        if (url.length > MAX_URL) {
+        if (wantsIssue && requestIssueUrl(list).length > MAX_URL) {
           showError(
             "That is too much for one issue (" +
               list.length +
-              " organisms). Use Download instead, or open this batch and start another.",
+              " entries). Use Download instead, or submit this batch and start another.",
           );
           return;
         }
-        window.open(url, "_blank", "noopener");
+
+        openConfirm(list, wantsFile);
       }
     });
 
@@ -1202,7 +1673,7 @@
     root.addEventListener("click", function (e) {
       var btn = e.target.closest(".pt-request");
       if (!btn || el.request.contains(btn)) return;
-      openRequest(btn.dataset.name || "");
+      openRequest(btn.dataset.name || "", btn.dataset.mode || "add");
     });
 
     el.thead.addEventListener("click", function (e) {
@@ -1225,6 +1696,12 @@
 
     document.addEventListener("keydown", function (e) {
       if (e.key !== "Escape") return;
+      // The confirmation sits on top of everything, so it unwinds first —
+      // Escape there means "back to editing", not "throw the request away".
+      if (el.confirm.classList.contains("is-open")) {
+        closeConfirm();
+        return;
+      }
       closeDrawer();
       el.request.classList.remove("is-open");
     });
@@ -1257,7 +1734,7 @@
       '<span class="pt-count"></span>' +
       '<button class="pt-btn pt-reset" hidden>Clear filters</button>' +
       '<button class="pt-btn pt-export">Export CSV</button>' +
-      (IS_CURRENT ? '<button class="pt-btn pt-request">Request organisms</button>' : "") +
+      (IS_CURRENT ? '<button class="pt-btn pt-request">Request changes</button>' : "") +
       "</div>" +
       '<div class="pt-chips"></div>' +
       '<div class="pt-body">' +
@@ -1271,7 +1748,8 @@
       '<div class="pt-pager"></div>' +
       "</div></div>" +
       '<div class="pt-drawer"></div>' +
-      '<div class="pt-drawer pt-request-drawer"></div>'
+      '<div class="pt-drawer pt-request-drawer"></div>' +
+      '<div class="pt-confirm"></div>'
     );
   }
 

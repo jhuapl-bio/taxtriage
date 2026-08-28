@@ -575,6 +575,10 @@ function _doInitMap() {
     maxZoom: 19,
   }).addTo(_leafletMap);
 
+  // Download button for the map (see 44_map_export.js). Added before the
+  // cluster control so it sits at the top of the top-right control stack.
+  if (typeof _ensureMapExportControl === "function") _ensureMapExportControl();
+
   _markerLayer = _makeMarkerLayer();
   _markerLayer.addTo(_leafletMap);
 

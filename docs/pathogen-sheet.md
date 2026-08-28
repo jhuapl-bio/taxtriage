@@ -49,14 +49,42 @@ currently carry are left blank.
 | `reference`              | Literature supporting the annotation                                                                                     |
 | `assembly_accession`     | Default reference assembly downloaded for alignment                                                                      |
 
-## Contributing an organism
+## Requesting changes
 
-Use **Request organisms** above to queue one or more entries and open a single
-issue — it collects the same fields as the CSV and includes paste-ready rows for
-a maintainer. Searching for something that is missing also offers to request it
-directly from the empty result.
+**Request changes** above covers both directions: adding organisms the sheet
+does not carry, and correcting ones it does.
 
-The sheet is a plain CSV, so additions can equally be pull requests against the
+### Adding organisms
+
+Fill the form and choose **Add another** to queue as many as you like. Searching
+for something that is missing also offers to request it directly from the empty
+result, with the query prefilled.
+
+### Updating an existing entry
+
+Switch to **Update existing entries**, pick the organism, and the form loads its
+current values. Change only what is wrong — the request records the fields you
+actually touched, as *current → proposed*, and says explicitly that everything
+else stays as it is. A short reason is required, since that is what a reviewer
+weighs. Opening any row and choosing **Request an update to this entry** starts
+the same flow with that organism already loaded.
+
+Additions and updates can be queued together and go out as one issue.
+
+### Reviewing before you submit
+
+Neither **Review & open issue** nor **Review & download** submits anything
+straight away. Both first show a confirmation window listing every staged entry:
+new organisms with their full field set, and updates as a table of just the
+changed fields, current beside proposed. Only **Confirm** hands the request over
+— to a prefilled GitHub issue, or to a Markdown file you can send privately if
+the request is sensitive. **Back to editing** returns you to the form with
+everything intact.
+
+The `request_type` column follows the route: `git-tracked` for an issue,
+`external-local` for a download.
+
+The sheet is a plain CSV, so changes can equally be pull requests against the
 pipeline repo. See
 [Contributing](contributing.md#adding-organisms-to-the-pathogen-sheet) for the
 required fields and review expectations.
