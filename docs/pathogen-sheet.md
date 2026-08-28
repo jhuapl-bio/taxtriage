@@ -64,7 +64,7 @@ result, with the query prefilled.
 
 Switch to **Update existing entries**, pick the organism, and the form loads its
 current values. Change only what is wrong — the request records the fields you
-actually touched, as *current → proposed*, and says explicitly that everything
+actually touched, as _current → proposed_, and says explicitly that everything
 else stays as it is. A short reason is required, since that is what a reviewer
 weighs. Opening any row and choosing **Request an update to this entry** starts
 the same flow with that organism already loaded.

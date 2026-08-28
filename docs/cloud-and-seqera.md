@@ -17,6 +17,8 @@ TaxTriage can be run on AWS cloud infrastructure using [Nextflow Tower / Seqera]
 
 Send a request to **brian.merritt@jhuapl.edu** — you will receive credentials for the S3 buckets and the compute environment.
 
+⚠️ If you are part of the internal development program, you can use the shared JHU/APL Seqera instance and stop here. Just wait on a confirmation email from JHU/APL devs. Otherwise, you will need to set up your own Seqera account and compute environment in the next step.
+
 ### Step 3: Set Up a Compute Environment
 
 If using the JHU/APL-provided Seqera instance, the compute environment is pre-configured. For your own Seqera account, follow the [official compute environment docs](https://abhi18av.github.io/nf-tower-docs-orgs-and-teams/21.04.temp3/compute-envs/overview/) to connect your AWS account and configure billing.
@@ -71,10 +73,10 @@ Expand the pipeline parameters in the launch interface. All parameters match the
 
 ### Launch Options
 
-**Option A — Direct Launch:**  
+**Option A — Direct Launch:**
 Click **Launch** to start immediately. You will be redirected to the running job list.
 
-**Option B — Launch Settings:**  
+**Option B — Launch Settings:**
 Click **Launch Settings** to review the full JSON parameter set, change the Git branch, and customize the environment before submitting.
 
 ---
