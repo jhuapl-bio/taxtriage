@@ -231,6 +231,30 @@ async function _exportMapView(target, opts) {
   return _renderSvgExport(svgText, { title, filename, width, height, format: opts.format });
 }
 
+/* Park the shared export modal where it can actually be seen.
+
+   The modal lives on <body>, which is the wrong place while the map is full
+   screen: the real Fullscreen API renders only #map-split's subtree, and the
+   CSS fallback stacks #map-split above the rest of the page — either way a
+   modal on <body> is invisible. So it is moved INTO #map-split for as long as
+   the map is maximised, and put back on <body> when it isn't. */
+function _dockExportModal() {
+  const overlay = document.getElementById("export-overlay");
+  const split = document.getElementById("map-split");
+  if (!overlay) return;
+  const fs = !!split && (document.fullscreenElement === split || split.classList.contains("tt-map-maximised"));
+  const host = fs ? split : document.body;
+  if (overlay.parentElement !== host) host.appendChild(overlay);
+  // Above the floating region panels, which go up to z-index 1400.
+  overlay.classList.toggle("in-map-fullscreen", fs);
+}
+
+/* Called by the map's full-screen toggle (35_tab_map.js), so an open dialog
+   follows the map in and out rather than being left behind on <body>. */
+window._ttMapExportOnFullscreen = function () {
+  _dockExportModal();
+};
+
 /* Open the shared export modal against the map. Same dialog, same formats and
    size fields the SVG plots use. */
 function _openMapExport() {
@@ -245,6 +269,7 @@ function _openMapExport() {
   overlay.querySelector("#export-width").value = Math.max(50, Math.round(container.clientWidth || 900));
   overlay.querySelector("#export-height").value = Math.max(50, Math.round(container.clientHeight || 500));
   _syncExportModalFields();
+  _dockExportModal();
   overlay.style.display = "flex";
 }
 

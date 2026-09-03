@@ -548,6 +548,283 @@ function _fitMapToData() {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   -  §  BASEMAPS
+   -     Every tile source here is keyless and needs no account: a report is
+   -     a file that gets emailed around and opened months later, so anything
+   -     that depends on a personal API key would be a map that works for the
+   -     person who built it and shows "API key required" tiles for everyone
+   -     else. If a provider starts demanding one anyway, the failover below
+   -     moves to the next source rather than leaving a grey grid.
+   -
+   -     "No basemap" is a first-class choice, not a failure state: markers,
+   -     clusters and drawn regions all work without tiles, which is what an
+   -     air-gapped or offline machine gets.
+   ═══════════════════════════════════════════════════════════════════════ */
+const _BASEMAPS = [
+  {
+    id: "osm",
+    label: "OpenStreetMap",
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  {
+    id: "carto",
+    label: "CARTO Voyager",
+    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    subdomains: "abcd",
+    maxZoom: 19,
+    attribution:
+      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © ' +
+      '<a href="https://carto.com/attributions">CARTO</a>',
+  },
+  {
+    id: "esri-gray",
+    label: "Esri Light Gray",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    maxZoom: 16,
+    attribution: "Tiles © Esri",
+  },
+  {
+    id: "esri-imagery",
+    label: "Esri Satellite",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    maxZoom: 19,
+    attribution: "Tiles © Esri, Maxar, Earthstar Geographics",
+  },
+  { id: "none", label: "No basemap", url: null },
+];
+
+let _basemapLayer = null;
+let _basemapId = null;
+const _BASEMAP_LS_KEY = "tt.map.basemap";
+
+function _savedBasemapId() {
+  try {
+    const v = localStorage.getItem(_BASEMAP_LS_KEY);
+    return _BASEMAPS.some((b) => b.id === v) ? v : null;
+  } catch (e) {
+    return null; // file:// or blocked site data — just use the default
+  }
+}
+
+function _mapNotice(html) {
+  const el = document.getElementById("map-basemap-note");
+  if (!el) return;
+  el.innerHTML = html || "";
+  el.style.display = html ? "" : "none";
+}
+
+/* Swap the tile layer. `auto` marks a switch the failover made rather than
+   one the user asked for, so only a deliberate choice is remembered. */
+function _applyBasemap(id, auto) {
+  if (!_leafletMap || typeof L === "undefined") return;
+  const spec = _BASEMAPS.find((b) => b.id === id) || _BASEMAPS[0];
+  if (_basemapLayer) {
+    _leafletMap.removeLayer(_basemapLayer);
+    _basemapLayer = null;
+  }
+  _basemapId = spec.id;
+  const sel = document.getElementById("map-basemap-sel");
+  if (sel && sel.value !== spec.id) sel.value = spec.id;
+  if (!auto) {
+    try {
+      localStorage.setItem(_BASEMAP_LS_KEY, spec.id);
+    } catch (e) {}
+  }
+  if (!spec.url) {
+    // A deliberate "No basemap" is not a problem worth a banner; one the
+    // failover arrived at keeps whatever explanation brought it here.
+    if (!auto) _mapNotice("");
+    return;
+  }
+
+  const opts = { attribution: spec.attribution, maxZoom: spec.maxZoom || 19 };
+  if (spec.subdomains) opts.subdomains = spec.subdomains;
+  _basemapLayer = L.tileLayer(spec.url, opts);
+
+  /* Failover. A provider that has started requiring a key answers with 401 /
+     403 / a placeholder tile, which reaches us as a burst of `tileerror` with
+     no successful load in between. One stray error is normal (a tile at the
+     edge of coverage), so the switch waits for several with nothing loading. */
+  let errors = 0;
+  let loadedOne = false;
+  _basemapLayer.on("load", () => {
+    loadedOne = true;
+    errors = 0;
+  });
+  _basemapLayer.on("tileload", () => {
+    loadedOne = true;
+  });
+  _basemapLayer.on("tileerror", () => {
+    errors += 1;
+    if (loadedOne || errors < 6) return;
+    const i = _BASEMAPS.findIndex((b) => b.id === spec.id);
+    const next = _BASEMAPS[i + 1];
+    if (!next) return;
+    _applyBasemap(next.id, true);
+    _mapNotice(
+      '<i class="fas fa-triangle-exclamation"></i> <b>' +
+        spec.label +
+        "</b> tiles did not load — the machine is offline, the tile host is blocked, or that provider now wants an " +
+        "API key. Switched to <b>" +
+        next.label +
+        "</b>." +
+        (next.url
+          ? " Pick a different basemap from the control on the map if this one is no better."
+          : " No tile source answered, so the map is drawing without a basemap — markers, clusters and drawn " +
+            "regions all still work."),
+    );
+  });
+  _basemapLayer.addTo(_leafletMap);
+  if (!auto) _mapNotice("");
+}
+
+/* On-map control: basemap picker + the fullscreen toggle live together in the
+   top-right corner, under the cluster-mode box. */
+let _basemapCtlAdded = false;
+function _addBasemapControl() {
+  if (typeof L.Control === "undefined" || _basemapCtlAdded || !_leafletMap) return;
+  const Ctl = L.Control.extend({
+    options: { position: "topright" },
+    onAdd: function () {
+      const div = L.DomUtil.create("div", "leaflet-bar tt-basemap-ctl");
+      div.innerHTML =
+        '<label for="map-basemap-sel">Basemap</label>' +
+        '<select id="map-basemap-sel" title="Every option here is keyless — no account or API key needed">' +
+        _BASEMAPS
+          .map(
+            (b) =>
+              '<option value="' + b.id + '"' + (b.id === _basemapId ? " selected" : "") + ">" + b.label + "</option>",
+          )
+          .join("") +
+        "</select>";
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      div.querySelector("select").addEventListener("change", (e) => _applyBasemap(e.target.value));
+      return div;
+    },
+  });
+  _leafletMap.addControl(new Ctl());
+  _basemapCtlAdded = true;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   -  §  MAP FULLSCREEN
+   -     Blows the whole map split — map, side panel, region cards, chart
+   -     overlay, controls — up to the full screen. The DOM is untouched, so
+   -     everything keeps working exactly as it does inline; nothing is
+   -     re-created and no state is lost on the way in or out.
+   -
+   -     Reports are often viewed inside a wrapper that forbids the Fullscreen
+   -     API (an iframe without allowfullscreen, some viewers), so a refusal
+   -     falls back to a fixed full-viewport overlay, which looks the same and
+   -     leaves Escape working.
+   ═══════════════════════════════════════════════════════════════════════ */
+function _mapFullscreenEl() {
+  return document.getElementById("map-split");
+}
+
+function _mapIsFullscreen() {
+  const el = _mapFullscreenEl();
+  if (!el) return false;
+  return document.fullscreenElement === el || el.classList.contains("tt-map-maximised");
+}
+
+function _syncMapFullscreenBtn() {
+  const on = _mapIsFullscreen();
+  document.querySelectorAll(".tt-fullscreen-btn").forEach((b) => {
+    b.innerHTML = on ? '<i class="fas fa-compress"></i> Exit full screen' : '<i class="fas fa-expand"></i> Full screen';
+    b.title = on ? "Leave full screen (Esc)" : "Expand the map to the whole screen";
+  });
+  // Drawn regions keep their toolbar and comparison table outside #map-split,
+  // which full screen hides — 44_map_regions.js moves them onto the map.
+  try {
+    if (typeof window._ttRegionOnFullscreen === "function") window._ttRegionOnFullscreen(on);
+  } catch (e) {}
+  // The export dialog lives on <body>; full screen hides it unless it moves in.
+  try {
+    if (typeof window._ttMapExportOnFullscreen === "function") window._ttMapExportOnFullscreen(on);
+  } catch (e) {}
+  // Leaflet measures on layout, so it has to be told after the box changes.
+  if (_leafletMap) {
+    setTimeout(() => _leafletMap.invalidateSize(), 60);
+    setTimeout(() => _leafletMap.invalidateSize(), 320);
+  }
+}
+
+function toggleMapFullscreen() {
+  const el = _mapFullscreenEl();
+  if (!el) return;
+  if (_mapIsFullscreen()) {
+    if (document.fullscreenElement === el && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+    el.classList.remove("tt-map-maximised");
+    document.body.classList.remove("tt-map-maximised-body");
+    _syncMapFullscreenBtn();
+    return;
+  }
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (req) {
+    // The promise rejects when the API is present but disallowed (sandboxed
+    // iframe, permissions policy) — fall back rather than doing nothing.
+    try {
+      const r = req.call(el);
+      if (r && typeof r.catch === "function") {
+        r.catch(() => {
+          el.classList.add("tt-map-maximised");
+          document.body.classList.add("tt-map-maximised-body");
+          _syncMapFullscreenBtn();
+        });
+      }
+    } catch (e) {
+      el.classList.add("tt-map-maximised");
+      document.body.classList.add("tt-map-maximised-body");
+    }
+  } else {
+    el.classList.add("tt-map-maximised");
+    document.body.classList.add("tt-map-maximised-body");
+  }
+  _syncMapFullscreenBtn();
+}
+window.toggleMapFullscreen = toggleMapFullscreen;
+
+document.addEventListener("fullscreenchange", _syncMapFullscreenBtn);
+document.addEventListener("keydown", (e) => {
+  // Escape leaves the CSS fallback; the real Fullscreen API handles its own.
+  if (e.key !== "Escape") return;
+  const el = _mapFullscreenEl();
+  if (el && el.classList.contains("tt-map-maximised")) {
+    el.classList.remove("tt-map-maximised");
+    document.body.classList.remove("tt-map-maximised-body");
+    _syncMapFullscreenBtn();
+  }
+});
+
+let _fsCtlAdded = false;
+function _addMapFullscreenControl() {
+  if (typeof L.Control === "undefined" || _fsCtlAdded || !_leafletMap) return;
+  const Ctl = L.Control.extend({
+    // Top-RIGHT, with the basemap picker: the top-left column is the zoom
+    // control's, and the floating region cards dock just to the right of it.
+    options: { position: "topright" },
+    onAdd: function () {
+      const div = L.DomUtil.create("div", "leaflet-bar tt-fullscreen-ctl");
+      const btn = L.DomUtil.create("button", "tt-fullscreen-btn", div);
+      btn.type = "button";
+      btn.innerHTML = '<i class="fas fa-expand"></i> Full screen';
+      L.DomEvent.disableClickPropagation(div);
+      btn.addEventListener("click", toggleMapFullscreen);
+      return div;
+    },
+  });
+  _leafletMap.addControl(new Ctl());
+  _fsCtlAdded = true;
+  _syncMapFullscreenBtn();
+}
+
 function _doInitMap() {
   const container = document.getElementById("map-container");
   if (!container || _leafletMap) return;
@@ -567,15 +844,11 @@ function _doInitMap() {
 
   _leafletMap = L.map("map-container", { zoomControl: true });
 
-  // CARTO Voyager — no Referer/policy restrictions
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    attribution:
-      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: "abcd",
-    maxZoom: 19,
-  }).addTo(_leafletMap);
+  _applyBasemap(_savedBasemapId() || _BASEMAPS[0].id);
+  _addBasemapControl();
+  _addMapFullscreenControl();
 
-  // Download button for the map (see 44_map_export.js). Added before the
+  // Download button for the map (see 45_map_export.js). Added before the
   // cluster control so it sits at the top of the top-right control stack.
   if (typeof _ensureMapExportControl === "function") _ensureMapExportControl();
 
@@ -1181,7 +1454,7 @@ function closeMapPanel() {
   if (_leafletMap) setTimeout(() => _leafletMap.invalidateSize(), 50);
 }
 
-// "View" button: jump to Run Metadata tab and highlight this sample's row
+// "View" button: jump to the Metadata tab and highlight this sample's row
 function viewSampleInMetaTab() {
   if (!_selectedSample) return;
   _runmetaHighlightSample = _selectedSample;
