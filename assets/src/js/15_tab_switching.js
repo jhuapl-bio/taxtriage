@@ -34,14 +34,24 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
       if (typeof _clearProtJumpFilter === "function") _clearProtJumpFilter();
     }
     if (activeTab === "runmeta") {
-      // Rebuild the metadata table and update sub-tab enabled states. The
-      // precise Leaflet map lives inside the Mapping & Geography sub-tab and
-      // initialises via _buildGeoComparison when that sub-tab is shown.
+      // Rebuild the metadata table and re-evaluate what the Trends sub-tabs
+      // and the Mapping tab can offer with the metadata now present.
       if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
       if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
-      // (Re)build the active sub-tab now that the pane — and the map container —
-      // are actually visible. Deferred, so Leaflet's CDN script has loaded and
-      // the container has real dimensions before the map measures itself.
+    }
+    if (activeTab === "map") {
+      // The precise Leaflet map lives in this pane. Deferred, so Leaflet's CDN
+      // script has loaded and the container has real dimensions before the map
+      // measures itself.
+      if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+      setTimeout(() => {
+        if (typeof _buildGeoComparison === "function") _buildGeoComparison();
+        if (typeof _ttRegionOnMapShown === "function") _ttRegionOnMapShown();
+      }, 60);
+    }
+    if (activeTab === "trends") {
+      if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+      // (Re)build the active sub-tab now that the pane is actually visible.
       if (typeof _activeMetaSub !== "undefined" && _activeMetaSub && typeof _switchMetaSub === "function") {
         setTimeout(() => _switchMetaSub(_activeMetaSub), 60);
       }

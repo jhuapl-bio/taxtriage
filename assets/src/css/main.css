@@ -2402,20 +2402,20 @@ tr.cmp-grp-start td {
    Sits between the metadata table and the analysis sub-tabs. Its selection
    drives the map markers, the group heatmap and the group network, so it is
    deliberately visually distinct from the per-view control rows below it. */
-#mg-bar {
+.mg-bar {
   margin: 1.4em 0 0;
   padding: 0.7em 0.9em;
   background: linear-gradient(180deg, #f7fafd, #eef4fb);
   border: 1px solid #dae5f2;
   border-radius: 8px;
 }
-#mg-bar-row {
+.mg-bar-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.7em;
 }
-#mg-bar-label {
+.mg-bar-label {
   font-size: 0.84em;
   font-weight: 700;
   color: #37474f;
@@ -2424,13 +2424,13 @@ tr.cmp-grp-start td {
   gap: 0.4em;
   white-space: nowrap;
 }
-#mg-bar-label i {
+.mg-bar-label i {
   color: #1565c0;
 }
-#mg-field-wrap {
+.mg-field-wrap {
   position: relative;
 }
-#mg-field-btn {
+.mg-field-btn {
   border: 1px solid #ccd6e8;
   border-radius: 6px;
   background: #fff;
@@ -2442,11 +2442,11 @@ tr.cmp-grp-start td {
   align-items: center;
   gap: 0.45em;
 }
-#mg-field-btn:hover {
+.mg-field-btn:hover {
   border-color: #1565c0;
   color: #1565c0;
 }
-#mg-field-pop {
+.mg-field-pop {
   display: none;
   position: absolute;
   z-index: 900;
@@ -2461,7 +2461,7 @@ tr.cmp-grp-start td {
   box-shadow: 0 6px 22px rgba(20, 40, 70, 0.18);
   padding: 0.6em;
 }
-#mg-field-pop-head {
+.mg-field-pop-head {
   font-size: 0.76em;
   color: #78909c;
   line-height: 1.45;
@@ -2502,14 +2502,14 @@ tr.cmp-grp-start td {
   padding: 0.7em 0.4em;
   line-height: 1.5;
 }
-#mg-summary {
+.mg-summary {
   display: flex;
   align-items: center;
   gap: 0.5em;
   font-size: 0.82em;
   flex-wrap: wrap;
 }
-#mg-summary .mg-none {
+.mg-summary .mg-none {
   color: #90a4ae;
   font-style: italic;
 }
@@ -2531,10 +2531,10 @@ tr.cmp-grp-start td {
   color: #78909c;
   font-weight: 700;
 }
-#mg-summary .mg-count {
+.mg-summary .mg-count {
   color: #607d8b;
 }
-#mg-clear {
+.mg-clear {
   border: 1px solid #ddd;
   background: #fff;
   border-radius: 6px;
@@ -2546,13 +2546,12 @@ tr.cmp-grp-start td {
   align-items: center;
   gap: 0.3em;
 }
-#mg-clear:hover {
+.mg-clear:hover {
   color: #c62828;
   border-color: #ef9a9a;
 }
 
 /* Group legend — reused by the bar, the map and (potentially) any other view */
-#mg-legend,
 .mg-legend {
   display: flex;
   align-items: center;
@@ -2560,7 +2559,7 @@ tr.cmp-grp-start td {
   gap: 0.35em;
   margin-top: 0.6em;
 }
-#mg-legend:empty {
+.mg-legend:empty {
   display: none;
 }
 .mg-legend-showall {
@@ -4486,6 +4485,36 @@ th.sticky-col {
   max-height: var(--tt-table-max);
   overflow: auto;
 }
+/* 2b ─ …except the Summary tables, which sit ABOVE the fold of a pane the
+        user is already scrolling. Bounding them there produced two nested
+        vertical scrollbars — the pane's and the table's — and reading the
+        table meant hunting for which one had focus.
+
+        These keep a horizontal scroller (the detections table is far wider
+        than the pane) but no vertical one: `overflow-y: clip` clips without
+        creating a scrollport, which is what lets the sticky <th> resolve
+        against the PANE's scroller instead. Net effect: one scrollbar, and
+        the header still pins as you scroll the page. Browsers without
+        `clip` fall back to `hidden`, which costs the pinning but never the
+        single-scrollbar behaviour. */
+#summary-top-wrap,
+#summary-annot-genus {
+  max-height: none;
+  overflow: visible;
+}
+/* …and their .chart-wrap must stop clipping. `overflow: hidden` there was
+   doing two harmful things at once: it hid the right-hand columns of a table
+   wider than the pane (with no scrollbar to reach them), and — because any
+   non-visible overflow makes an element the scrollport a sticky child
+   resolves against — it pinned the header to a box that never scrolls, i.e.
+   not at all. With both wrappers transparent to overflow, the PANE is the
+   scroller in both directions: one vertical scrollbar, one horizontal one,
+   and `thead th` (sticky, top: 0 in the base rule) stays parked at the top of
+   the pane while the rows run underneath it. */
+#summary-det-wrap,
+#summary-annot-wrap {
+  overflow: visible;
+}
 /* #compare-body already flexes inside a bounded column; it just needs the
    min-height reset so the flex item is allowed to shrink and scroll. */
 #compare-body {
@@ -5673,4 +5702,986 @@ text.hm-flag-label {
   border-color: #1565c0;
   color: #0d47a1;
   background: #f0f7ff;
+}
+
+/* ══ Mirrored "Group by" bars ═══════════════════════════════════════════
+   The Metadata tab owns the grouping; the Mapping and Trends tabs each mount
+   a mirror of the same control (see _mgMountGroupBars in 38_meta_grouping.js).
+   The mirrors are visually lighter so it stays obvious which tab the columns
+   are actually defined in — and each carries a link straight to that table. */
+.mg-bar-mount .mg-bar {
+  margin: 0 0 1em;
+}
+.mg-bar-spacer {
+  flex: 1;
+}
+.mg-shared-note,
+.mg-goto-meta {
+  font-size: 0.76em;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+.mg-shared-note {
+  color: #90a4ae;
+}
+.mg-goto-meta {
+  color: #1565c0;
+  text-decoration: none;
+  border: 1px solid #cfe0f5;
+  background: #fff;
+  border-radius: 6px;
+  padding: 4px 9px;
+}
+.mg-goto-meta:hover {
+  background: #e8f1fb;
+  border-color: #1565c0;
+}
+.mg-goto-meta-link {
+  color: #1565c0;
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+/* Flash the metadata toolbar / table when arrived at from another tab, so the
+   jump lands somewhere obvious instead of silently switching tabs. */
+@keyframes mg-flash-kf {
+  0% {
+    box-shadow: 0 0 0 0 rgba(21, 101, 192, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(21, 101, 192, 0);
+  }
+}
+.mg-flash {
+  border-radius: 8px;
+  animation: mg-flash-kf 1.4s ease-out 1;
+}
+
+/* ══ Map region drawing ════════════════════════════════════════════════ */
+/* Same panel treatment as the shared "Group by" bar (.mg-bar): a control bar
+   in this report reads as a tinted, bordered strip. The near-white version
+   this used to have was indistinguishable from the page behind it, so the
+   controls looked like loose browser-default widgets sitting on the page. */
+#mapdraw-bar {
+  margin: 0 0 0.6em;
+  padding: 0.6em 0.8em;
+  background: linear-gradient(180deg, #f7fafd, #eef4fb);
+  border: 1px solid #dae5f2;
+  border-radius: 8px;
+}
+#mapdraw-bar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5em;
+}
+#mapdraw-label {
+  font-size: 0.84em;
+  font-weight: 700;
+  color: #37474f;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  white-space: nowrap;
+}
+#mapdraw-label i {
+  color: #1565c0;
+}
+/* Matches .runmeta-tool-btn — the report's standard toolbar button — so the
+   region tools read as part of the same UI rather than as raw <button>s.
+   font-family: inherit matters here: a <button> otherwise falls back to the
+   browser's system UI font, which is what made these look like stray form
+   controls next to the rest of the report. */
+.mapdraw-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  border: 1px solid #ccd6e8;
+  border-radius: 5px;
+  background: #fff;
+  padding: 0.3em 0.7em;
+  font-family: inherit;
+  font-size: 0.82em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #1565c0;
+  cursor: pointer;
+}
+.mapdraw-btn:hover {
+  background: #eef4ff;
+  border-color: #1565c0;
+}
+.mapdraw-btn:focus-visible {
+  outline: 2px solid #1565c0;
+  outline-offset: 1px;
+}
+.mapdraw-btn.armed,
+.mapdraw-btn.armed:hover {
+  background: #1565c0;
+  border-color: #1565c0;
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.18);
+}
+.mapdraw-btn.mapdraw-danger {
+  color: #b3261e;
+}
+.mapdraw-btn.mapdraw-danger:hover {
+  border-color: #ef9a9a;
+  background: #fdeeee;
+  color: #c62828;
+}
+/* The two switches get the same pill as the buttons, so a row of mixed
+   controls lines up instead of alternating between chrome and bare form
+   widgets. */
+#mapdraw-toggle-wrap,
+#mapdraw-group-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  border: 1px solid #dbe4ee;
+  border-radius: 5px;
+  background: #fff;
+  padding: 0.28em 0.65em;
+  font-size: 0.82em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #37474f;
+  cursor: pointer;
+  user-select: none;
+}
+#mapdraw-toggle-wrap:hover,
+#mapdraw-group-wrap:hover {
+  border-color: #1565c0;
+}
+#mapdraw-toggle-wrap input,
+#mapdraw-group-wrap input {
+  accent-color: #1565c0;
+  margin: 0;
+  cursor: pointer;
+}
+#mapdraw-count {
+  color: #789;
+}
+#mapdraw-hint {
+  font-size: 0.76em;
+  color: #78909c;
+}
+#mapdraw-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  margin-top: 0.5em;
+}
+#mapdraw-chips:empty {
+  display: none;
+}
+.mapdraw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  border: 1px solid #dbe4ee;
+  border-left-width: 5px;
+  border-radius: 6px;
+  background: #fff;
+  padding: 3px 7px;
+  font-size: 0.78em;
+  color: #37474f;
+}
+.mapdraw-chip.off {
+  opacity: 0.5;
+}
+.mapdraw-chip-name {
+  font-weight: 600;
+  cursor: text;
+}
+.mapdraw-chip-n {
+  color: #78909c;
+}
+.mapdraw-chip button {
+  font-family: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: #90a4ae;
+  padding: 0 2px;
+  font-size: 1em;
+  line-height: 1;
+}
+.mapdraw-chip button:hover {
+  color: #1565c0;
+}
+.mapdraw-chip button.mapdraw-chip-del:hover {
+  color: #c62828;
+}
+/* crosshair while a draw tool is armed */
+#map-container.mapdraw-arming,
+#map-container.mapdraw-arming .leaflet-grab,
+#map-container.mapdraw-arming .leaflet-interactive {
+  cursor: crosshair !important;
+}
+#mapdraw-report {
+  margin-top: 0.9em;
+}
+.mapdraw-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.7em;
+}
+.mapdraw-card {
+  border: 1px solid #e2ebf5;
+  border-top-width: 4px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.6em 0.75em;
+}
+.mapdraw-card h4 {
+  margin: 0 0 0.45em;
+  font-size: 0.88em;
+  color: #263238;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.mapdraw-kv {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 0.6em;
+  font-size: 0.79em;
+  color: #546e7a;
+}
+.mapdraw-kv b {
+  color: #263238;
+  font-weight: 600;
+}
+.mapdraw-top {
+  margin-top: 0.5em;
+  font-size: 0.78em;
+  color: #546e7a;
+}
+.mapdraw-top ol {
+  margin: 0.25em 0 0;
+  padding-left: 1.2em;
+}
+.mapdraw-top li {
+  margin: 1px 0;
+}
+.mapdraw-empty {
+  font-size: 0.8em;
+  color: #90a4ae;
+  font-style: italic;
+}
+.mapdraw-cmp table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.79em;
+}
+.mapdraw-cmp th,
+.mapdraw-cmp td {
+  border-bottom: 1px solid #eef2f7;
+  padding: 4px 7px;
+  text-align: right;
+  white-space: nowrap;
+}
+.mapdraw-cmp th:first-child,
+.mapdraw-cmp td:first-child {
+  text-align: left;
+}
+.mapdraw-cmp th {
+  background: #f5f9fd;
+  color: #37474f;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+.mapdraw-bar-cell {
+  position: relative;
+  min-width: 90px;
+}
+.mapdraw-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 3px;
+  opacity: 0.25;
+}
+.mapdraw-bar-cell span {
+  position: relative;
+}
+.mapdraw-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.mapdraw-sec-title {
+  font-size: 0.82em;
+  font-weight: 700;
+  color: #37474f;
+  margin: 0.9em 0 0.4em;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.mapdraw-scroll {
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+}
+
+/* ══ Drawn regions: the on-map card stack ═══════════════════════════════
+   The per-region summaries float over the top-left of the map, clear of the
+   zoom control, and collapse to their header bar so they never permanently
+   cover the corner they sit in. Hiding the CARDS is separate from hiding the
+   SHAPES ("Show regions" in the toolbar) — you often want one without the
+   other. */
+#mapdraw-float {
+  position: absolute;
+  top: 10px;
+  left: 52px;
+  z-index: 1100;
+  width: 264px;
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d7e2ef;
+  border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(20, 40, 70, 0.22);
+  overflow: hidden;
+}
+#mapdraw-float-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 6px 9px;
+  font-size: 0.79em;
+  font-weight: 700;
+  color: #37474f;
+  background: linear-gradient(180deg, #f7fafd, #eef4fb);
+  border-bottom: 1px solid #e3ebf4;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+#mapdraw-float-head i:first-child {
+  color: #1565c0;
+}
+#mapdraw-float-head span {
+  flex: 1;
+}
+#mapdraw-float.collapsed {
+  width: 168px;
+}
+#mapdraw-float.collapsed #mapdraw-float-head {
+  border-bottom: 0;
+}
+#mapdraw-float.collapsed #mapdraw-float-body {
+  display: none;
+}
+#mapdraw-float-body {
+  overflow: auto;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+/* Compact variant of the card, for the floating stack. */
+.mapdraw-card.compact {
+  padding: 0.45em 0.55em;
+  font-size: 0.95em;
+}
+.mapdraw-card h4 {
+  position: relative;
+  padding-right: 46px;
+}
+.mapdraw-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Corner controls on a card — the chart is the rightmost, where the eye
+   lands when looking for "show me this". */
+.mapdraw-chart-btn,
+.mapdraw-card-zoom {
+  font-family: inherit;
+  position: absolute;
+  top: -2px;
+  border: 1px solid #dbe4ee;
+  background: #fff;
+  border-radius: 5px;
+  color: #78909c;
+  cursor: pointer;
+  padding: 2px 5px;
+  font-size: 0.82em;
+  line-height: 1;
+}
+.mapdraw-chart-btn {
+  right: 0;
+}
+.mapdraw-card-zoom {
+  right: 24px;
+}
+.mapdraw-chart-btn:hover,
+.mapdraw-card-zoom:hover {
+  color: #1565c0;
+  border-color: #1565c0;
+}
+
+/* ══ Drawn regions: the chart overlay ══════════════════════════════════ */
+#mapdraw-chart {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1200;
+  width: 460px;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #d7e2ef;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(20, 40, 70, 0.28);
+  overflow: hidden;
+}
+#mapdraw-chart-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 6px 9px;
+  background: linear-gradient(180deg, #f7fafd, #eef4fb);
+  border-bottom: 1px solid #e3ebf4;
+  font-size: 0.8em;
+  flex-shrink: 0;
+}
+.mapdraw-chart-title {
+  font-weight: 700;
+  color: #263238;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+.mapdraw-chart-sub {
+  color: #90a4ae;
+  font-size: 0.92em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.mapdraw-chart-views {
+  display: inline-flex;
+  gap: 0.25em;
+}
+.mapdraw-view-btn {
+  border: 1px solid #ccd6e8;
+  background: #fff;
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-family: inherit;
+  font-size: 0.92em;
+  font-weight: 600;
+  color: #1565c0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mapdraw-view-btn:hover {
+  background: #eef4ff;
+}
+.mapdraw-view-btn.active {
+  background: #1565c0;
+  border-color: #1565c0;
+  color: #fff;
+}
+#mapdraw-chart-close {
+  font-family: inherit;
+  border: 0;
+  background: none;
+  color: #90a4ae;
+  font-size: 1.4em;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+#mapdraw-chart-close:hover {
+  color: #c62828;
+}
+#mapdraw-chart-body {
+  overflow: auto;
+  padding: 8px 9px 10px;
+}
+.mapdraw-chart-foot {
+  font-size: 0.72em;
+  color: #90a4ae;
+  margin-top: 0.5em;
+  line-height: 1.4;
+}
+/* Print / PDF: floating panels would land on top of the map image. */
+@media print {
+  #mapdraw-float,
+  #mapdraw-chart {
+    display: none !important;
+  }
+}
+body.report-pdf-printing #mapdraw-float,
+body.report-pdf-printing #mapdraw-chart {
+  display: none !important;
+}
+
+/* ══ Longitudinal legend ═══════════════════════════════════════════════
+   Fixed height, searchable and paged: the number of plotted series no longer
+   decides how much vertical space the legend eats before the chart starts.
+   The search filters the LIST only — the organism picker above the chart is
+   what changes which lines are drawn. */
+#longi-legend {
+  border: 1px solid #e2ebf5;
+  border-radius: 8px;
+  background: #fbfdff;
+  margin-bottom: 0.6em;
+  font-size: 0.76em;
+}
+.longi-legend-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 5px 8px;
+  border-bottom: 1px solid #eef2f7;
+}
+.longi-legend-head i {
+  color: #1565c0;
+  font-size: 0.9em;
+}
+#longi-legend-search {
+  /* Grows with the box but never so far that it squeezes the count out. */
+  flex: 1 1 200px;
+  max-width: 340px;
+  min-width: 0;
+  border: 1px solid #ccd6e8;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 1em;
+  background: #fff;
+  color: #37474f;
+}
+#longi-legend-search:focus {
+  outline: none;
+  border-color: #1565c0;
+}
+.longi-legend-count {
+  color: #90a4ae;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* Fixed height — three rows of swatches, scrolled if a page is dense. */
+.longi-legend-body {
+  height: 76px;
+  overflow: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 5px 12px;
+  padding: 6px 8px;
+}
+.longi-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #333;
+  max-width: 240px;
+}
+.longi-legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.longi-legend-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.longi-legend-item.off-page {
+  display: none;
+}
+.longi-legend-empty {
+  color: #90a4ae;
+  font-style: italic;
+}
+.longi-legend-pager {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 4px 8px 6px;
+  border-top: 1px solid #eef2f7;
+  color: #546e7a;
+}
+.longi-legend-pager button {
+  font-family: inherit;
+  border: 1px solid #ccd6e8;
+  background: #fff;
+  border-radius: 5px;
+  min-width: 22px;
+  padding: 1px 6px;
+  cursor: pointer;
+  color: #37474f;
+}
+.longi-legend-pager button:hover:not(:disabled) {
+  border-color: #1565c0;
+  color: #1565c0;
+}
+.longi-legend-pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* Print / PDF: show every entry, no scrollbox and no pager chrome. */
+@media print {
+  .longi-legend-body {
+    height: auto;
+    overflow: visible;
+  }
+  .longi-legend-item.off-page {
+    display: inline-flex;
+  }
+  .longi-legend-head,
+  .longi-legend-pager {
+    display: none;
+  }
+}
+body.report-pdf-printing .longi-legend-body {
+  height: auto;
+  overflow: visible;
+}
+body.report-pdf-printing .longi-legend-item.off-page {
+  display: inline-flex;
+}
+body.report-pdf-printing .longi-legend-head,
+body.report-pdf-printing .longi-legend-pager {
+  display: none;
+}
+
+/* While a draw tool is armed the on-map panels get out of the way: faded and
+   click-through, so a drag that begins over them lands on the map. */
+#map-split.mapdraw-arming #mapdraw-float,
+#map-split.mapdraw-arming #mapdraw-chart {
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+/* "Fill area" toggle, alongside the Y Axis / Y Scale selects. */
+#longi-fill-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.81em;
+  font-weight: 600;
+  color: #555;
+  cursor: pointer;
+  user-select: none;
+  padding-bottom: 6px;
+}
+
+/* Sample "Show / Hide" panel — search + pager, matching the legend below the
+   chart so both lists in this view behave the same way. */
+#longi-sample-search {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #ccd6e8;
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 0.76em;
+  background: #fff;
+  color: #37474f;
+  margin-bottom: 0.45em;
+}
+#longi-sample-search:focus {
+  outline: none;
+  border-color: #1565c0;
+}
+#longi-sample-count {
+  color: #90a4ae;
+  font-weight: 400;
+}
+/* Fixed height once the list pages, so a run with sixty timed samples keeps
+   the panel the same size as a run with nine and the pager never jumps. */
+#longi-sample-list.paged {
+  min-height: 152px;
+}
+.longi-sample-empty {
+  font-size: 0.76em;
+  color: #90a4ae;
+  font-style: italic;
+  padding: 0.3em 0;
+}
+#longi-sample-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+  font-size: 0.74em;
+  color: #546e7a;
+  border-top: 1px solid #dce7f5;
+  padding-top: 0.35em;
+}
+#longi-sample-pager:empty {
+  display: none;
+  border-top: 0;
+}
+#longi-sample-pager button {
+  font-family: inherit;
+  border: 1px solid #ccd6e8;
+  background: #fff;
+  border-radius: 5px;
+  min-width: 20px;
+  padding: 0 5px;
+  cursor: pointer;
+  color: #37474f;
+}
+#longi-sample-pager button:hover:not(:disabled) {
+  border-color: #1565c0;
+  color: #1565c0;
+}
+#longi-sample-pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* Shown in place of the chart when the legend search matches no series. */
+.longi-search-empty {
+  text-align: center;
+  padding: 2.2em 1em;
+  color: #90a4ae;
+  font-size: 0.84em;
+}
+
+/* ══ Basemap picker + failover notice ═══════════════════════════════════ */
+.tt-basemap-ctl {
+  background: #fff;
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  color: #333;
+  line-height: 1.3;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+}
+.tt-basemap-ctl label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.tt-basemap-ctl select {
+  border: 1px solid #ccd6e8;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font: inherit;
+  background: #fff;
+  color: #37474f;
+  max-width: 150px;
+}
+#map-basemap-note {
+  margin: 0 0 0.6em;
+  padding: 0.5em 0.7em;
+  border: 1px solid #ffe0b2;
+  border-left: 4px solid #f59f00;
+  border-radius: 6px;
+  background: #fffaf2;
+  font-size: 0.79em;
+  color: #6d4c41;
+  line-height: 1.5;
+}
+#map-basemap-note i {
+  color: #f59f00;
+  margin-right: 0.35em;
+}
+
+/* ══ Drawn regions: collapsible tools + draggable floating panels ══════
+   Two habits the map picked up once it could go full screen:
+
+     • the draw tools (lasso / rectangle / clear all) fold away behind the
+       "Tools" chevron, so the bar shrinks to the region chips once the
+       drawing is done;
+     • every floating panel — the region cards, the chart overlay, the
+       comparison table, and the toolbar itself in full screen — can be
+       picked up by its header bar and dropped somewhere else on the map. */
+#mapdraw-bar.tools-collapsed #mapdraw-lasso,
+#mapdraw-bar.tools-collapsed #mapdraw-rect,
+#mapdraw-bar.tools-collapsed #mapdraw-clear,
+#mapdraw-bar.tools-collapsed #mapdraw-hint {
+  display: none !important;
+}
+#mapdraw-tools-toggle {
+  padding: 4px 7px;
+}
+.mapdraw-drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+.dragging .mapdraw-drag-handle,
+.mapdraw-drag-handle:active {
+  cursor: grabbing;
+}
+/* While a panel is being moved it goes on top of the others and loses its
+   transition, so it tracks the pointer exactly. */
+#mapdraw-float.dragging,
+#mapdraw-chart.dragging,
+#mapdraw-cmp-float.dragging,
+#mapdraw-bar.dragging {
+  z-index: 1400;
+  box-shadow: 0 10px 30px rgba(20, 40, 70, 0.34);
+}
+
+/* The toolbar, moved onto the map for full screen. Same strip, floating. */
+#mapdraw-bar.mapdraw-bar-floating {
+  position: absolute;
+  top: 10px;
+  left: 52px;
+  z-index: 1150;
+  margin: 0;
+  max-width: calc(100% - 72px);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 4px 18px rgba(20, 40, 70, 0.22);
+}
+#mapdraw-bar.mapdraw-bar-floating #mapdraw-chips {
+  max-height: 132px;
+  overflow: auto;
+}
+#mapdraw-bar.mapdraw-bar-floating #mapdraw-label {
+  cursor: grab;
+}
+/* In full screen the region cards would otherwise sit under the toolbar. */
+#map-split:fullscreen #mapdraw-float,
+#map-split.tt-map-maximised #mapdraw-float {
+  top: 92px;
+  max-height: calc(100% - 106px);
+}
+
+/* The comparison table as a floating panel (full screen only). */
+#mapdraw-cmp-float {
+  position: absolute;
+  /* Bottom-right by default: the card stack owns the left edge and the chart
+     overlay the top-right corner, so this is the one free corner. Dragging it
+     anywhere else overrides this. */
+  right: 14px;
+  bottom: 16px;
+  z-index: 1150;
+  width: min(620px, calc(100% - 80px));
+  max-height: 52%;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #d7e2ef;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(20, 40, 70, 0.28);
+  overflow: hidden;
+}
+#mapdraw-cmp-float-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 6px 9px;
+  font-size: 0.79em;
+  font-weight: 700;
+  color: #37474f;
+  background: linear-gradient(180deg, #f7fafd, #eef4fb);
+  border-bottom: 1px solid #e3ebf4;
+  user-select: none;
+  flex-shrink: 0;
+}
+#mapdraw-cmp-float-head i:first-child {
+  color: #1565c0;
+}
+#mapdraw-cmp-float-head span {
+  flex: 1;
+}
+#mapdraw-cmp-float-body {
+  overflow: auto;
+  padding: 8px 10px 10px;
+}
+/* Collapsed to its header, like the card stack. */
+#mapdraw-cmp-float.collapsed {
+  width: 210px;
+  max-height: none;
+}
+#mapdraw-cmp-float.collapsed #mapdraw-cmp-float-head {
+  border-bottom: 0;
+}
+#mapdraw-cmp-float.collapsed #mapdraw-cmp-float-body {
+  display: none;
+}
+/* The section title inside the floating copy is smaller: the panel already
+   says what it is, so the headings only have to separate the two blocks. */
+#mapdraw-cmp-float .mapdraw-sec-title {
+  margin-top: 0.5em;
+}
+#mapdraw-cmp-float .mapdraw-sec-title:first-child {
+  margin-top: 0;
+}
+#mapdraw-cmp-float .mapdraw-cards {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+/* ══ Map full screen ═══════════════════════════════════════════════════
+   Two paths to the same look: the real Fullscreen API, and a fixed overlay
+   for the (common) case of a report viewed inside something that forbids it.
+   Both keep the same DOM, so the side panel, region cards and chart overlay
+   come along and nothing is rebuilt. */
+.tt-fullscreen-ctl {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.tt-fullscreen-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  background: #fff;
+  border: 1px solid #ccd6e8;
+  border-radius: 5px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+  padding: 5px 9px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1565c0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tt-fullscreen-btn:hover {
+  color: #1565c0;
+}
+#map-split:fullscreen,
+#map-split.tt-map-maximised {
+  height: 100% !important;
+  width: 100% !important;
+  background: #fff;
+}
+/* !important throughout: #map-split carries inline `position: relative` and
+   `height: 560px` from the markup, and an inline declaration beats any
+   selector no matter how specific. */
+#map-split.tt-map-maximised {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 4000;
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0;
+}
+/* The report's own chrome must not sit on top of the maximised map. */
+body.tt-map-maximised-body #tabbar,
+body.tt-map-maximised-body #sidebar,
+body.tt-map-maximised-body #sidebar-resizer,
+body.tt-map-maximised-body #banner {
+  z-index: 1 !important;
+}
+/* In full screen the map takes the height the inline style would otherwise
+   cap at 560px, and the side panel keeps its share. */
+#map-split:fullscreen #map-container,
+#map-split.tt-map-maximised #map-container {
+  height: 100% !important;
 }

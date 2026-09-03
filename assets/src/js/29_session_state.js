@@ -190,6 +190,11 @@
     try {
       if (window.metaGrouping) app.metaGrouping = window.metaGrouping.capture();
     } catch (e) {}
+    // Regions drawn on the map — the shapes, their names and whether they are
+    // currently shown / published as a grouping column.
+    try {
+      if (window.ttMapRegions) app.mapRegions = window.ttMapRegions.capture();
+    } catch (e) {}
     return app;
   }
 
@@ -241,6 +246,9 @@
     // the very first paint rather than flashing per-sample colours first.
     try {
       if (window.metaGrouping) window.metaGrouping.restore(app.metaGrouping);
+    } catch (e) {}
+    try {
+      if (window.ttMapRegions && app.mapRegions) window.ttMapRegions.restore(app.mapRegions);
     } catch (e) {}
     try {
       if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
