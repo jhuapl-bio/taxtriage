@@ -48,6 +48,9 @@
   let _draft = null; // the shape being dragged right now
   let _abortDraft = null; // set once the map is wired — drops a half-drawn shape
   let _floatOpen = true; // the on-map card stack: expanded or collapsed to its bar
+  let _cmpOpen = true; // the full-screen comparison panel: expanded or collapsed
+  let _toolsOpen = true; // the draw tools (lasso / rectangle / clear all) shown in the bar
+  let _barHome = null; // where #mapdraw-bar lives outside full screen, so it can go back
   let _chartRegion = null; // region id whose chart overlay is open, or null
   let _chartView = "bars"; // "bars" | "heat"
   let _wired = false;
@@ -545,6 +548,17 @@
         ? ""
         : "Draw an area to summarise the samples inside it.";
     }
+    const bar = document.getElementById("mapdraw-bar");
+    if (bar) bar.classList.toggle("tools-collapsed", !_toolsOpen);
+    const tt = document.getElementById("mapdraw-tools-toggle");
+    if (tt) {
+      tt.innerHTML = _toolsOpen
+        ? '<i class="fas fa-chevron-left"></i> Tools'
+        : '<i class="fas fa-chevron-right"></i> Tools';
+      tt.title = _toolsOpen ? "Hide the draw tools" : "Show the draw tools (lasso, rectangle, clear all)";
+      tt.setAttribute("aria-expanded", _toolsOpen ? "true" : "false");
+    }
+
     const count = document.getElementById("mapdraw-count");
     if (count) count.textContent = _regions.length ? `(${_regions.length})` : "";
     const clear = document.getElementById("mapdraw-clear");
@@ -744,6 +758,140 @@
      separate from the "Show regions" switch: this hides the NUMBERS, that
      hides the SHAPES.                                                       */
 
+  /* ── dragging: the floating panels ────────────────────────────────────
+     In full screen every panel is competing for the same map, so each one
+     can be picked up by its header bar and put somewhere else. Positions are
+     remembered per panel (`_dragPos`) rather than read back off the element,
+     because the panels rebuild their own innerHTML on every render and a few
+     of them are hidden and re-shown as regions come and go.               */
+
+  const _dragPos = Object.create(null); // element id → {left, top} inside #map-split
+
+  function _dragBox(el) {
+    return el.offsetParent || document.getElementById("map-split");
+  }
+
+  function _clampInto(el, host, left, top) {
+    if (!host) return { left, top };
+    const maxL = Math.max(0, host.clientWidth - Math.min(el.offsetWidth || 220, host.clientWidth));
+    const maxT = Math.max(0, host.clientHeight - Math.min(el.offsetHeight || 40, host.clientHeight));
+    return {
+      left: Math.max(0, Math.min(left, maxL)),
+      top: Math.max(0, Math.min(top, maxT)),
+    };
+  }
+
+  function _place(el, left, top) {
+    el.style.left = left + "px";
+    el.style.top = top + "px";
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+  }
+
+  /* Re-apply a remembered position (and pull it back inside the map if the
+     map has since become smaller — leaving full screen, or a window resize). */
+  function _applyDragPos(el) {
+    if (!el || !el.id) return;
+    const p = _dragPos[el.id];
+    if (!p) return;
+    const c = _clampInto(el, _dragBox(el), p.left, p.top);
+    _dragPos[el.id] = c;
+    _place(el, c.left, c.top);
+  }
+
+  /* Make `el` movable by dragging `handle`. Pointer events so a mouse, a
+     trackpad and a touchscreen all work. Buttons, inputs and the editable
+     region names inside a header keep their own behaviour. */
+  function _makeDraggable(el, handle) {
+    if (!el || !handle || handle.getAttribute("data-ttdrag")) return;
+    handle.setAttribute("data-ttdrag", "1");
+    handle.classList.add("mapdraw-drag-handle");
+    let sx = 0,
+      sy = 0,
+      ox = 0,
+      oy = 0,
+      host = null;
+
+    const onMove = (e) => {
+      const dx = e.clientX - sx,
+        dy = e.clientY - sy;
+      if (!el._ttDragged && Math.abs(dx) + Math.abs(dy) > 3) el._ttDragged = true;
+      if (!el._ttDragged) return;
+      const c = _clampInto(el, host, ox + dx, oy + dy);
+      _dragPos[el.id] = c;
+      _place(el, c.left, c.top);
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      el.classList.remove("dragging");
+      // The flag is read by the header's own click handler (collapse), which
+      // fires right after this, and cleared on the tick after that.
+      setTimeout(() => {
+        el._ttDragged = false;
+      }, 0);
+    };
+
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest && e.target.closest("button, input, select, [contenteditable='true']")) return;
+      host = _dragBox(el);
+      if (!host) return;
+      const hr = host.getBoundingClientRect(),
+        er = el.getBoundingClientRect();
+      ox = er.left - hr.left;
+      oy = er.top - hr.top;
+      sx = e.clientX;
+      sy = e.clientY;
+      el._ttDragged = false;
+      el.classList.add("dragging");
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      e.preventDefault();
+    });
+  }
+
+  /* True while the map is filling the screen — either the real Fullscreen
+     API or the CSS fallback #map-split falls back to (see 35_tab_map.js). */
+  function _isFullscreen() {
+    const el = document.getElementById("map-split");
+    if (!el) return false;
+    return document.fullscreenElement === el || el.classList.contains("tt-map-maximised");
+  }
+
+  /* ── the toolbar in full screen ───────────────────────────────────────
+     #mapdraw-bar normally sits above the map, OUTSIDE #map-split, so full
+     screen would leave the user with no way to draw anything. Moving the
+     same node in (rather than cloning it) keeps every listener, the chips
+     and the checkbox states exactly as they were. */
+
+  function _dockBar(fs) {
+    const bar = document.getElementById("mapdraw-bar");
+    const split = document.getElementById("map-split");
+    if (!bar || !split) return;
+    if (fs) {
+      if (!_barHome) _barHome = { parent: bar.parentElement, next: bar.nextSibling };
+      if (bar.parentElement !== split) split.appendChild(bar);
+      bar.classList.add("mapdraw-bar-floating");
+      const label = document.getElementById("mapdraw-label");
+      if (label) _makeDraggable(bar, label);
+      _applyDragPos(bar);
+      if (typeof L !== "undefined" && L.DomEvent) {
+        L.DomEvent.disableClickPropagation(bar);
+        L.DomEvent.disableScrollPropagation(bar);
+      }
+    } else {
+      bar.classList.remove("mapdraw-bar-floating");
+      bar.style.left = bar.style.top = bar.style.right = bar.style.bottom = "";
+      if (_barHome && _barHome.parent && bar.parentElement !== _barHome.parent) {
+        _barHome.parent.insertBefore(
+          bar,
+          _barHome.next && _barHome.next.parentElement === _barHome.parent ? _barHome.next : null,
+        );
+      }
+    }
+  }
+
   function _floatHost() {
     // #map-split is moved into the Mapping tab at runtime, so the panel is
     // (re)attached to wherever it currently lives rather than to a fixed spot.
@@ -784,11 +932,15 @@
       `</div>`;
 
     const head = host.querySelector("#mapdraw-float-head");
-    if (head)
+    if (head) {
       head.addEventListener("click", () => {
+        if (host._ttDragged) return; // that click was the end of a drag
         _floatOpen = !_floatOpen;
         _renderFloat();
       });
+      _makeDraggable(host, head);
+    }
+    _applyDragPos(host);
     _wireCards(host);
     // Keep the map from panning when the pointer is working inside the panel.
     if (typeof L !== "undefined" && L.DomEvent) {
@@ -1018,6 +1170,68 @@
     );
     const close = host.querySelector("#mapdraw-chart-close");
     if (close) close.addEventListener("click", _closeChart);
+    const chead = host.querySelector("#mapdraw-chart-head");
+    if (chead) _makeDraggable(host, chead);
+    _applyDragPos(host);
+    if (typeof L !== "undefined" && L.DomEvent) {
+      L.DomEvent.disableClickPropagation(host);
+      L.DomEvent.disableScrollPropagation(host);
+    }
+  }
+
+  /* ── rendering: the comparison panel in full screen ───────────────────
+     The side-by-side comparison normally lives BELOW the map (#mapdraw-report),
+     which full screen hides along with the rest of the page. In full screen the
+     same markup is rendered into a floating panel over the map instead —
+     draggable by its header, collapsible to that header, and scrolled inside
+     itself so a long organism-overlap list never runs off the screen.       */
+
+  function _cmpFloatHost() {
+    const split = document.getElementById("map-split");
+    if (!split) return null;
+    let el = document.getElementById("mapdraw-cmp-float");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "mapdraw-cmp-float";
+      el.style.display = "none";
+      split.appendChild(el);
+    } else if (el.parentElement !== split) {
+      split.appendChild(el);
+    }
+    return el;
+  }
+
+  function _renderCmpFloat() {
+    const host = _cmpFloatHost();
+    if (!host) return;
+    if (!_isFullscreen() || _regions.length < 2) {
+      host.style.display = "none";
+      host.innerHTML = "";
+      return;
+    }
+    host.style.display = "";
+    host.classList.toggle("collapsed", !_cmpOpen);
+    host.innerHTML =
+      `<div id="mapdraw-cmp-float-head" title="Drag to move · click to collapse or expand">` +
+      `<i class="fas fa-scale-balanced"></i>` +
+      `<span>Compare regions <b>${_regions.length}</b></span>` +
+      `<i class="fas ${_cmpOpen ? "fa-chevron-down" : "fa-chevron-up"}"></i>` +
+      `</div>` +
+      `<div id="mapdraw-cmp-float-body">` +
+      _comparison(_regions, _regions.map(_stats)) +
+      `</div>`;
+
+    const head = host.querySelector("#mapdraw-cmp-float-head");
+    if (head) {
+      head.addEventListener("click", () => {
+        if (host._ttDragged) return;
+        _cmpOpen = !_cmpOpen;
+        _renderCmpFloat();
+      });
+      _makeDraggable(host, head);
+    }
+    _applyDragPos(host);
+    _wireCards(host);
     if (typeof L !== "undefined" && L.DomEvent) {
       L.DomEvent.disableClickPropagation(host);
       L.DomEvent.disableScrollPropagation(host);
@@ -1030,8 +1244,9 @@
     const host = document.getElementById("mapdraw-report");
     if (!host) return;
     // The per-region numbers now live on the map; what stays below it is the
-    // side-by-side comparison, which is too wide to float over anything.
-    if (_regions.length < 2) {
+    // side-by-side comparison. In full screen the page underneath is hidden,
+    // so the floating copy takes over and this one stands down.
+    if (_regions.length < 2 || _isFullscreen()) {
       host.style.display = "none";
       host.innerHTML = "";
       return;
@@ -1045,6 +1260,7 @@
     _renderBar();
     _renderFloat();
     _renderPanel();
+    _renderCmpFloat();
     if (_chartRegion) _renderChart();
   }
 
@@ -1066,6 +1282,15 @@
         _arm(b.getAttribute("data-draw"));
       });
     });
+
+    const tools = document.getElementById("mapdraw-tools-toggle");
+    if (tools)
+      tools.addEventListener("click", () => {
+        _toolsOpen = !_toolsOpen;
+        // Collapsing the tools should not leave a half-drawn shape armed.
+        if (!_toolsOpen && _armed) _disarm();
+        _renderBar();
+      });
 
     const toggle = document.getElementById("mapdraw-toggle");
     if (toggle)
@@ -1096,9 +1321,28 @@
       });
   }
 
+  /* Called by the map's full-screen toggle (35_tab_map.js) whenever the map
+     enters or leaves full screen: the toolbar moves in or out, and the
+     comparison panel appears or hands back to the section under the map. */
+  window._ttRegionOnFullscreen = function (on) {
+    _wireToolbar();
+    _dockBar(!!on);
+    _render();
+  };
+
+  /* Panels are positioned in pixels, so a resized map can leave one hanging
+     off the edge — pull them back inside. */
+  window.addEventListener("resize", () => {
+    ["mapdraw-float", "mapdraw-chart", "mapdraw-cmp-float", "mapdraw-bar"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el && el.style.display !== "none") _applyDragPos(el);
+    });
+  });
+
   /* Called when the Mapping tab becomes visible: the map may only now exist. */
   window._ttRegionOnMapShown = function () {
     _wireToolbar();
+    _dockBar(_isFullscreen());
     _wireMapDrawing();
     _syncLayers();
     _render();

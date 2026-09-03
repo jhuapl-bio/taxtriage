@@ -6500,6 +6500,132 @@ body.report-pdf-printing .longi-legend-pager {
   margin-right: 0.35em;
 }
 
+/* ══ Drawn regions: collapsible tools + draggable floating panels ══════
+   Two habits the map picked up once it could go full screen:
+
+     • the draw tools (lasso / rectangle / clear all) fold away behind the
+       "Tools" chevron, so the bar shrinks to the region chips once the
+       drawing is done;
+     • every floating panel — the region cards, the chart overlay, the
+       comparison table, and the toolbar itself in full screen — can be
+       picked up by its header bar and dropped somewhere else on the map. */
+#mapdraw-bar.tools-collapsed #mapdraw-lasso,
+#mapdraw-bar.tools-collapsed #mapdraw-rect,
+#mapdraw-bar.tools-collapsed #mapdraw-clear,
+#mapdraw-bar.tools-collapsed #mapdraw-hint {
+  display: none !important;
+}
+#mapdraw-tools-toggle {
+  padding: 4px 7px;
+}
+.mapdraw-drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+.dragging .mapdraw-drag-handle,
+.mapdraw-drag-handle:active {
+  cursor: grabbing;
+}
+/* While a panel is being moved it goes on top of the others and loses its
+   transition, so it tracks the pointer exactly. */
+#mapdraw-float.dragging,
+#mapdraw-chart.dragging,
+#mapdraw-cmp-float.dragging,
+#mapdraw-bar.dragging {
+  z-index: 1400;
+  box-shadow: 0 10px 30px rgba(20, 40, 70, 0.34);
+}
+
+/* The toolbar, moved onto the map for full screen. Same strip, floating. */
+#mapdraw-bar.mapdraw-bar-floating {
+  position: absolute;
+  top: 10px;
+  left: 52px;
+  z-index: 1150;
+  margin: 0;
+  max-width: calc(100% - 72px);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 4px 18px rgba(20, 40, 70, 0.22);
+}
+#mapdraw-bar.mapdraw-bar-floating #mapdraw-chips {
+  max-height: 132px;
+  overflow: auto;
+}
+#mapdraw-bar.mapdraw-bar-floating #mapdraw-label {
+  cursor: grab;
+}
+/* In full screen the region cards would otherwise sit under the toolbar. */
+#map-split:fullscreen #mapdraw-float,
+#map-split.tt-map-maximised #mapdraw-float {
+  top: 92px;
+  max-height: calc(100% - 106px);
+}
+
+/* The comparison table as a floating panel (full screen only). */
+#mapdraw-cmp-float {
+  position: absolute;
+  /* Bottom-right by default: the card stack owns the left edge and the chart
+     overlay the top-right corner, so this is the one free corner. Dragging it
+     anywhere else overrides this. */
+  right: 14px;
+  bottom: 16px;
+  z-index: 1150;
+  width: min(620px, calc(100% - 80px));
+  max-height: 52%;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #d7e2ef;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(20, 40, 70, 0.28);
+  overflow: hidden;
+}
+#mapdraw-cmp-float-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 6px 9px;
+  font-size: 0.79em;
+  font-weight: 700;
+  color: #37474f;
+  background: linear-gradient(180deg, #f7fafd, #eef4fb);
+  border-bottom: 1px solid #e3ebf4;
+  user-select: none;
+  flex-shrink: 0;
+}
+#mapdraw-cmp-float-head i:first-child {
+  color: #1565c0;
+}
+#mapdraw-cmp-float-head span {
+  flex: 1;
+}
+#mapdraw-cmp-float-body {
+  overflow: auto;
+  padding: 8px 10px 10px;
+}
+/* Collapsed to its header, like the card stack. */
+#mapdraw-cmp-float.collapsed {
+  width: 210px;
+  max-height: none;
+}
+#mapdraw-cmp-float.collapsed #mapdraw-cmp-float-head {
+  border-bottom: 0;
+}
+#mapdraw-cmp-float.collapsed #mapdraw-cmp-float-body {
+  display: none;
+}
+/* The section title inside the floating copy is smaller: the panel already
+   says what it is, so the headings only have to separate the two blocks. */
+#mapdraw-cmp-float .mapdraw-sec-title {
+  margin-top: 0.5em;
+}
+#mapdraw-cmp-float .mapdraw-sec-title:first-child {
+  margin-top: 0;
+}
+#mapdraw-cmp-float .mapdraw-cards {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
 /* ══ Map full screen ═══════════════════════════════════════════════════
    Two paths to the same look: the real Fullscreen API, and a fixed overlay
    for the (common) case of a report viewed inside something that forbids it.

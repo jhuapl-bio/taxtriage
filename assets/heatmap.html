@@ -2363,6 +2363,17 @@
                 <div id="mapdraw-bar">
                   <div id="mapdraw-bar-row">
                     <span id="mapdraw-label"><i class="fas fa-draw-polygon"></i> Regions</span>
+                    <!-- Collapses the draw tools (lasso / rectangle / clear all)
+                         out of the way without touching any drawn region. -->
+                    <button
+                      type="button"
+                      class="mapdraw-btn"
+                      id="mapdraw-tools-toggle"
+                      aria-expanded="true"
+                      title="Hide the draw tools"
+                    >
+                      <i class="fas fa-chevron-left"></i> Tools
+                    </button>
                     <button
                       type="button"
                       class="mapdraw-btn"

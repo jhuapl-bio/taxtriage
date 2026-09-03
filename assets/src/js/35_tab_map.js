@@ -738,6 +738,11 @@ function _syncMapFullscreenBtn() {
     b.innerHTML = on ? '<i class="fas fa-compress"></i> Exit full screen' : '<i class="fas fa-expand"></i> Full screen';
     b.title = on ? "Leave full screen (Esc)" : "Expand the map to the whole screen";
   });
+  // Drawn regions keep their toolbar and comparison table outside #map-split,
+  // which full screen hides — 44_map_regions.js moves them onto the map.
+  try {
+    if (typeof window._ttRegionOnFullscreen === "function") window._ttRegionOnFullscreen(on);
+  } catch (e) {}
   // Leaflet measures on layout, so it has to be told after the box changes.
   if (_leafletMap) {
     setTimeout(() => _leafletMap.invalidateSize(), 60);
