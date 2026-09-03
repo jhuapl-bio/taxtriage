@@ -2,6 +2,7 @@
 include { MAKE_FILE } from '../../modules/local/make_file'
 include { DOWNLOAD_ASSEMBLY } from '../../modules/local/download_assembly'
 include { MAP_LOCAL_ASSEMBLY_TO_FASTA } from '../../modules/local/map_assembly_to_fasta'
+include { MAP_LOCAL_ASSEMBLY_TO_FASTA as MAP_SAMPLE_FASTA_TO_ASSEMBLY } from '../../modules/local/map_assembly_to_fasta'
 include { MAP_TAXID_ASSEMBLY } from '../../modules/local/map_taxid_assembly'
 include { FEATURES_DOWNLOAD } from '../../modules/local/download_features'
 include { FEATURES_TO_BED } from '../../modules/local/convert_features_to_bed'
@@ -17,6 +18,7 @@ workflow  REFERENCE_PREP {
     ch_reference_fasta
     ch_assembly_txt
     ch_pathogens_file
+    ch_sample_fastas   // [meta, fasta] per-sample reference sequence (BAM consensus); may be empty
 
     main:
     ch_versions = Channel.empty()
@@ -69,7 +71,10 @@ workflow  REFERENCE_PREP {
                     return [ [id: basename],  fasta]
                 },
                 ch_assembly_txt,
-                ch_pathogens_file
+                // .first() -> value channel, so the pathogens file is broadcast to
+                // EVERY fasta.  As a plain queue of one item it would be consumed by
+                // the first task, leaving the remaining reference FASTAs unmapped.
+                ch_pathogens_file.first()
             )
             // add ch_reference_fasta to all ch_fastas
             // add ch_reference_fasta to all ch_fastas
@@ -144,6 +149,60 @@ workflow  REFERENCE_PREP {
                 [meta, fastas, listmaps, listids]
             }.set{ ch_mapped_assemblies }
         }
+
+        ////////////////////////////////////////////////////////////////////////////////////////
+        // PER-SAMPLE REFERENCE SEQUENCE (BAM consensus)
+        // Pre-aligned samples run without --reference_fasta recover their reference
+        // sequence from the alignment itself (BAM_CONSENSUS).  That FASTA is treated
+        // exactly like a user-supplied local reference: fuzzy-matched against the
+        // assembly summary to build the accession->taxid map match_paths.py needs for
+        // -m, and added to the sample's FASTA list so -f (sourmash / ANI) has bases.
+        // The difference is that it is PER SAMPLE, so it is joined by meta rather
+        // than broadcast to every sample.
+        ////////////////////////////////////////////////////////////////////////////////////////
+        MAP_SAMPLE_FASTA_TO_ASSEMBLY(
+            ch_sample_fastas,
+            ch_assembly_txt,
+            ch_pathogens_file.first()
+        )
+        ch_versions = ch_versions.mix(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.versions)
+
+        // NOTE: each .join(..., remainder: true) below is immediately normalised
+        // with a single-arg `{ row -> ... }` closure rather than a multi-param
+        // destructuring closure. When the right-hand channel (ch_sample_fastas /
+        // MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.*) is a genuinely empty channel (e.g.
+        // Channel.empty(), which happens whenever a run has zero pre-aligned/BAM
+        // samples), Nextflow has no observed tuple to infer padding arity from,
+        // and the remainder items can come through short by one field. A
+        // multi-param closure chained straight after such a join can then be
+        // invoked with a list whose size doesn't match its declared parameter
+        // count, which throws a MissingMethodException ("...closure.call() is
+        // applicable for argument types: (LinkedList)") deep in Nextflow's
+        // dataflow operator. Binding the whole row to one variable and indexing
+        // defensively (row.size() > N ? row[N] : null) sidesteps that entirely.
+        ch_fastas = ch_fastas
+            .join(ch_sample_fastas, remainder: true)
+            .map { row -> [row[0], row[1], row.size() > 2 ? row[2] : null] }
+            .filter { it[0] != null && it[1] != null }
+            .map { meta, fastas, sample_fasta ->
+                if (sample_fasta) { fastas.add(sample_fasta) }
+                [meta, fastas]
+            }
+
+        ch_mapped_assemblies = ch_mapped_assemblies
+            .join(ch_sample_fastas, remainder: true)
+            .map { row -> [row[0], row[1], row[2], row[3], row.size() > 4 ? row[4] : null] }
+            .join(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.map, remainder: true)
+            .map { row -> [row[0], row[1], row[2], row[3], row[4], row.size() > 5 ? row[5] : null] }
+            .join(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.accessions, remainder: true)
+            .map { row -> [row[0], row[1], row[2], row[3], row[4], row[5], row.size() > 6 ? row[6] : null] }
+            .filter { it[0] != null && it[1] != null }
+            .map { meta, fastas, listmaps, listids, sample_fasta, mapfile, accessions ->
+                if (sample_fasta) { fastas.add([sample_fasta]) }
+                if (mapfile)      { listmaps.add(mapfile) }
+                if (accessions)   { listids.add(accessions) }
+                [meta, fastas, listmaps, listids]
+            }
     }
     // get the size of the ch_reports_to_download
     // if the size is greater than 0, then download the reports
@@ -151,7 +210,12 @@ workflow  REFERENCE_PREP {
         // Only pass samples that actually have top-hit files to download;
         // samples whose top hits were filtered out (empty report list) are
         // skipped here but kept in ch_mapped_assemblies via the left joins below.
-        ch_to_download = ch_reports_to_download.filter { meta, report -> report && !report.isEmpty() }
+        // Pre-aligned (BAM) samples are excluded outright: their references are
+        // whatever the BAM was already aligned against, supplied via
+        // --reference_fasta, so there is nothing to fetch from NCBI.
+        ch_to_download = ch_reports_to_download.filter { meta, report ->
+            !meta.is_bam && report && !report.isEmpty()
+        }
 
         DOWNLOAD_ASSEMBLY(
             ch_to_download.map {

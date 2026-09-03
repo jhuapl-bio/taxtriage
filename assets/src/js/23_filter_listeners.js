@@ -11,7 +11,12 @@
 let _redrawTimer = null;
 function _redrawDebounced() {
   clearTimeout(_redrawTimer);
-  _redrawTimer = setTimeout(redraw, 180);
+  _redrawTimer = setTimeout(() => {
+    // Surfaces the "Calculating…" pill when a redraw is slow enough to notice
+    // (large runs, specimen merge on). Fast redraws run inline, unchanged.
+    if (typeof ttBusyRun === "function") ttBusyRun("Applying filters…", redraw);
+    else redraw();
+  }, 180);
 }
 ["filter-text", "filter-min"].forEach((id) => document.getElementById(id).addEventListener("input", _redrawDebounced));
 
@@ -364,7 +369,10 @@ function _synthesizeHierarchy() {
   // genus-level proxy TASS = max strain TASS within the genus group
   const genusTassByKey = new Map();
   for (const [k, rows] of byGenus) {
-    genusTassByKey.set(k, Math.max(...rows.map((r) => num_(r["TASS Score"]))));
+    genusTassByKey.set(
+      k,
+      rows.reduce((m, r) => Math.max(m, num_(r["TASS Score"])), 0),
+    );
   }
 
   const newRows = [];
@@ -387,7 +395,7 @@ function _synthesizeHierarchy() {
     sRow["Species TASS"] = spTass;
     sRow["Genus TASS"] = gTass;
     sRow["# Reads Aligned"] = rows.reduce((s, r) => s + num_(r["# Reads Aligned"]), 0);
-    sRow["Coverage"] = Math.max(...rows.map((r) => num_(r["Coverage"])));
+    sRow["Coverage"] = rows.reduce((m, r) => Math.max(m, num_(r["Coverage"])), 0);
     newRows.push(sRow);
   }
 
@@ -402,11 +410,11 @@ function _synthesizeHierarchy() {
     gRow["Species TASS"] = gTass;
     gRow["Genus TASS"] = gTass;
     gRow["# Reads Aligned"] = rows.reduce((s, r) => s + num_(r["# Reads Aligned"]), 0);
-    gRow["Coverage"] = Math.max(...rows.map((r) => num_(r["Coverage"])));
+    gRow["Coverage"] = rows.reduce((m, r) => Math.max(m, num_(r["Coverage"])), 0);
     newRows.push(gRow);
   }
 
-  if (newRows.length) DATA.push(...newRows);
+  if (newRows.length) _ttPushAll(DATA, newRows);
   _HIERARCHY_SYNTHESIZED = true;
 }
 

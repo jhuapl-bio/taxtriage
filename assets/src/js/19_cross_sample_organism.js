@@ -36,12 +36,12 @@ function _xsReduceMembers(vals, method, total) {
     case "mean":
       return _xsMean(vals);
     case "min":
-      return Math.min(...vals);
+      return _ttMin(vals);
     case "detection":
       return total ? (vals.length / total) * 100 : 0;
     case "max":
     default:
-      return Math.max(...vals);
+      return _ttMax(vals);
   }
 }
 function _xsQuart(a, q) {
@@ -194,17 +194,29 @@ function _xsAggregate(fd) {
     // Reduce each specimen's per-member values to a single score using the
     // selected aggregation. detection% divides by the specimen's total member
     // samples in view, so a hit in 1 of 2 libraries reads as 50%.
+    //
+    // CRITICAL: only reduce when there is genuinely more than one member value
+    // to combine. With specimen merge ON, filteredData() has ALREADY collapsed
+    // each specimen's libraries into a single row carrying the combined score,
+    // so every specimen arrives here with exactly one value. Re-reducing that
+    // lone value is a no-op for max/min/mean/median but is actively wrong for
+    // "detection", which would compute 1 seen / 1 member = 100% and overwrite
+    // the correct figure — making every TASS statistic read 100.
+    const _reduce = (memb, sn, method) => {
+      const vals = [...memb.values()];
+      if (vals.length <= 1) return vals.length ? vals[0] : 0; // already combined
+      const total = (specimenMembers.get(sn) || new Set()).size || vals.length || 1;
+      return _xsReduceMembers(vals, method, total);
+    };
     const tassMap = new Map();
     const covMap = new Map();
     e.tassMemb.forEach((memb, sn) => {
-      const total = (specimenMembers.get(sn) || new Set()).size || memb.size || 1;
-      tassMap.set(sn, _xsReduceMembers([...memb.values()], aggMethod, total));
+      tassMap.set(sn, _reduce(memb, sn, aggMethod));
     });
     e.covMemb.forEach((memb, sn) => {
-      const total = (specimenMembers.get(sn) || new Set()).size || memb.size || 1;
       // "detection" only makes sense for the TASS column; keep coverage on the
       // mean of member coverages in that mode so the number stays meaningful.
-      covMap.set(sn, _xsReduceMembers([...memb.values()], aggMethod === "detection" ? "mean" : aggMethod, total));
+      covMap.set(sn, _reduce(memb, sn, aggMethod === "detection" ? "mean" : aggMethod));
     });
     const tass = [...tassMap.values()];
     const cov = [...covMap.values()];
@@ -236,15 +248,20 @@ function _xsAggregate(fd) {
       belowCount: _belowCount,
       detCount: _detCount,
       total: _totalSpecimens,
-      samplePct: Math.min(100, (_passCount / N) * 100),
+      // Prevalence uses the SAME denominator as the Pass / Below / Total
+      // column (every specimen in the run), so "134 / 30 / 260" always reads
+      // as 134/260 = 51.5%. Dividing by N (specimens with a positive hit)
+      // inflated this and made the two columns disagree.
+      samplePct: _totalSpecimens ? Math.min(100, (_passCount / _totalSpecimens) * 100) : 0,
+      detPct: _totalSpecimens ? Math.min(100, (_detCount / _totalSpecimens) * 100) : 0,
       meanTass: _xsMean(tass),
       medianTass: _xsMed(tass),
-      maxTass: tass.length ? Math.max(...tass) : 0,
-      minTass: tass.length ? Math.min(...tass) : 0,
+      maxTass: tass.length ? _ttMax(tass) : 0,
+      minTass: tass.length ? _ttMin(tass) : 0,
       meanCov: _xsMean(cov),
       medianCov: _xsMed(cov),
-      maxCov: cov.length ? Math.max(...cov) : 0,
-      minCov: cov.length ? Math.min(...cov) : 0,
+      maxCov: cov.length ? _ttMax(cov) : 0,
+      minCov: cov.length ? _ttMin(cov) : 0,
       reads: e.reads,
       tassVals: tass,
       covVals: cov,
@@ -356,9 +373,13 @@ function _xsToggleSpecimenMerge() {
   }
   specimenMergeEnabled = next;
   if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
-  if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
-  const fd = typeof filteredData === "function" ? filteredData() : [];
-  _drawCrossSample(fd, null);
+  const heavy = () => {
+    if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
+    const fd = typeof filteredData === "function" ? filteredData() : [];
+    _drawCrossSample(fd, null);
+  };
+  if (typeof ttBusyRun === "function") ttBusyRun(next ? "Merging specimens…" : "Un-merging specimens…", heavy);
+  else heavy();
 }
 
 // Build (once) and open a modal that lists every sample and the specimen it is
@@ -401,7 +422,7 @@ function _xsOpenSpecimenEditor() {
     `<span style="cursor:pointer;font-size:1.3em;color:#888;" id="xs-sp-close">&times;</span>` +
     `</div>` +
     `<div style="padding:6px 18px;font-size:0.82em;color:#666;">Give samples the same <b>specimen</b> value to merge them (e.g. a DNA and RNA library from one swab). Prevalence and per-organism TASS / coverage / reads then aggregate per specimen.</div>` +
-    `<div style="overflow:auto;padding:4px 18px 10px;">` +
+    `<div class="tt-scroll-table tt-scroll-modal" style="padding:4px 18px 10px;">` +
     `<table style="width:100%;border-collapse:collapse;">` +
     `<thead><tr>` +
     `<th style="text-align:left;padding:4px 8px;font-size:0.78em;color:#888;border-bottom:1px solid #eee;">Sample</th>` +
@@ -432,9 +453,13 @@ function _xsOpenSpecimenEditor() {
       return;
     }
     if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
-    if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
-    const fd = typeof filteredData === "function" ? filteredData() : [];
-    _drawCrossSample(fd, null);
+    const _apply = () => {
+      if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
+      const fd = typeof filteredData === "function" ? filteredData() : [];
+      _drawCrossSample(fd, null);
+    };
+    if (typeof ttBusyRun === "function") ttBusyRun("Regrouping specimens…", _apply);
+    else _apply();
   });
 
   document.getElementById("xs-sp-apply").addEventListener("click", () => {
@@ -457,9 +482,13 @@ function _xsOpenSpecimenEditor() {
     }
     specimenMergeEnabled = true;
     if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
-    if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
-    const fd = typeof filteredData === "function" ? filteredData() : [];
-    _drawCrossSample(fd, null);
+    const _apply = () => {
+      if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
+      const fd = typeof filteredData === "function" ? filteredData() : [];
+      _drawCrossSample(fd, null);
+    };
+    if (typeof ttBusyRun === "function") ttBusyRun("Regrouping specimens…", _apply);
+    else _apply();
   });
 }
 
@@ -510,8 +539,12 @@ function _drawCrossSample(fd, samples) {
         specimenTassAgg = spAgg.value || "max";
         // The combine method feeds the global specimen merge in filteredData(),
         // so refresh every tab (redraw invalidates the filter cache first).
-        if (typeof redraw === "function") redraw();
-        else _drawCrossSample(typeof filteredData === "function" ? filteredData() : [], null);
+        const _re = () => {
+          if (typeof redraw === "function") redraw();
+          else _drawCrossSample(typeof filteredData === "function" ? filteredData() : [], null);
+        };
+        if (typeof ttBusyRun === "function") ttBusyRun("Recombining specimens…", _re);
+        else _re();
       });
     // sort handler (delegated) for the frequency table
     const body = document.getElementById("xs-body");
@@ -576,14 +609,14 @@ const _CMP_METRICS = [
   {
     key: "samplePct",
     label: "% Samples",
-    fmt: (v) => v.toFixed(0) + "%",
-    desc: "prevalence across samples in view",
+    fmt: (v) => v.toFixed(1) + "%",
+    desc: "passing specimens ÷ total specimens in the run",
   },
   {
     key: "sampleCount",
     label: "# Samples",
     fmt: (v) => String(Math.round(v)),
-    desc: "number of samples detected in",
+    desc: "number of specimens passing the TASS cutoff",
   },
   { key: "meanTass", label: "Mean TASS", fmt: (v) => v.toFixed(1), desc: "mean TASS across samples" },
   { key: "medianTass", label: "Median TASS", fmt: (v) => v.toFixed(1), desc: "median TASS across samples" },
@@ -727,8 +760,8 @@ function _cmpRenderMatrix(orgs, metrics, agg, grpColors) {
     colMax = {};
   metrics.forEach((m) => {
     const vals = orgs.map((o) => +o[m.key] || 0);
-    colMin[m.key] = Math.min(...vals);
-    colMax[m.key] = Math.max(...vals);
+    colMin[m.key] = _ttMin(vals);
+    colMax[m.key] = _ttMax(vals);
   });
   const color = d3.scaleSequential(d3.interpolateBlues);
   // Metrics on a fixed 0–100 scale — when their column has no spread (e.g. every
@@ -827,8 +860,8 @@ function _cmpRenderParallel(orgs, metrics, agg, grpColors) {
   const scales = {};
   metrics.forEach((m) => {
     const vals = orgs.map((o) => +o[m.key] || 0);
-    const lo = Math.min(...vals),
-      hi = Math.max(...vals);
+    const lo = _ttMin(vals),
+      hi = _ttMax(vals);
     scales[m.key] = d3
       .scaleLinear()
       .domain(lo === hi ? [lo - 1, hi + 1] : [lo, hi])

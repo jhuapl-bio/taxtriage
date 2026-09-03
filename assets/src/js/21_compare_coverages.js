@@ -165,7 +165,7 @@ function _covMedian(arr) {
 // Aggregate a list of equal-length (or varied) numeric arrays element-wise.
 function _covAggArr(arrays, stat) {
   if (!arrays.length) return [];
-  const L = Math.min(...arrays.map((a) => a.length));
+  const L = _ttMin(arrays.map((a) => a.length));
   const out = [];
   for (let i = 0; i < L; i++) {
     const col = arrays.map((a) => a[i] || 0);
@@ -662,7 +662,7 @@ function _covDrawDiff(host, vis) {
     .map((nm) => {
       const its = byOrg.get(nm).filter((it) => it.profile && it.profile.length);
       if (!its.length) return null;
-      const L = Math.min(...its.map((it) => it.profile.length));
+      const L = _ttMin(its.map((it) => it.profile.length));
       const vals = [];
       for (let i = 0; i < L; i++) vals.push(its.reduce((s, it) => s + it.profile[i], 0) / its.length);
       return { label: nm, color: C.orgColor.get(nm), vals };
@@ -710,9 +710,9 @@ function _covStats() {
     const avgBr = br.reduce((s, v) => s + v, 0) / br.length;
     summary = `<div style="font-size:.8em;color:#555;margin:.3em 0 .5em">${
       vis.length
-    } sample(s) shown · mean breadth ${avgBr.toFixed(1)}% · spread ${Math.min(...br).toFixed(0)}–${Math.max(
-      ...br,
-    ).toFixed(0)}%</div>`;
+    } sample(s) shown · mean breadth ${avgBr.toFixed(1)}% · spread ${_ttMin(br).toFixed(0)}–${_ttMax(br).toFixed(
+      0,
+    )}%</div>`;
   }
 
   // ── Aggregate summary (mean / median across the shown samples) ──
@@ -754,16 +754,16 @@ function _covStats() {
           `<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${aggOf(
             ms.map((x) => x.mean),
           ).toFixed(1)}×</td>` +
-          `<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${Math.min(...brs).toFixed(
-            0,
-          )}–${Math.max(...brs).toFixed(0)}%</td>` +
+          `<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${_ttMin(brs).toFixed(0)}–${_ttMax(
+            brs,
+          ).toFixed(0)}%</td>` +
           `</tr>`
         );
       })
       .join("");
     aggCard =
       `<div class="cov-card-h" style="margin-top:.6em">${statLbl} coverage across samples</div>` +
-      `<div style="overflow:auto"><table style="border-collapse:collapse;width:100%;font-size:.82em">` +
+      `<div class="tt-scroll-table"><table style="border-collapse:collapse;width:100%;font-size:.82em">` +
       `<thead><tr style="background:#efeaf8">` +
       `<th style="padding:5px 8px;text-align:left;border-bottom:2px solid #4527a0">${
         C.multiOrg ? "Organism" : "Group"
@@ -780,7 +780,7 @@ function _covStats() {
     aggCard +
     `<div class="cov-card-h" style="margin-top:.6em">Per-sample coverage stats</div>` +
     summary +
-    `<div style="overflow:auto"><table style="border-collapse:collapse;width:100%;font-size:.82em">` +
+    `<div class="tt-scroll-table"><table style="border-collapse:collapse;width:100%;font-size:.82em">` +
     `<thead><tr style="background:#f0f4fa">` +
     `<th style="padding:5px 8px;text-align:left;border-bottom:2px solid #1565c0">Sample</th>` +
     `<th style="padding:5px 8px;text-align:left;border-bottom:2px solid #1565c0">Organism</th>` +
@@ -986,6 +986,17 @@ const _XS_COLS = [
   { key: "minCov", label: "Min Cov" },
   { key: "reads", label: "Total Reads" },
 ];
+/* In "Combine: Detection %" mode the TASS columns no longer hold TASS scores —
+   they hold the share of a specimen's libraries the organism was seen in. With
+   two libraries per specimen that is 100 for anything present in both, which
+   reads as "every TASS is 100" unless the header says otherwise. */
+function _xsColLabel(c) {
+  const detection = typeof specimenTassAgg !== "undefined" && specimenTassAgg === "detection";
+  const merged = typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled;
+  if (!detection || !merged || !/Tass$/.test(c.key)) return c.label;
+  return c.label.replace("TASS", "Detect %");
+}
+
 function _xsRenderTable(rows, agg) {
   const k = _XS.sortKey,
     asc = _XS.sortAsc;
@@ -1006,7 +1017,7 @@ function _xsRenderTable(rows, agg) {
     _XS_COLS
       .map(
         (c) =>
-          `<th data-key="${c.key}" class="${c.left ? "xs-left" : ""}" title="click to sort">${c.label}${ind(
+          `<th data-key="${c.key}" class="${c.left ? "xs-left" : ""}" title="click to sort">${_xsColLabel(c)}${ind(
             c.key,
           )}</th>`,
       )
@@ -1044,7 +1055,13 @@ function _xsRenderTable(rows, agg) {
     })
     .join("");
   body_set(
-    `<div class="xs-note">${rows.length} organism(s) across ${agg.totalSamples} specimen(s) with a positive hit. Click a column header to sort · <span style="color:#cc0000">●</span> = high-consequence · <b>Pass / Below / Total</b> = specimens passing the TASS cutoff / detected below it / total · prevalence bar = % passing · hover a <b>TASS / Cov / Reads</b> cell for its distribution · click a row to compare coverage across samples.</div>` +
+    `<div class="xs-note">${rows.length} organism(s) across ${agg.totalSamples} specimen(s) with a positive hit (of ${
+      agg.totalSpecimensAll != null ? agg.totalSpecimensAll : agg.totalSamples
+    } in the run). Click a column header to sort · <span style="color:#cc0000">●</span> = high-consequence · <b>Pass / Below / Total</b> = specimens passing the TASS cutoff / detected below it / total · <b>% Samples</b> = Pass ÷ Total (same denominator as that column) · ${
+      typeof specimenTassAgg !== "undefined" && specimenTassAgg === "detection" && specimenMergeEnabled
+        ? `<b style="color:#b26a00">Combine is set to Detection %</b> — the TASS columns show the share of each specimen's libraries the organism was seen in (2 of 2 libraries = 100%), not a TASS score. Switch Combine to Max for TASS. · `
+        : ""
+    }hover a <b>TASS / Cov / Reads</b> cell for its distribution · click a row to compare coverage across samples.</div>` +
       `<div id="xs-table-wrap"><table><thead>${head}</thead><tbody>${bodyRows}</tbody></table></div>`,
   );
   // Delegated tooltip: show a box-and-whisker of the relevant distribution when
@@ -1227,7 +1244,10 @@ function _xsRenderDist(rows, agg) {
     }
     const _allStat = _xsBoxStats(r.tassAll || []);
     const tipHtml =
-      `<b>${r.name}</b><br>${r.cat} · ${r.sampleCount}/${agg.totalSamples} passing (${r.samplePct.toFixed(1)}%)` +
+      `<b>${r.name}</b><br>${r.cat} · ${r.sampleCount}/${
+        r.total != null ? r.total : agg.totalSpecimensAll != null ? agg.totalSpecimensAll : agg.totalSamples
+      } passing (${r.samplePct.toFixed(1)}%)` +
+      (r.belowCount ? `<br><span style="color:#b0bec5">${r.belowCount} more detected below the cutoff</span>` : "") +
       `<br><span style="color:#90caf9">Passing TASS</span> — min ${lo.toFixed(1)} · Q1 ${q1.toFixed(
         1,
       )} · med ${med.toFixed(1)} · Q3 ${q3.toFixed(1)} · max ${hi.toFixed(1)}` +
@@ -1361,12 +1381,12 @@ function _xsRenderPCA(rows, agg) {
     ys = pca.proj.map((p) => p[1]);
   const x = d3
     .scaleLinear()
-    .domain([Math.min(...xs), Math.max(...xs)])
+    .domain([_ttMin(xs), _ttMax(xs)])
     .nice()
     .range([pad, W - pad]);
   const y = d3
     .scaleLinear()
-    .domain([Math.min(...ys), Math.max(...ys)])
+    .domain([_ttMin(ys), _ttMax(ys)])
     .nice()
     .range([H - pad, pad]);
   const types = uniq(samples.map((s) => (SAMPLE_META[s] || {}).sample_type || "unknown"));
@@ -1717,8 +1737,10 @@ function _xsExportCsv() {
     "Detected Organism",
     "Pathogen Type",
     "TaxID",
-    "sample_count",
-    "total_samples",
+    "pass_count",
+    "below_threshold_count",
+    "detected_count",
+    "total_specimens",
     "sample_percent",
     "mean_tass",
     "median_tass",
@@ -1741,7 +1763,9 @@ function _xsExportCsv() {
         r.cat,
         r.taxid,
         r.sampleCount,
-        agg.totalSamples,
+        r.belowCount != null ? r.belowCount : 0,
+        r.detCount != null ? r.detCount : r.sampleCount,
+        r.total != null ? r.total : agg.totalSpecimensAll != null ? agg.totalSpecimensAll : agg.totalSamples,
         r.samplePct.toFixed(2),
         r.meanTass.toFixed(2),
         r.medianTass.toFixed(2),
@@ -1961,25 +1985,148 @@ function _drawSummaryAnnotation(fd) {
   });
 }
 
-// Switch to the VF / AMR (proteins) tab and pre-filter it by genus.
-function _jumpToProteins(genus) {
+// Switch to the VF / AMR (proteins) tab and pre-filter it to one organism.
+//
+// Two problems this used to have:
+//   1. It always filtered on GENUS. Jumping from a species row therefore pulled
+//      in every other species of that genus, and jumping from a row whose genus
+//      is shared with the reference database's own host organism (DrugBank
+//      targets are human proteins, genus "Homo") filled the table with
+//      Homo sapiens rows that have nothing to do with the organism clicked.
+//   2. The search value was never cleared. Once any jump had happened, every
+//      later visit to the tab was still filtered by that stale term — which is
+//      why the tab kept opening pre-filtered to "homo".
+// Now: prefer the species name when we have one, and record that a jump is in
+// flight so the tab-button handler knows not to clear the box (see
+// _clearProtJumpFilter below).
+// Expand a Summary "Specimen ID" into the raw sample ids that VF/AMR rows
+// actually carry. With specimen merge on, the summary row's id is the merged
+// specimen NAME, which never equals any protein row's own sample value — so a
+// naive equality filter would blank the table.
+function _protSampleMembers(sample) {
+  const s = String(sample == null ? "" : sample).trim();
+  if (!s) return [];
+  try {
+    if (typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenGroups === "function") {
+      const members = specimenGroups().get(s);
+      if (Array.isArray(members) && members.length) return members.slice();
+    }
+  } catch (e) {}
+  return [s];
+}
+
+// Pin the VF/AMR table to a single sample/specimen. Reuses the bar-chart filter
+// slot so the existing badge and its ✕ button clear this the same way.
+function _setProtSampleFilter(sample) {
+  const s = String(sample == null ? "" : sample).trim();
+  if (!s) return;
+  window._protBarFilter = { sample: s, samples: _protSampleMembers(s), cat: "" };
+  window._protJumpSample = s;
+  const badge = document.getElementById("prot-bar-filter-badge");
+  const badgeText = document.getElementById("prot-bar-filter-text");
+  if (badge && badgeText) {
+    badgeText.textContent = s;
+    badge.style.display = "inline-flex";
+  }
+  if (window._filterProtExternal) window._filterProtExternal();
+}
+
+// Switch to the VF/AMR tab, optionally filtered to one sample. Without a sample
+// this leaves _protJumpPending unset, so the tab-switch handler's
+// _clearProtJumpFilter() wipes any filter left behind by an earlier jump.
+function _openProteinsTab(sample) {
+  const btn = document.querySelector('.tab-btn[data-tab="proteins"]');
+  if (!btn || btn.classList.contains("hidden")) return false;
+  const smp = String(sample == null ? "" : sample).trim();
+  if (smp) window._protJumpPending = true;
+  btn.click();
+  if (smp)
+    setTimeout(() => {
+      _setProtSampleFilter(smp);
+      window._protJumpPending = false;
+    }, 60);
+  return true;
+}
+
+function _jumpToProteins(genus, species, sample) {
   const btn = document.querySelector('.tab-btn[data-tab="proteins"]');
   if (!btn || btn.classList.contains("hidden")) return;
+  const term = String(species || "").trim() || String(genus || "").trim();
+  const smp = String(sample == null ? "" : sample).trim();
+  // No usable term — open the tab plainly rather than leaving a stale filter.
+  if (!term) return void _openProteinsTab(smp);
+  window._protJumpPending = true;
   btn.click();
-  // After the pane is visible, set the protein search to the genus column.
   setTimeout(() => {
     const colSel = document.getElementById("prot-search-col");
     const search = document.getElementById("prot-search");
+    // Sample first: the search dispatch below re-runs the filter once with
+    // both constraints in place.
+    if (smp) _setProtSampleFilter(smp);
     if (colSel) {
-      // pick a Genus column if present, else search all columns
-      const opt = Array.from(colSel.options).find((o) => /genus/i.test(o.value));
+      // Match the column to what we are actually searching for: the Species
+      // column when we have a species name, Genus otherwise, all columns if
+      // neither exists in this dataset.
+      const pick = (rx) => Array.from(colSel.options).find((o) => rx.test(o.value));
+      const opt = species ? pick(/^species$/i) : pick(/^genus$/i);
       colSel.value = opt ? opt.value : "";
     }
     if (search) {
-      search.value = genus;
+      search.value = term;
       search.dispatchEvent(new Event("input", { bubbles: true }));
     }
+    _showProtJumpBadge(term);
+    window._protJumpPending = false;
   }, 60);
+}
+
+// Clear a prefilter left behind by _jumpToProteins. Called when the VF/AMR tab
+// is opened directly (no jump in flight) so the tab never opens silently
+// filtered to whatever organism was last clicked.
+function _clearProtJumpFilter() {
+  if (window._protJumpPending) return;
+  // Drop a sample pin set by an earlier jump, but leave a bar-chart click
+  // filter the user made inside this tab alone.
+  if (window._protJumpSample) {
+    window._protJumpSample = null;
+    if (typeof window._clearProtBarFilter === "function") window._clearProtBarFilter();
+  }
+  const search = document.getElementById("prot-search");
+  const colSel = document.getElementById("prot-search-col");
+  if (!search || !search.value) return _showProtJumpBadge(null);
+  if (!window._protJumpTerm || search.value !== window._protJumpTerm) return _showProtJumpBadge(null);
+  search.value = "";
+  if (colSel) colSel.value = "";
+  search.dispatchEvent(new Event("input", { bubbles: true }));
+  _showProtJumpBadge(null);
+}
+
+// Visible, dismissible indicator that the table is showing one organism only.
+function _showProtJumpBadge(term) {
+  window._protJumpTerm = term || null;
+  const host = document.getElementById("prot-jump-badge");
+  if (!host) return;
+  if (!term) {
+    host.style.display = "none";
+    host.innerHTML = "";
+    return;
+  }
+  host.style.display = "inline-flex";
+  host.innerHTML =
+    `<span>Filtered to <b></b></span>` +
+    `<button type="button" title="Clear this filter" ` +
+    `style="border:none;background:none;color:inherit;cursor:pointer;font-size:1.1em;line-height:1;padding:0 0 0 .2em">×</button>`;
+  host.querySelector("b").textContent = term;
+  host.querySelector("button").onclick = () => {
+    const search = document.getElementById("prot-search");
+    const colSel = document.getElementById("prot-search-col");
+    if (search) {
+      search.value = "";
+      if (colSel) colSel.value = "";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    _showProtJumpBadge(null);
+  };
 }
 
 // ── NOVELTY DETECTION panel ───────────────────────────────────────────────
@@ -2220,7 +2367,7 @@ function _drawNoveltySummary() {
   const colMax = {};
   _NOV_SUMMARY_COLS.forEach(([k]) => {
     const vals = names.map((s) => +((samples[s] || {}).summary || {})[k]).filter(isFinite);
-    colMax[k] = vals.length ? Math.max(...vals) : 1;
+    colMax[k] = vals.length ? _ttMax(vals) : 1;
   });
   head.innerHTML = "<tr>" + _NOV_SUMMARY_COLS.map(([, lbl]) => `<th>${_novEsc(lbl)}</th>`).join("") + "</tr>";
   body.innerHTML = names
@@ -2274,8 +2421,8 @@ function _drawNoveltySummary() {
     if (!vals.length) return;
     const sorted = [...vals].sort((a, b) => b - a); // descending for rank
     colStats[k] = {
-      min: Math.min(...vals),
-      max: Math.max(...vals),
+      min: _ttMin(vals),
+      max: _ttMax(vals),
       mean: vals.reduce((a, b) => a + b, 0) / vals.length,
       sorted,
       nSamples: vals.length,
@@ -2870,7 +3017,7 @@ function _drawNoveltyGenusCompare() {
             never aligned are tagged <span style="color:#2b8a3e;font-weight:600">Rescued</span> — exactly the limited-reference / mock case.
           </div>
           ${legendHtml}
-          <div style="overflow-x:auto">
+          <div class="tt-scroll-table">
           <table class="data-table" style="font-size:0.82em;width:100%">
             <thead><tr>
               <th>Genus</th><th>Bucket</th><th>Genus TASS - cov</th><th>% reads (aligned)</th><th>${_novEsc(
@@ -3047,8 +3194,8 @@ function _drawNoveltyScoreChart() {
       rank: [...data].sort((a, b) => b.score - a.score).findIndex((x) => x.name === d.name) + 1,
       nSamples: data.length,
       mean: data.reduce((a, b) => a + b.score, 0) / data.length,
-      min: Math.min(...data.map((x) => x.score)),
-      max: Math.max(...data.map((x) => x.score)),
+      min: _ttMin(data.map((x) => x.score)),
+      max: _ttMax(data.map((x) => x.score)),
     };
     _novShowCellTip(
       ev,
@@ -3404,6 +3551,24 @@ function _drawTab(tab) {
     case "table":
       populateTable();
       break;
+    case "runmeta":
+      // "runmeta" was in _TAB_DIRTY but had no draw case, so the metadata table
+      // was the one view a filter change never reached. It only needs redrawing
+      // when the user has scoped it to the filters — otherwise it is a static
+      // inventory of the run and rebuilding it on every keystroke is waste.
+      {
+        const _sc = document.getElementById("runmeta-filter-scope");
+        if (_sc && _sc.checked && typeof _buildRunMetaTable === "function") _buildRunMetaTable();
+      }
+      break;
+    case "map":
+      if (typeof _buildGeoComparison === "function") _buildGeoComparison();
+      break;
+    case "trends":
+      if (typeof _activeMetaSub !== "undefined" && _activeMetaSub && typeof _switchMetaSub === "function") {
+        _switchMetaSub(_activeMetaSub);
+      }
+      break;
   }
   _TAB_DIRTY[tab] = false;
   _TAB_RENDERED[tab] = true;
@@ -3435,12 +3600,16 @@ function redraw() {
   // Render the currently visible tab now.
   _drawTab(activeTab);
   // Cheap shared updates that must reflect filter state immediately.
+  // _refreshMapMarkerColors re-evaluates the filter-match set, so the map dims
+  // / undims without a full marker rebuild (zoom and selection survive).
   _refreshMapMarkerColors();
   if (_selectedSample || _selectedGroup) _refreshMapPanelTable();
   if (_longiBuilt) _buildLongitudinalSection();
-  // Keep the active metadata sub-tab in sync with the active filters.
-  if (activeTab === "runmeta" && _activeMetaSub) {
+  // Keep the active Trends sub-tab in sync with the active filters, and
+  // recompute the drawn-region summaries (their membership is filter-scoped).
+  if (activeTab === "trends" && _activeMetaSub) {
     if (typeof _switchMetaSub === "function") _switchMetaSub(_activeMetaSub);
   }
+  if (typeof _ttRegionRefresh === "function") _ttRegionRefresh();
   _updateCapabilityNotice();
 }

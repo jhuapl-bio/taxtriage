@@ -84,18 +84,91 @@
       });
     }
 
+    // ── Specimen grouping from the uploaded metadata ────────────────────
+    // A metadata file commonly carries the `specimen` column that groups a
+    // sample's DNA and RNA libraries. That changes how every view aggregates,
+    // so the specimen caches have to be dropped and the merge UI re-evaluated
+    // here — otherwise the grouping stays invisible and the merge button just
+    // opens the "group these manually" dialog on an ungrouped run.
+    if (typeof _noteSampleMetaChanged === "function") _noteSampleMetaChanged();
+    const _hadGrouping = typeof hasSpecimenGrouping === "function" && hasSpecimenGrouping();
+    if (_hadGrouping && typeof _ensureSpecimenColors === "function") _ensureSpecimenColors();
+
     // The Metadata & Mapping tab is always available now; just keep it shown.
     const rmBtn = document.getElementById("runmeta-tab-btn");
     if (rmBtn) rmBtn.classList.remove("hidden");
 
+    // An uploaded file is the main way arbitrary columns enter the report, so
+    // re-profile the groupable columns before anything reads the grouping.
+    // metaGrouping.refresh() also drops any active field the new file removed,
+    // which keeps a restored session from grouping on a column that is gone.
+    if (window.metaGrouping) {
+      try {
+        window.metaGrouping.refresh();
+      } catch (e) {}
+    }
+
     // Rebuild metadata table + update sub-tab enabled states
     _buildRunMetaTable();
     if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+    if (typeof _mgSyncGroupBar === "function") _mgSyncGroupBar();
 
     // Rebuild the map markers if the map was already initialized, then refresh
     // the precise-map view (in the Mapping & Geography sub-tab) if it's open.
     if (_leafletMap && typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
     if (typeof _geoRedraw === "function") _geoRedraw();
+
+    // Now that the grouping is live, sync the merge bar and — when the file
+    // introduced multi-sample specimens the run didn't have before — turn merge
+    // on so the effect is immediately visible, mirroring the samplesheet path.
+    // Boot / session restore is skipped: those paths run their own init redraw
+    // (and specimenMerge.wire() applies the same default), so doing it here
+    // would just duplicate an expensive pass before the DOM is ready.
+    if (!fromBoot) {
+      if (window.specimenMerge) {
+        if (_hadGrouping && !specimenMergeEnabled) {
+          window.specimenMerge.setEnabled(true); // also redraws
+        } else {
+          if (typeof window.specimenMerge.refreshBar === "function") window.specimenMerge.refreshBar();
+          if (typeof redraw === "function") redraw();
+        }
+      } else if (typeof redraw === "function") {
+        redraw();
+      }
+    }
+  };
+
+  /* Summarise how an uploaded metadata file lined up with the run: how many of
+     its rows matched a sample actually present, and how many specimens the
+     `specimen` column produced. Surfacing this makes the common failure —
+     metadata whose sample ids don't match the run's — visible instead of
+     silently producing no grouping. */
+  window._metaSpecimenSummary = function (records) {
+    const known = new Set();
+    if (typeof DATA !== "undefined") DATA.forEach((r) => known.add(String(r["Specimen ID"] || "")));
+    Object.keys((typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {}).forEach((k) => known.add(k));
+    let matched = 0,
+      withSpecimen = 0;
+    const specs = new Set();
+    (records || []).forEach((rec) => {
+      const sn = rec.sample_name;
+      if (!sn) return;
+      const isKnown = known.has(sn);
+      if (isKnown) matched++;
+      const sp = typeof specimenOf === "function" ? specimenOf(sn) : sn;
+      if (sp && sp !== sn) {
+        withSpecimen++;
+        if (isKnown) specs.add(sp);
+      }
+    });
+    // Only specimens that actually pool more than one sample are "merged".
+    let multi = 0;
+    if (typeof specimenGroups === "function") {
+      specimenGroups().forEach((members) => {
+        if (members.length > 1) multi++;
+      });
+    }
+    return { total: (records || []).length, matched, withSpecimen, specimens: specs.size, multiSpecimens: multi };
   };
 
   // ── Status helpers ────────────────────────────────────────────────────
@@ -172,7 +245,27 @@
         return;
       }
       window._applyMetaRecords(allRecords, false);
-      _setMetaStatus(`✓ Metadata loaded: ${allRecords.length} sample(s)`, false);
+      // Report what the file actually did, not just that it parsed. A metadata
+      // sheet whose sample ids don't match the run parses fine but groups
+      // nothing — without this the only symptom is a merge button that offers
+      // to group manually.
+      const sum = window._metaSpecimenSummary ? window._metaSpecimenSummary(allRecords) : null;
+      let msg = `✓ Metadata loaded: ${allRecords.length} row(s)`;
+      let isErr = false;
+      if (sum) {
+        if (!sum.matched) {
+          msg =
+            `⚠ Metadata loaded (${sum.total} row(s)) but none of its sample names match this run — ` +
+            `check the "sample" column against the run's sample ids.`;
+          isErr = true;
+        } else {
+          msg += `, ${sum.matched} matched this run`;
+          if (sum.multiSpecimens) msg += ` · ${sum.multiSpecimens} multi-sample specimen(s) grouped`;
+          else if (sum.withSpecimen) msg += ` · specimen column read, but no sample shares a specimen`;
+          else msg += ` · no specimen column found`;
+        }
+      }
+      _setMetaStatus(msg, isErr);
       const clearBtn = document.getElementById("meta-clear-btn");
       if (clearBtn) clearBtn.classList.remove("hidden");
     } catch (err) {
@@ -199,7 +292,7 @@
 })();
 
 // ── Run Metadata analysis sub-tab state ──────────────────────────────
-let _activeMetaSub = null; // e.g. "longi" | "geo" | "host" | "cmp"
+let _activeMetaSub = null; // "longi" | "geo" | "host" | "ghm" | "net" | "cmp"
 
 // Heavy report build. Defined as a named function (was an immediately-invoked
 // IIFE) so the deferred scheduler below can run it AFTER the loading overlay
@@ -240,12 +333,9 @@ function __ttRunInit() {
     }
   }
 
-  // Show proteins tab only if annotation data present
-  const hasProtData =
-    HAS_PROT &&
-    [PROT.genus_summary, PROT.per_gene_hits, PROT.sample_overview, PROT.amr_genes, PROT.genus_by_property].some(
-      (arr) => Array.isArray(arr) && arr.length > 0,
-    );
+  // Show proteins tab only if annotation data present (sample_overview alone is
+  // the TASS organism table, not annotation — see hasProtAnnotations in early.js)
+  const hasProtData = HAS_PROT && hasProtAnnotations(PROT);
   HAS_PROT = hasProtData;
   const protBtn = document.getElementById("prot-tab-btn");
   if (protBtn) {
@@ -265,6 +355,11 @@ function __ttRunInit() {
   // even when none was supplied via the samplesheet / CSV.
   const runmetaBtn = document.getElementById("runmeta-tab-btn");
   if (runmetaBtn) runmetaBtn.classList.remove("hidden");
+
+  // Seed the sample QC rules from the pipeline defaults and apply any
+  // "hide" actions BEFORE the first sample list / redraw, so the very first
+  // paint already reflects them (no flash of unfiltered samples).
+  if (typeof ttFlagsInit === "function") ttFlagsInit();
 
   buildHmValueSel();
   buildSampleList();
@@ -321,30 +416,6 @@ function __ttRunInit() {
 
   // ── Wire up sortable map-panel column headers ──────────────────────
   _initPanelSortHeaders();
-
-  // ── Wire sidebar legend collapse toggle ────────────────────────────
-  const _legendToggle = document.getElementById("sidebar-legend-toggle");
-  const _legendBody = document.getElementById("sidebar-legend-body");
-  if (_legendToggle && _legendBody) {
-    _legendToggle.addEventListener("click", () => {
-      const open = _legendBody.style.display !== "none";
-      _legendBody.style.display = open ? "none" : "";
-      _legendToggle.innerHTML = open ? "&#9660;" : "&#9650;";
-      _legendToggle.title = open ? "Expand legend" : "Collapse legend";
-    });
-  }
-
-  // Also update legend when the global TASS slider changes
-  const _fmin = document.getElementById("filter-min");
-  if (_fmin)
-    _fmin.addEventListener("input", () => {
-      if (typeof _updateSidebarLegend === "function") _updateSidebarLegend();
-    });
-  // Also update when a sample color picker changes
-  document.getElementById("sample-list") &&
-    document.getElementById("sample-list").addEventListener("input", (e) => {
-      if (e.target && e.target.type === "color" && typeof _updateSidebarLegend === "function") _updateSidebarLegend();
-    });
 }
 
 // ── Deferred init scheduler ───────────────────────────────────────────────

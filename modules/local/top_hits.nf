@@ -53,7 +53,7 @@ process TOP_HITS {
     """
     echo ${meta.id} "-----------------META variable------------------"
     get_top_hits.py \\
-        -i \"$report\" --ranks S \\
+        -i \"$report\" \\
         -o ${id}.top_report.tsv  ${distribution_arg} ${pathogen_sheet} ${site} \\
         $top_hits_count  $top_per_taxa $remove_commensal
 

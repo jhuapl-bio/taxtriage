@@ -1311,6 +1311,7 @@ const _TAB_DIRTY = {
   table: false,
   map: false,
   runmeta: false,
+  trends: false,
   novelty: false,
   insilico: false,
 };

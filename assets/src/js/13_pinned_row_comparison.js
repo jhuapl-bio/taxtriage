@@ -103,14 +103,14 @@ function _openCompareModalForRows(pinnedRows) {
 
   // Summary row: highest TASS per organism
   const maxTass = pinnedRows.map((r) => parseFloat(r["TASS Score"]) || 0);
-  const maxIdx = maxTass.indexOf(Math.max(...maxTass));
+  const maxIdx = maxTass.indexOf(_ttMax(maxTass));
 
   const body = document.getElementById("compare-body");
   body.innerHTML =
     `<p style="font-size:0.82em;color:#888;margin-bottom:0.6em">${pinnedRows.length} pinned row${
       pinnedRows.length !== 1 ? "s" : ""
     } — click any row in the table to toggle pinning</p>` +
-    `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:0.85em">` +
+    `<div class="tt-scroll-table"><table style="border-collapse:collapse;width:100%;font-size:0.85em">` +
     `<thead><tr>` +
     `<th style="text-align:left;padding:6px 10px;background:#f0f4fa;border-bottom:2px solid #1565c0;width:130px;font-size:0.78em;color:#555;text-transform:uppercase;letter-spacing:0.02em">Target</th>` +
     colHeaders +

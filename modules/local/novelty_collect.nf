@@ -17,7 +17,11 @@ process NOVELTY_COLLECT {
         'jhuaplbio/reportlab-pdf:4.0.9' }"
 
     input:
-    // Collected across all samples (each may be a NO_FILE placeholder list when novelty is off)
+    // Collected across all samples. When novelty is enabled but produced nothing, each
+    // falls back to its OWN placeholder (assets/NO_FILE_novelty_summaries and
+    // assets/NO_FILE_novelty_candidates). These are two separate `path` inputs staged into
+    // the same work directory, so they must never share a filename -- reusing the generic
+    // assets/NO_FILE for both aborts the run with an input file name collision.
     path(summaries)
     path(candidates)
 
@@ -31,10 +35,13 @@ process NOVELTY_COLLECT {
     task.ext.when == null || task.ext.when
 
     script:
+    // Drop ANY placeholder (NO_FILE, NO_FILE_novelty_*, ...) rather than the one literal
+    // name, so a future placeholder rename cannot silently pass a sentinel to the script.
+    // novelty_collect.py takes nargs="*" for both, so empty lists are handled.
     def sum_args  = (summaries instanceof List ? summaries : [summaries])
-        .findAll { it.name != 'NO_FILE' && it.name.endsWith('.tsv') }.join(' ')
+        .findAll { !it.name.startsWith('NO_FILE') && it.name.endsWith('.tsv') }.join(' ')
     def cand_args = (candidates instanceof List ? candidates : [candidates])
-        .findAll { it.name != 'NO_FILE' && it.name.endsWith('.tsv') }.join(' ')
+        .findAll { !it.name.startsWith('NO_FILE') && it.name.endsWith('.tsv') }.join(' ')
     """
     novelty_collect.py \\
         --summaries ${sum_args} \\

@@ -79,6 +79,14 @@ def parse_args(argv=None):
              "so you can use that to set a more conservative default while still allowing users to see all organisms if they wish."
     )
     parser.add_argument(
+        "-c", "--min_conf", default=None, type=float,
+        help="Explicit TASS confidence cutoff (0-100). When set, this overrides the "
+             "auto-computed best_cutoffs for every sample, so the global filter slider "
+             "AND every per-sample-type slider in the UI default to this value instead "
+             "of the thresholds-JSON-derived recommendation. Does not hard-filter data "
+             "(use --mintass for that) -- it only changes the sliders' starting position."
+    )
+    parser.add_argument(
         "-t", "--template",
         metavar="TEMPLATE", default="heatmap.html",
         help="Input HTML template file (default: heatmap.html).",
@@ -106,6 +114,17 @@ def parse_args(argv=None):
         help="Output HTML file.",
     )
     parser.add_argument(
+        "-x", "--output_xlsx",
+        metavar="XLSX", default=None,
+        help="Optional: also write the merged data to this XLSX path. NOTE: this is "
+             "NOT what -p/--protein_annotations does -- that flag takes XLSX INPUT "
+             "file(s) to read, it does not produce output. Writes a 'Detections' "
+             "sheet (same rows/columns as the HTML report's table), a 'Metadata' "
+             "sheet when --metadata was loaded, and 'Genus Summary' / 'Per-Gene "
+             "Hits' / 'Sample Overview' / 'AMR Genes' sheets when "
+             "--protein_annotations / --annotate_reports were loaded.",
+    )
+    parser.add_argument(
         "-mc", "--microbial_category", nargs="+",
         default=["all"],
         metavar="CAT",
@@ -129,6 +148,105 @@ def parse_args(argv=None):
         help="Optional: pathogen reference sheet (assets/pathogen_sheet.csv). When given, novelty "
              "candidates and VF/AMR hits are cross-referenced against it so the report can flag "
              "listed pathogens that have NO reference alignment (taxid, then name, then genus rollup).",
+    )
+    parser.add_argument(
+        "--metadata", nargs="*", default=[], metavar="FILE",
+        help="Optional: sample metadata CSV/TSV/XLSX, the same file you would drag onto the "
+             "report's Metadata & Mapping tab. Must have a 'sample' (or 'sample_name') column; "
+             "every other column is carried through as-is. A 'specimen' column groups a "
+             "specimen's DNA/RNA libraries so the report can merge them. Rows whose sample id "
+             "is not in the run are reported and skipped (see --metadata-add-unmatched).",
+    )
+    parser.add_argument(
+        "--metadata-add-unmatched", action="store_true",
+        help="With --metadata, also create entries for metadata rows whose sample id is not in "
+             "the run. Off by default: an unmatched id is nearly always an id-format mismatch, "
+             "and inventing samples hides that.",
+    )
+    parser.add_argument(
+        "--metadata-sheet", default=None, metavar="NAME",
+        help="With an XLSX --metadata file, the worksheet to read. Defaults to a sheet named "
+             "'metadata' (case-insensitive) if present, else the first sheet.",
+    )
+    parser.add_argument(
+        "--rename-samples", default=None, metavar="FILE",
+        help="Optional: a 2-column CSV/TSV/XLSX mapping original sample names (1st "
+             "column) to display names (2nd column). Applied after all data is loaded "
+             "-- every occurrence of a matched sample name (records, metadata, contig "
+             "data, protein/VF-AMR annotations, novelty) is renamed before the HTML is "
+             "written. A header row is auto-detected and skipped if present.",
+    )
+    # ── Sample-QC flag defaults ──────────────────────────────────────────────
+    # These seed the report's whole-SAMPLE rule set (the "Sample QC / Flags"
+    # panel). They never drop data: every sample is still written to the report,
+    # it is just marked -- or, with --flag-action hide, additionally removed from
+    # the views. Users can edit every rule live in the report.
+    flg = parser.add_argument_group("sample QC flags (report defaults)")
+    flg.add_argument(
+        "--flag-min-reads", default=None, type=float, metavar="N",
+        help="Flag a sample whose total_reads is below N.",
+    )
+    flg.add_argument(
+        "--flag-min-aligned-reads", default=None, type=float, metavar="N",
+        help="Flag a sample whose aligned_reads is below N.",
+    )
+    flg.add_argument(
+        "--flag-min-organisms", default=None, type=float, metavar="N",
+        help="Flag a sample with fewer than N DISTINCT organisms scoring at or above "
+             "--flag-organism-tass.",
+    )
+    flg.add_argument(
+        "--flag-organism-tass", default=None, type=float, metavar="TASS",
+        help="TASS cutoff used by --flag-min-organisms (default: --min_conf if given, else 75).",
+    )
+    flg.add_argument(
+        "--flag-min-detections", default=None, type=float, metavar="N",
+        help="Flag a sample with fewer than N detections passing their own threshold.",
+    )
+    flg.add_argument(
+        "--flag-metadata", default=None, metavar="SPEC",
+        help="Metadata criteria, ';'-separated. Each is 'field:op:value' (or the shorthand "
+             "'field=value', which means equals). Operators: == != contains !contains regex "
+             "empty !empty < <= > >=. Example: "
+             "\"sample_type:==:nasal;host_disease:contains:influenza;site:!empty:\". "
+             "The field is looked up in the run metadata first, then in the sample metadata.",
+    )
+    flg.add_argument(
+        "--flag-logic", default="any", choices=["any", "all"],
+        help="Flag a sample when ANY rule matches (default) or only when ALL of them do.",
+    )
+    flg.add_argument(
+        "--flag-action", default="flag", choices=["flag", "hide"],
+        help="What happens to a matching sample: 'flag' marks it in the Heatmap / Table / "
+             "Metadata & Mapping / Summary tabs but leaves it fully visible (default); "
+             "'hide' also removes it from every chart and table (reversible in the report).",
+    )
+    flg.add_argument(
+        "--flag-view", default="all", choices=["all", "hide", "only"],
+        help="Which samples the report OPENS on: 'all' (default; a rule with action 'hide' "
+             "still hides its own matches), 'hide' (every flagged sample hidden) or 'only' "
+             "(show the flagged samples and hide everything that passed). Switchable in the "
+             "report's sidebar.",
+    )
+    flg.add_argument(
+        "--flag-exclude-taxids", default=None, metavar="IDS",
+        help="Taxids (or organism names) that never count toward a detection figure -- the "
+             "distinct-organism counts, the detection counts and any aggregated column. "
+             "Defaults to '9606' (human), so --flag-min-organisms means the same thing on a "
+             "run with dehosting and one without. Comma- or space-separated; pass '' (empty) "
+             "to count everything, including host.",
+    )
+    flg.add_argument(
+        "--flag-missing", action="store_true",
+        help="Treat a missing / blank value as a match. Off by default, so a rule can never "
+             "flag a sample purely because the field was never populated.",
+    )
+    flg.add_argument(
+        "--flag-rules", default=None, metavar="JSON",
+        help="A JSON file holding the full rule list -- either a bare list of rule objects or "
+             "{\"logic\":…, \"missing_fails\":…, \"rules\":[…]}. Each rule is "
+             "{source, field, op, value[, agg, tass, action]} with source one of "
+             "meta | derived | runmeta | data. Replaces every other --flag-* criterion.",
     )
     parser.add_argument(
         "--vfamr-taxids", default=None, metavar="TSV",
@@ -159,6 +277,472 @@ def parse_args(argv=None):
              "subsample sample names.",
     )
     return parser.parse_args(argv)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sample QC flags  (whole-sample rules baked into the report as defaults)
+# ──────────────────────────────────────────────────────────────────────────────
+# The report evaluates these client-side (assets/src/js/41_sample_flags.js), so
+# all we do here is translate the --flag-* CLI surface into the rule objects that
+# module understands and hand them over in the bootstrap payload. Nothing is
+# filtered out of the data: a rule only decides how a sample is PRESENTED.
+#
+#   rule = {source, field, op, value, agg, tass, action}
+#     source  meta     SAMPLE_META metric (total_reads, aligned_reads, platform…)
+#             derived  computed from the detections (organisms above TASS, …)
+#             runmeta  a metadata column (run metadata first, sample metadata as
+#                      a fallback)
+#             data     a numeric detection column, aggregated per sample by `agg`
+#     action  flag  -> marked in the report   |   hide -> also removed from views
+
+_FLAG_OPS = {
+    "==", "!=", "contains", "!contains", "regex",
+    "empty", "!empty", "<", "<=", ">", ">=",
+}
+_FLAG_SOURCES = {"meta", "derived", "runmeta", "data"}
+
+
+def _parse_metadata_flag_specs(spec, action):
+    """Parse --flag-metadata into runmeta rules.
+
+    Accepts 'field:op:value' and the shorthand 'field=value' (equals), separated
+    by ';'. A malformed clause is reported and skipped rather than raising --
+    a typo in one criterion must not cost the user the whole report.
+    """
+    rules = []
+    for raw in str(spec).split(";"):
+        clause = raw.strip()
+        if not clause:
+            continue
+        field = op = value = None
+        if ":" in clause:
+            parts = clause.split(":", 2)
+            if len(parts) == 3 and parts[1].strip() in _FLAG_OPS:
+                field, op, value = parts[0].strip(), parts[1].strip(), parts[2]
+            elif len(parts) >= 2 and parts[1].strip() in ("empty", "!empty"):
+                field, op, value = parts[0].strip(), parts[1].strip(), ""
+        if field is None and "=" in clause:
+            field, value = clause.split("=", 1)
+            field, op = field.strip(), "=="
+        if not field or op not in _FLAG_OPS:
+            print(f"[make_report] WARNING: cannot parse --flag-metadata clause {clause!r}; "
+                  f"expected 'field:op:value' with op in {sorted(_FLAG_OPS)}, or 'field=value'",
+                  file=sys.stderr)
+            continue
+        rules.append({
+            "source": "runmeta",
+            "field": field,
+            "op": op,
+            "value": "" if value is None else str(value).strip(),
+            "action": action,
+        })
+    return rules
+
+
+def _normalize_flag_rule(rule, default_action):
+    """Coerce one rule dict from a --flag-rules JSON file. Returns None if unusable."""
+    if not isinstance(rule, dict):
+        return None
+    source = str(rule.get("source", "")).strip()
+    field = str(rule.get("field", "")).strip()
+    op = str(rule.get("op", "")).strip()
+    if source not in _FLAG_SOURCES or not field or op not in _FLAG_OPS:
+        print(f"[make_report] WARNING: skipping malformed flag rule {rule!r}", file=sys.stderr)
+        return None
+    out = {
+        "on": rule.get("on", True) is not False,
+        "source": source,
+        "field": field,
+        "op": op,
+        "value": "" if rule.get("value") is None else str(rule.get("value")),
+        "action": "hide" if str(rule.get("action", default_action)) == "hide" else "flag",
+    }
+    if source == "data":
+        out["agg"] = str(rule.get("agg") or "max")
+    if rule.get("tass") is not None:
+        out["tass"] = float(rule["tass"])
+    # Minimum classifier reads for the unsupported_k2_organisms field, the way
+    # `tass` qualifies the distinct-organism counts.
+    if rule.get("k2min") is not None:
+        out["k2min"] = float(rule["k2min"])
+    return out
+
+
+def _flag_value(v):
+    """Render a threshold for the rule payload without a spurious ".0".
+
+    The --flag-* thresholds parse as float (so 0.5 works), which turns a plain
+    count like 2000000000 into "2000000000.0" — noise in the report's rule
+    editor and in every "actual:" line it prints.
+    """
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
+#: Host, by default. See --flag-exclude-taxids.
+FLAG_EXCLUDE_DEFAULT = ["9606"]
+
+
+def _parse_flag_exclude(spec):
+    """Split --flag-exclude-taxids into a list; None means "use the default".
+
+    An explicitly empty string is honoured as "exclude nothing" -- that is how a
+    user asks for host to be counted like any other organism.
+    """
+    if spec is None:
+        return list(FLAG_EXCLUDE_DEFAULT)
+    out, seen = [], set()
+    for tok in re.split(r"[,;\s]+", str(spec)):
+        tok = tok.strip()
+        if not tok or tok.lower() in seen:
+            continue
+        seen.add(tok.lower())
+        out.append(tok)
+    return out
+
+
+def build_sample_flag_config(args):
+    """Turn the --flag-* arguments into the report's default rule set.
+
+    Returns None when nothing was requested, so a run with no flag parameters
+    ships a report identical to what it produced before this feature existed.
+    """
+    action = getattr(args, "flag_action", "flag") or "flag"
+    logic = getattr(args, "flag_logic", "any") or "any"
+    missing = bool(getattr(args, "flag_missing", False))
+    rules = []
+
+    # A rules file replaces every individual criterion (the module docs and the
+    # nextflow param both say so) -- it is the escape hatch for rule sets that
+    # the flat CLI surface cannot express.
+    rules_path = getattr(args, "flag_rules", None)
+    if rules_path:
+        try:
+            with open(rules_path) as fh:
+                blob = json.load(fh)
+        except Exception as exc:
+            print(f"[make_report] WARNING: could not read --flag-rules {rules_path}: {exc}",
+                  file=sys.stderr)
+            blob = None
+        if isinstance(blob, dict):
+            logic = blob.get("logic", logic)
+            missing = bool(blob.get("missing_fails", missing))
+            # A rules file may also carry the two whole-report settings.
+            if blob.get("view") is not None:
+                args.flag_view = blob.get("view")
+            elif blob.get("hide_all"):
+                args.flag_view = "hide"
+            if blob.get("exclude_taxids") is not None:
+                ex = blob.get("exclude_taxids")
+                args.flag_exclude_taxids = ",".join(str(x) for x in ex) if isinstance(ex, list) else str(ex)
+            raw_rules = blob.get("rules") or []
+        elif isinstance(blob, list):
+            raw_rules = blob
+        else:
+            raw_rules = []
+        for r in raw_rules:
+            norm = _normalize_flag_rule(r, action)
+            if norm:
+                rules.append(norm)
+    else:
+        if args.flag_min_reads is not None:
+            rules.append({"source": "meta", "field": "total_reads", "op": "<",
+                          "value": _flag_value(args.flag_min_reads), "action": action})
+        if args.flag_min_aligned_reads is not None:
+            rules.append({"source": "meta", "field": "aligned_reads", "op": "<",
+                          "value": _flag_value(args.flag_min_aligned_reads), "action": action})
+        if args.flag_min_organisms is not None:
+            # The organism count is only meaningful next to a score cutoff; fall
+            # back to --min_conf so "organisms above TASS" means the same thing
+            # here as the slider the report opens with.
+            tass = args.flag_organism_tass
+            if tass is None:
+                tass = args.min_conf if args.min_conf is not None else 75.0
+            rules.append({"source": "derived", "field": "unique_taxids_above_tass", "op": "<",
+                          "value": _flag_value(args.flag_min_organisms), "tass": float(tass),
+                          "action": action})
+        if args.flag_min_detections is not None:
+            rules.append({"source": "derived", "field": "passing_detections", "op": "<",
+                          "value": _flag_value(args.flag_min_detections), "action": action})
+        if args.flag_metadata:
+            rules.extend(_parse_metadata_flag_specs(args.flag_metadata, action))
+
+    if not rules:
+        return None
+    view = getattr(args, "flag_view", "all") or "all"
+    if view not in ("all", "hide", "only"):
+        view = "all"
+    return {
+        "enabled": True,
+        "logic": "all" if str(logic) == "all" else "any",
+        "missing_fails": missing,
+        "view": view,
+        # Kept in step with `view` so a report built by this version still opens
+        # correctly in anything that only knows the old boolean.
+        "hide_all": view == "hide",
+        "exclude_taxids": _parse_flag_exclude(getattr(args, "flag_exclude_taxids", None)),
+        "rules": rules,
+    }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sample metadata (CSV / TSV / XLSX)
+# ──────────────────────────────────────────────────────────────────────────────
+# Build-time equivalent of dragging a metadata file onto the report's
+# Metadata & Mapping tab. The parsing rules below deliberately mirror
+# _rowToMetaRecord / _applyMetaRecords in assets/src/js/28_meta_csv.js so the
+# same file produces the same report either way — if you change one, change the
+# other, and scripts/test_metadata_cli.py will tell you if they drift.
+#
+# Rules (from the browser implementation):
+#   • headers are lower-cased and trimmed; spaces are NOT converted
+#   • the key column is "sample" or "sample_name"; whitespace → underscores
+#   • every other column is carried through untouched
+#   • "", "null", "na" (any case) become None
+#   • latitude / longitude / depth / salinity are parsed as floats
+_META_NUM_FIELDS = {"latitude", "longitude", "depth", "salinity"}
+_META_NULL_STRINGS = {"", "null", "na"}
+
+
+def _meta_read_table(path, sheet=None):
+    """Read a metadata file into a list of dicts with lower-cased headers."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext in (".xlsx", ".xls", ".xlsm"):
+        # Match the browser: prefer a sheet literally named "metadata".
+        if sheet is None:
+            try:
+                names = pd.ExcelFile(path).sheet_names
+            except Exception:
+                names = []
+            sheet = next((n for n in names if str(n).strip().lower() == "metadata"), 0)
+        df = pd.read_excel(path, sheet_name=sheet, dtype=str)
+    elif ext in (".tsv", ".tab"):
+        df = pd.read_csv(path, sep="\t", dtype=str)
+    else:
+        df = pd.read_csv(path, dtype=str)
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    return df.where(pd.notna(df), None).to_dict("records")
+
+
+def _meta_row_to_record(row):
+    """One parsed row → a metadata record, or None when it has no sample id."""
+    raw = row.get("sample") or row.get("sample_name") or ""
+    sample = re.sub(r"\s+", "_", str(raw).strip())
+    if not sample or sample.lower() in _META_NULL_STRINGS:
+        return None
+    rec = {"sample_name": sample}
+    for k, v in row.items():
+        if k in ("sample", "sample_name"):
+            continue
+        sv = "" if v is None else str(v).strip()
+        if sv.lower() in _META_NULL_STRINGS:
+            rec[k] = None
+        elif k in _META_NUM_FIELDS:
+            try:
+                rec[k] = float(sv)
+            except ValueError:
+                rec[k] = None
+        else:
+            rec[k] = sv
+    return rec
+
+
+def load_sample_metadata(paths, sample_meta, known_samples=None, add_unmatched=False, sheet=None):
+    """Merge metadata file(s) into sample_meta, in place.
+
+    `known_samples` supplements sample_meta's keys when deciding whether a row
+    matches the run. This matters for the tabular input path, where
+    load_tabular_input() returns an EMPTY sample_meta — the samples are real,
+    they're just only named in the data rows, and without this every metadata
+    row would be reported as unmatched.
+
+    Returns a summary dict for reporting. Unmatched rows are the failure mode
+    worth surfacing: the file parses perfectly but its sample ids don't line up
+    with the run, which otherwise shows up only as a report with no metadata.
+    """
+    summary = {"files": 0, "rows": 0, "matched": 0, "unmatched": [], "added": 0,
+               "columns": set(), "specimens": 0}
+    if not paths:
+        return summary
+
+    known = set(sample_meta.keys()) | set(known_samples or ())
+    for path in paths:
+        if not path or not str(path).strip():
+            continue
+        try:
+            rows = _meta_read_table(path, sheet=sheet)
+        except Exception as exc:
+            print(f"[make_report] ERROR reading metadata {path!r}: {exc}", file=sys.stderr)
+            continue
+        summary["files"] += 1
+        for row in rows:
+            rec = _meta_row_to_record(row)
+            if rec is None:
+                continue
+            summary["rows"] += 1
+            name = rec["sample_name"]
+            if name not in known:
+                if not add_unmatched:
+                    summary["unmatched"].append(name)
+                    continue
+                known.add(name)
+                summary["added"] += 1
+            else:
+                summary["matched"] += 1
+            target = sample_meta.setdefault(name, {"sample_name": name})
+            for k, v in rec.items():
+                if k == "sample_name":
+                    continue
+                summary["columns"].add(k)
+                # A None from the metadata file means "blank cell". Don't let it
+                # erase a value the pipeline already established for this sample.
+                if v is None and target.get(k) not in (None, ""):
+                    continue
+                target[k] = v
+
+    # How many multi-sample specimens the grouping column actually produced —
+    # the number that tells you whether merge will do anything in the report.
+    groups = {}
+    for name, meta in sample_meta.items():
+        spec = None
+        for field in ("specimen", "specimen_id", "specimen id", "specimenid",
+                      "specimen_group", "specimen group"):
+            val = meta.get(field)
+            if val is not None and str(val).strip():
+                spec = str(val).strip()
+                break
+        groups.setdefault(spec or name, []).append(name)
+    summary["specimens"] = sum(1 for members in groups.values() if len(members) > 1)
+    return summary
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sample rename map (CSV / TSV / XLSX) — original name -> display name
+# ──────────────────────────────────────────────────────────────────────────────
+_RENAME_HEADER_STRINGS = {
+    "old", "old_name", "original", "original_name", "sample", "sample_name",
+    "new", "new_name", "renamed", "rename", "display_name", "display",
+}
+
+
+def load_sample_rename_map(path):
+    """Read a 2-column CSV/TSV/XLSX into an {original_name: new_name} dict.
+
+    The first column is the sample name as it appears in the input JSON/TSV
+    (metadata.sample_name), the second is the desired display name. Extra
+    columns are ignored. A header row is auto-detected (either cell matching
+    a common header word) and skipped; otherwise every row is treated as data.
+    """
+    mapping = {}
+    if not path:
+        return mapping
+    p = path.strip()
+    if not p:
+        return mapping
+    if not os.path.isfile(p):
+        print(f"[make_report] WARNING: --rename-samples file not found: {p}", file=sys.stderr)
+        return mapping
+
+    ext = os.path.splitext(p)[1].lower()
+    try:
+        if ext in (".xlsx", ".xls", ".xlsm"):
+            df = pd.read_excel(p, dtype=str, header=None)
+        elif ext in (".tsv", ".tab"):
+            df = pd.read_csv(p, sep="\t", dtype=str, header=None)
+        else:
+            df = pd.read_csv(p, dtype=str, header=None)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[make_report] WARNING: cannot read --rename-samples file {p}: {exc}", file=sys.stderr)
+        return mapping
+
+    if df.shape[1] < 2:
+        print(f"[make_report] WARNING: --rename-samples file {p} needs at least 2 columns; ignoring.",
+              file=sys.stderr)
+        return mapping
+
+    df = df.iloc[:, :2]
+    df.columns = ["old", "new"]
+
+    # Skip an obvious header row.
+    if len(df) and (
+        str(df.iloc[0]["old"]).strip().lower() in _RENAME_HEADER_STRINGS
+        or str(df.iloc[0]["new"]).strip().lower() in _RENAME_HEADER_STRINGS
+    ):
+        df = df.iloc[1:]
+
+    for _, row in df.iterrows():
+        old = "" if row["old"] is None else str(row["old"]).strip()
+        new = "" if row["new"] is None else str(row["new"]).strip()
+        if not old or old.lower() in _META_NULL_STRINGS:
+            continue
+        if not new or new.lower() in _META_NULL_STRINGS:
+            continue
+        mapping[old] = new
+    return mapping
+
+
+def apply_sample_renames(rename_map, rows, sample_meta, contig_data, prot_data, novelty_data):
+    """Rename sample identifiers everywhere they appear, in place. Returns a summary dict."""
+    summary = {"applied": set(), "unmatched": []}
+    if not rename_map:
+        return {"applied": 0, "unmatched": []}
+
+    def _new(name):
+        if name in rename_map:
+            summary["applied"].add(name)
+            return rename_map[name]
+        return name
+
+    # Detection rows: "Specimen ID"
+    for r in rows:
+        old = r.get("Specimen ID")
+        if old in rename_map:
+            r["Specimen ID"] = _new(old)
+
+    # Per-sample metadata, keyed by sample name.
+    new_sample_meta = {}
+    for name, meta in sample_meta.items():
+        new_name = _new(name)
+        meta = dict(meta)
+        meta["sample_name"] = new_name
+        if new_name in new_sample_meta:
+            new_sample_meta[new_name].update(meta)
+        else:
+            new_sample_meta[new_name] = meta
+    sample_meta.clear()
+    sample_meta.update(new_sample_meta)
+
+    # Contig data: keys are "<sample>||<organism>||<taxon_id>", entries carry "sample".
+    new_contig_data = {}
+    for key, entry in contig_data.items():
+        old_sample = entry.get("sample", "")
+        new_sample = _new(old_sample)
+        entry = dict(entry)
+        entry["sample"] = new_sample
+        _, _, rest = key.partition("||")
+        new_key = f"{new_sample}||{rest}" if rest else new_sample
+        new_contig_data[new_key] = entry
+    contig_data.clear()
+    contig_data.update(new_contig_data)
+
+    # Protein/VF-AMR annotation rows carry "Specimen ID" (or occasionally "Sample").
+    for lst in prot_data.values():
+        for r in lst:
+            for field in ("Specimen ID", "Sample", "sample"):
+                if field in r and r[field] in rename_map:
+                    r[field] = _new(r[field])
+
+    # Novelty payload: {"samples": {<sample>: {...}}}.
+    if novelty_data and isinstance(novelty_data.get("samples"), dict):
+        new_samples = {}
+        for name, sdata in novelty_data["samples"].items():
+            new_samples[_new(name)] = sdata
+        novelty_data["samples"] = new_samples
+
+    summary["unmatched"] = [old for old in rename_map if old not in summary["applied"]]
+    summary["applied"] = len(summary["applied"])
+    return summary
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # JSON ingestion
@@ -798,6 +1382,17 @@ def annotate_protein_pathogens(prot_data, source_taxids, paths):
     return n
 
 
+# Keys of prot_data that actually carry VF/AMR annotation.
+#   PROT_HIT_KEYS        — per-hit rows; a sample present here genuinely has hits.
+#   PROT_ANNOTATION_KEYS — the above plus the genus rollup; any of these being
+#                          non-empty means the VF/AMR tab has something to draw.
+# "sample_overview" is deliberately excluded from both: create_report.py writes
+# that sheet for every run (it is the TASS organism table), so treating it as
+# annotation makes has_prot always True and marks every sample as covered.
+PROT_HIT_KEYS = ("per_gene_hits", "amr_genes")
+PROT_ANNOTATION_KEYS = PROT_HIT_KEYS + ("genus_summary",)
+
+
 def load_protein_annotations(paths, pident=0):
     """
     Read one or more protein-annotation XLSX files (sheets: Genus Summary,
@@ -1328,6 +1923,43 @@ def main():
         print(f"[make_report] Loaded {len(rows)} rows from tabular file "
               f"{args.input[0]!r}")
 
+    # ── optional sample metadata file ─────────────────────────────────────────
+    # Merged into sample_meta BEFORE run_metadata_records is derived below, so
+    # the extra columns flow into the report's metadata table, map and specimen
+    # grouping exactly as they would had the file been dropped on the tab.
+    if args.metadata:
+        # Sample ids as they appear in the loaded detections — the authoritative
+        # list of what this run actually contains.
+        _run_samples = {
+            str(r.get("Specimen ID")) for r in rows if r.get("Specimen ID") not in (None, "")
+        }
+        meta_summary = load_sample_metadata(
+            args.metadata, sample_meta,
+            known_samples=_run_samples,
+            add_unmatched=args.metadata_add_unmatched,
+            sheet=args.metadata_sheet,
+        )
+        cols = sorted(meta_summary["columns"])
+        print(f"[make_report] Metadata: {meta_summary['rows']} row(s) from "
+              f"{meta_summary['files']} file(s); {meta_summary['matched']} matched this run"
+              + (f", {meta_summary['added']} added" if meta_summary["added"] else ""))
+        if cols:
+            print(f"[make_report] Metadata columns: {', '.join(cols)}")
+        if meta_summary["specimens"]:
+            print(f"[make_report] Specimen grouping: {meta_summary['specimens']} "
+                  f"multi-sample specimen(s) — merge will be available in the report")
+        elif any(c.startswith("specimen") for c in cols):
+            print("[make_report] WARNING: a specimen column was read but no two samples "
+                  "share a specimen value, so nothing will merge.", file=sys.stderr)
+        if meta_summary["unmatched"]:
+            _u = meta_summary["unmatched"]
+            print(f"[make_report] WARNING: {len(_u)} metadata row(s) did not match any sample "
+                  f"in this run and were skipped: {', '.join(_u[:5])}"
+                  + (" …" if len(_u) > 5 else ""), file=sys.stderr)
+            if not meta_summary["matched"]:
+                print("[make_report] WARNING: NO metadata row matched this run — check that the "
+                      "'sample' column uses the same ids as the pipeline.", file=sys.stderr)
+
     # ── derive column lists ────────────────────────────────────────────────────
     # These fields are carried on each record for client-side analysis (the
     # Feature Compare view + capability detection) but are NOT human-displayable
@@ -1347,18 +1979,29 @@ def main():
                 numeric_cols.append(col)
 
     # ── protein annotations ───────────────────────────────────────────────────
+    # NOTE: "sample_overview" is the TASS organism table, NOT VF/AMR annotation —
+    # create_report.py writes that sheet unconditionally, even when annotation was
+    # disabled or matched nothing. Only the annotation-bearing sheets may be used
+    # to decide "does this run have VF/AMR data?" or "is this sample covered?";
+    # counting sample_overview made has_prot True for every run (rendering an empty
+    # VF/AMR tab) and marked every sample as already covered (silently discarding
+    # the --annotate_reports fallback below).
     prot_data = load_protein_annotations(args.protein_annotations, pident=args.pident)
-    has_prot = any(len(v) > 0 for v in prot_data.values())
+    has_prot = any(len(prot_data.get(k, [])) > 0 for k in PROT_ANNOTATION_KEYS)
     print(f"[make_report] Protein annotations loaded: {has_prot} "
-          f"({sum(len(v) for v in prot_data.values())} total rows)")
+          f"({sum(len(v) for v in prot_data.values())} total rows; "
+          f"{sum(len(prot_data.get(k, [])) for k in PROT_ANNOTATION_KEYS)} annotation rows)")
 
     # ── standalone annotation reports (de-novo / unaligned samples) ────────────
     # Samples with no reference alignment never get an organism hierarchy, so their
     # VF/AMR annotation is absent from the merged XLSX. Supplement prot_data from the
     # per-sample annotate_report.tsv files for any sample not already covered.
     if args.annotate_reports:
+        # A sample counts as "covered" only if the merged XLSX carried actual VF/AMR
+        # rows for it. Appearing in sample_overview means nothing — every sample in
+        # the run is listed there regardless of whether annotation matched.
         covered = set()
-        for _k in ("per_gene_hits", "amr_genes", "genus_summary", "sample_overview"):
+        for _k in PROT_HIT_KEYS:
             for _r in prot_data.get(_k, []):
                 _s = _r.get("Specimen ID") or _r.get("Sample") or _r.get("sample")
                 if _s not in (None, ""):
@@ -1368,7 +2011,7 @@ def main():
         if _n_supp:
             for _k in prot_data:
                 prot_data[_k].extend(supp.get(_k, []))
-            has_prot = any(len(v) > 0 for v in prot_data.values())
+            has_prot = any(len(prot_data.get(k, [])) > 0 for k in PROT_ANNOTATION_KEYS)
             _supp_samples = sorted({
                 (r.get("Specimen ID") or r.get("Sample") or r.get("sample"))
                 for k in ("per_gene_hits", "amr_genes") for r in supp.get(k, [])
@@ -1402,6 +2045,26 @@ def main():
           f"{n_flagged} novelty candidate(s), {n_prot_flagged} VF/AMR row(s) flagged; "
           f"{len(source_taxids)} bvbrc source-id taxids)")
 
+    # ── optional sample rename map ────────────────────────────────────────────
+    # Applied last, after every data source (records, metadata, contig data,
+    # protein/VF-AMR annotations, novelty) has been loaded and merged, so a
+    # single rename touches all of them consistently before the HTML is built.
+    if args.rename_samples:
+        rename_map = load_sample_rename_map(args.rename_samples)
+        if rename_map:
+            rn_summary = apply_sample_renames(
+                rename_map, rows, sample_meta, contig_data, prot_data, novelty_data
+            )
+            print(f"[make_report] Sample rename: {len(rename_map)} mapping(s) loaded from "
+                  f"{args.rename_samples!r}; {rn_summary['applied']} applied")
+            if rn_summary["unmatched"]:
+                _u = rn_summary["unmatched"]
+                print(f"[make_report] WARNING: {len(_u)} rename entry(ies) matched no sample "
+                      f"in this run: {', '.join(_u[:5])}" + (" …" if len(_u) > 5 else ""),
+                      file=sys.stderr)
+        else:
+            print(f"[make_report] WARNING: --rename-samples {args.rename_samples!r} produced no "
+                  f"usable mappings", file=sys.stderr)
 
     # ── extract run-level metadata for map / metadata panel ──────────────────
     # These fields are part of the fixed pipeline/sample identity — not run metadata.
@@ -1465,6 +2128,23 @@ def main():
 
     print(f"[make_report] Pipeline revision: {pipeline_revision or 'Not Specified or Local Build'}  commit: {pipeline_commit}")
 
+    # ── explicit --min_conf override ──────────────────────────────────────────
+    # If the user passed --min_conf, stamp it into every sample's best_cutoffs
+    # (all granularities) so BOTH the global filter slider (which reads the
+    # aggregated best_cutoffs below) AND the per-sample-type sliders (which read
+    # each sample's own best_cutoffs directly, see _defaultTassForType in
+    # 03_sample_sidebar.js) default to this value instead of the auto-computed
+    # thresholds-JSON recommendation.
+    if args.min_conf is not None:
+        for smeta in sample_meta.values():
+            smeta["best_cutoffs"] = {
+                level: {"best_threshold": args.min_conf}
+                for level in ("key", "subkey", "toplevelkey")
+            }
+            smeta["best_cutoffs_source"] = "user-specified (--min_conf)"
+            smeta["min_conf_applied"] = args.min_conf
+        print(f"[make_report] --min_conf={args.min_conf} overriding all sample/type slider defaults")
+
     # ── in-silico subsampling suite (spike-in / dilution-series) ──────────────
     # The subsample datasets are kept OUT of the main heatmap/table (report.nf feeds
     # only non-control samples to -i). Load their JSONs here on a SEPARATE track so
@@ -1516,6 +2196,21 @@ def main():
     else:
         print("[make_report] No best_cutoffs found; UI TASS filter will default to 0")
 
+    # ── sample QC flag defaults ───────────────────────────────────────────────
+    sample_flags = build_sample_flag_config(args)
+    if sample_flags:
+        _acts = {r["action"] for r in sample_flags["rules"]}
+        print(f"[make_report] Sample QC: {len(sample_flags['rules'])} default rule(s), "
+              f"logic={sample_flags['logic']}, action(s)={'/'.join(sorted(_acts))}")
+        for _r in sample_flags["rules"]:
+            _t = f" (TASS {_r['tass']:g})" if _r.get("tass") is not None else ""
+            _a = f" agg={_r['agg']}" if _r.get("agg") else ""
+            print(f"[make_report]   - {_r['source']}.{_r['field']}{_t}{_a} "
+                  f"{_r['op']} {_r['value']} -> {_r['action']}")
+    else:
+        print("[make_report] Sample QC: no default rules (no --flag-* criteria given); "
+              "the report's Sample QC panel will start empty.")
+
     # ── build bootstrap payload ───────────────────────────────────────────────
     payload = _sanitize({
         "records":               rows,
@@ -1533,6 +2228,7 @@ def main():
         "novelty_downloads":     novelty_downloads,            # [{label, kind, filename}] for links
         "pathogens":             pathogens,                    # {by_taxid, by_name, by_genus} pathogen lookups
         "has_pathogens":         has_pathogens,                # true if a pathogen sheet was loaded
+        "sample_flags":          sample_flags,                 # default whole-sample QC rules (None when unconfigured)
         "report_generated_at":   datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pipeline_revision":     pipeline_revision,            # global branch/tag or "local"
         "pipeline_commit":       pipeline_commit,              # global commit hash or None
@@ -1616,6 +2312,42 @@ def main():
         fh.write(html)
 
     print(f"[make_report] Written: {args.output}")
+
+    # ── optional combined XLSX export ─────────────────────────────────────────
+    # Separate from --protein_annotations (-p), which is XLSX *input*. This is
+    # the only flag that makes make_report.py *write* an XLSX file.
+    if args.output_xlsx:
+        def _sheet_df(records, cols=None):
+            if not records:
+                return pd.DataFrame(columns=cols or [])
+            df = pd.DataFrame(records)
+            if cols:
+                # Keep report column order; include any extra keys at the end.
+                extra = [c for c in df.columns if c not in cols]
+                df = df.reindex(columns=list(cols) + extra)
+            return df
+
+        _xlsx_sheets = [("Detections", _sheet_df(rows, all_cols))]
+        if run_metadata_records:
+            _xlsx_sheets.append(("Metadata", _sheet_df(run_metadata_records)))
+        if has_prot:
+            for _key, _sheet_name in (
+                ("genus_summary",   "Genus Summary"),
+                ("per_gene_hits",   "Per-Gene Hits"),
+                ("sample_overview", "Sample Overview"),
+                ("amr_genes",       "AMR Genes"),
+            ):
+                _recs = prot_data.get(_key, [])
+                if _recs:
+                    _xlsx_sheets.append((_sheet_name, _sheet_df(_recs)))
+
+        with pd.ExcelWriter(args.output_xlsx, engine="openpyxl") as writer:
+            for _sheet_name, _df in _xlsx_sheets:
+                # Excel sheet names are capped at 31 characters.
+                _df.to_excel(writer, sheet_name=_sheet_name[:31], index=False)
+
+        print(f"[make_report] Written: {args.output_xlsx} "
+              f"({len(_xlsx_sheets)} sheet(s): {', '.join(n for n, _ in _xlsx_sheets)})")
 
 
 def _is_numeric_str(s):

@@ -408,12 +408,18 @@
     specimenMergeEnabled = !!on;
     if (typeof _ensureSpecimenColors === "function") _ensureSpecimenColors();
     if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
+    // Flip the toggle's own label first so the button reacts instantly, then
+    // do the heavy re-aggregation behind the "Calculating…" pill.
     refreshBar();
-    const bannerSub = document.getElementById("banner-sub");
-    if (bannerSub && typeof _buildBannerSub === "function") bannerSub.textContent = _buildBannerSub();
-    if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
-    if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
-    if (typeof redraw === "function") redraw();
+    const heavy = () => {
+      const bannerSub = document.getElementById("banner-sub");
+      if (bannerSub && typeof _buildBannerSub === "function") bannerSub.textContent = _buildBannerSub();
+      if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
+      if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
+      if (typeof redraw === "function") redraw();
+    };
+    if (typeof ttBusyRun === "function") ttBusyRun(on ? "Merging specimens…" : "Un-merging specimens…", heavy);
+    else heavy();
   }
 
   /* ── metadata conflict detection ───────────────────────────────────── */

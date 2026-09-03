@@ -94,7 +94,16 @@ workflow REPORT {
         } else {
             ch_report_microbert = alignments.map { [ it[0], file("$projectDir/assets/NO_FILEmicrobert") ] }
         }
-        alignments = alignments.join(ch_report_microbert)
+        // remainder:true + fallback so samples that never produced MicrobeRT output
+        // (pre-aligned BAM inputs, controls with no clusters) are not silently
+        // dropped from the report by this join.
+        alignments = alignments
+            .join(ch_report_microbert, remainder: true)
+            .filter { it[1] }
+            .map { items ->
+                def mbert = items[-1] ?: file("$projectDir/assets/NO_FILEmicrobert")
+                return items[0..-2] + [mbert]
+            }
 
         // Perform the difference operation
         missing_samples = all_samples - accepted_list
@@ -250,10 +259,13 @@ workflow REPORT {
             // ── Combine all per-sample JSONs into a single all.samples.json ──────
             // Published to report/ so users can download one file and drag+drop
             // it onto any TaxTriage heatmap.html instead of individual JSONs.
+            // NOTE: the COMBINE_SAMPLES_JSON call itself lives further down, after
+            // the novelty and annotate channels are declared — the combined file
+            // embeds those feeds so one drag also populates the Novelty and
+            // VF/AMR tabs.
             ch_all_jsons_for_combine = all_alignment_outputs
                 .map { meta, json -> json }
                 .collect()
-            COMBINE_SAMPLES_JSON( ch_all_jsons_for_combine )
 
             // merge
             SINGLE_REPORT(
@@ -289,14 +301,27 @@ workflow REPORT {
             //    report gets a NO_FILE placeholder and the panel stays hidden.
             //    A SINGLE channel carries all novelty files (incl. all.novelty.json) so the
             //    combined json is staged once -> no input-file-name collision in the report.
-            ch_novelty_files = Channel.value(file("$projectDir/assets/NO_FILE"))
+            //    Its own placeholder (not the generic assets/NO_FILE) so it can never
+            //    collide with another path input of CREATE_COMPARISON_REPORT; every other
+            //    optional input there already follows this convention.
+            ch_novelty_files = Channel.value(file("$projectDir/assets/NO_FILE_novelty"))
+            // Just the combined all.novelty.json, for embedding in all.odr.json.
+            // Distinct placeholder name so it cannot collide with the annotate
+            // reports staged alongside it in COMBINE_SAMPLES_JSON.
+            ch_novelty_combined = Channel.value(file("$projectDir/assets/NO_FILE_novelty_summaries"))
             if (params.novelty) {
+                // NOTE: summaries and candidates are TWO separate `path` inputs on
+                // NOVELTY_COLLECT, so they stage into the SAME work directory. They must
+                // therefore use DISTINCT placeholder filenames -- if both fell back to the
+                // generic assets/NO_FILE (which happens whenever novelty is enabled but
+                // yields nothing, e.g. no sample produced de novo contigs), Nextflow aborts
+                // with "input file name collision ... NO_FILE".
                 ch_nov_summaries = ch_novelty_summary
                     .map { meta, f -> f }.collect()
-                    .ifEmpty { file("$projectDir/assets/NO_FILE") }
+                    .ifEmpty { file("$projectDir/assets/NO_FILE_novelty_summaries") }
                 ch_nov_cands = ch_novelty_candidates
                     .map { meta, f -> f }.collect()
-                    .ifEmpty { file("$projectDir/assets/NO_FILE") }
+                    .ifEmpty { file("$projectDir/assets/NO_FILE_novelty_candidates") }
 
                 NOVELTY_COLLECT( ch_nov_summaries, ch_nov_cands )
 
@@ -307,6 +332,7 @@ workflow REPORT {
                     .mix(NOVELTY_COLLECT.out.xlsx_files)
                     .flatten()
                     .collect()
+                ch_novelty_combined = NOVELTY_COLLECT.out.combined_json
             }
 
             // bvbrc specialty-gene reference TSV (source_id -> taxids) for VF/AMR pathogen
@@ -326,6 +352,16 @@ workflow REPORT {
                 .collect()
                 .ifEmpty { file("$projectDir/assets/NO_FILE_annotate_report") }
 
+            // ── Combined drag-and-drop JSON ──────────────────────────────────────
+            // Deferred to here (channels declared above) so all.odr.json can embed
+            // the novelty payload and the standalone VF/AMR annotations alongside
+            // the per-sample detections.
+            COMBINE_SAMPLES_JSON(
+                ch_all_jsons_for_combine,
+                ch_novelty_combined,
+                ch_annotate_report_files
+            )
+
             // ── Offline report libraries ─────────────────────────────────────────
             // --offline_report_files <dir> stages a directory of local CDN library
             // copies to embed inline. Otherwise a NO_FILE placeholder is staged and
@@ -334,6 +370,13 @@ workflow REPORT {
             ch_offline_report_files = params.offline_report_files
                 ? Channel.fromPath(params.offline_report_files, checkIfExists: true)
                 : Channel.value(file("$projectDir/assets/NO_FILE_embedding"))
+
+            // Optional sample-QC rule list (params.report_flag_rules). Staged like
+            // every other optional input so it resolves inside a container; its own
+            // placeholder name so it can never collide with another path input.
+            ch_flag_rules = params.report_flag_rules
+                ? Channel.value(file(params.report_flag_rules, checkIfExists: true))
+                : Channel.value(file("$projectDir/assets/NO_FILE_flag_rules"))
 
             // ── In-silico subsampling suite feed ─────────────────────────────────
             // The subsample datasets are excluded from ch_comparison_jsons above (to
@@ -379,6 +422,7 @@ workflow REPORT {
                 ch_vfamr_taxids.first(),
                 ch_annotate_report_files,
                 ch_offline_report_files,
+                ch_flag_rules,
                 ch_insilico_suite_jsons,
                 ch_insilico_manifest_files,
                 ch_insilico_params_file

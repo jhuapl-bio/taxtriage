@@ -699,11 +699,32 @@ def calculate_normalized_groups(
         #   gini *= highmapq_fraction ^ mapq_gini_power
         #   Organisms dominated by low-MAPQ reads get their Gini crushed
         #   because the coverage is unreliable.
-        _n_total_contigs = len(entries)
-        _n_covered_contigs = sum(
-            1 for _e in entries
-            if _e.get('numreads', 0) > 0 or len(_e.get('covered_regions', [])) > 0
-        )
+        # ── True contig counts (not just len(entries)) ────────────────────────
+        # At the STRAIN level (group_field="key") `entries` really are per-contig
+        # accessions, so len(entries) is the contig count. But at the SPECIES /
+        # GENUS levels `entries` are strain records, so len(entries) is the
+        # number of STRAINS — typically 1 — and the penalty silently became a
+        # no-op exactly where it was needed most.
+        #
+        # This is what let Plasmodium vivax through: reads on 5 of ~2,700
+        # scaffolds should give _contig_frac ≈ 0.002 → penalty ≈ 0.09, but the
+        # species group saw 1/1 contigs and applied no penalty at all.
+        #
+        # Fix: prefer the n_contigs_total / n_contigs_covered stamped onto each
+        # member by the strain-level aggregation below, and only fall back to
+        # len(entries) when members carry no such annotation (i.e. we ARE the
+        # strain level, or the records predate this field).
+        _member_total = sum(int(_to_float(_e.get('n_contigs_total', 0))) for _e in entries)
+        _member_covered = sum(int(_to_float(_e.get('n_contigs_covered', 0))) for _e in entries)
+        if _member_total > 0:
+            _n_total_contigs = _member_total
+            _n_covered_contigs = _member_covered
+        else:
+            _n_total_contigs = len(entries)
+            _n_covered_contigs = sum(
+                1 for _e in entries
+                if _e.get('numreads', 0) > 0 or len(_e.get('covered_regions', [])) > 0
+            )
         _contig_frac = (
             _n_covered_contigs / _n_total_contigs
             if _n_total_contigs > 0 else 1.0

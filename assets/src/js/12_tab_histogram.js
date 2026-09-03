@@ -619,7 +619,7 @@
         }
         const fNBins = filteredBins.length;
         const avgPct = fNBins ? (filteredBins.reduce((a, b) => a + b, 0) / fNBins).toFixed(1) : 0;
-        const maxBin = fNBins ? Math.max(...filteredBins).toFixed(1) : 0;
+        const maxBin = fNBins ? _ttMax(filteredBins).toFixed(1) : 0;
 
         // If histSelectedContig is no longer in top-N, clear it
         if (histSelectedContig && filteredContigNames.length && !filteredContigNames.includes(histSelectedContig)) {
@@ -1069,7 +1069,7 @@ function _renderOneRow(row) {
       _lnk.addEventListener("click", (e) => {
         e.stopPropagation();
         hideTip();
-        _vfamrOnlyOpen(_s);
+        _vfamrOnlyOpen(_s, row["Specimen ID"]);
       });
     itr.appendChild(itd);
     return itr;
@@ -1439,10 +1439,16 @@ function populateTable() {
       const gtd = document.createElement("td");
       gtd.colSpan = visibleCols.length;
       const _mergedBadge = typeof _mergedSampleBadgeHTML === "function" ? _mergedSampleBadgeHTML(row) : "";
+      const _flagBadge = typeof _flagBadgeHTML === "function" ? _flagBadgeHTML(row) : "";
+      const _flagSt = typeof ttFlagStateFor === "function" ? ttFlagStateFor(row) : null;
+      if (_flagSt && _flagSt.flagged) {
+        gr.classList.add("flagged-sample");
+        if (_flagSt.hide) gr.classList.add("flag-hidden-sample");
+      }
       gtd.innerHTML = `<i class="fas fa-vial"></i> ${String(_lastGrp)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")}${_mergedBadge}`;
+        .replace(/>/g, "&gt;")}${_mergedBadge}${_flagBadge}`;
       gr.appendChild(gtd);
       frag.appendChild(gr);
     }

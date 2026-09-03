@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema",
     "$id": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/nextflow_schema.json",
-    "title": "nf-core/taxtriage pipeline parameters",
+    "title": "jhuapl-bio/taxtriage pipeline parameters",
     "description": "APHL pipeline for triage classification reports.",
     "type": "object",
     "definitions": {
@@ -55,18 +55,86 @@
                 },
                 "fastq_1": {
                     "type": "string",
-                    "format": "file-path",
-                    "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
-                    "errorMessage": "File must be a fastq or compressed (ends in .fastq.gz, .fq.gz, .fastq or .fq). Will overwrite --input parameter if specified.",
-                    "description": "Path to the first fastq file. If using paired-end reads, this is the forward read.",
+                    "pattern": "^(?:\\S+\\.(fastq|fq)(\\.gz)?|(SRR|ERR|DRR|SRX|ERX|DRX|SRS|ERS|DRS|SRP|ERP|DRP)[0-9]{5,}|SAM(N|EA|EG|D)[0-9]+|PRJ(NA|EB|EA|DA|DB)[0-9]+)$",
+                    "errorMessage": "Must be either a fastq path (ends in .fastq.gz, .fq.gz, .fastq or .fq) or an SRA/ENA accession (SRR/ERR/DRR, SRX/ERX/DRX, SRS/ERS/DRS, SAMN/SAMEA, SRP/ERP/DRP, PRJNA/PRJEB). Will overwrite --input parameter if specified.",
+                    "description": "Path to the first fastq file, or an SRA/ENA accession to download automatically. If using paired-end reads, this is the forward read. Accessions above run level (SRX/SRS/SRP/PRJNA) expand into one sample per child run.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "fastq_2": {
                     "type": "string",
                     "format": "file-path",
                     "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
-                    "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read.",
+                    "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read. Ignored when fastq_1 is an accession — paired-end layout is detected from the archive.",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "sra_cache_dir": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Persistent cache directory for FASTQs downloaded from SRA/ENA. Defaults to <outdir>/sra_downloads. Point at shared storage to reuse downloads across runs and users.",
+                    "fa_icon": "fas fa-database"
+                },
+                "sra_force_sratools": {
+                    "type": "boolean",
+                    "description": "Skip the ENA fast path and always fetch accessions with prefetch + fasterq-dump.",
+                    "fa_icon": "fas fa-download"
+                },
+                "sra_max_size": {
+                    "type": "string",
+                    "description": "Value passed to prefetch --max-size (e.g. '50G'). Defaults to 'u' (unlimited).",
+                    "fa_icon": "fas fa-download"
+                },
+                "ncbi_api_key": {
+                    "type": "string",
+                    "description": "Optional NCBI eutils API key, used to raise the rate limit when expanding accessions that ENA does not know about.",
+                    "fa_icon": "fas fa-key"
+                },
+                "bam": {
+                    "type": "string",
+                    "format": "file-path",
+                    "pattern": "^\\S+\\.(bam|cram|sam)$",
+                    "errorMessage": "File must be a pre-aligned .bam, .cram or .sam file.",
+                    "description": "Path to a pre-aligned BAM/CRAM/SAM file. Skips QC, trimming, host removal, classification and reference downloading. Supply --reference_fasta (the reference the file was aligned against); without it the reference sequence is recovered from the alignment via samtools consensus (see --bam_consensus). The samplesheet equivalent is a 'bam' column.",
+                    "fa_icon": "fas fa-align-left"
+                },
+                "cram_reference": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Reference FASTA used to decode CRAM input, if different from --reference_fasta.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "bam_minmapq": {
+                    "type": "number",
+                    "description": "Optional MAPQ filter applied to pre-aligned (--bam / bam column) input. By default the alignment is taken as given.",
+                    "fa_icon": "fas fa-filter"
+                },
+                "bam_consensus": {
+                    "type": "boolean",
+                    "description": "Recover reference sequence from a pre-aligned BAM with samtools consensus when no --reference_fasta is given, so sourmash sketching, the shared-window conflict report and the ANI matrix have bases to work with. Auto-enabled for BAM input without a reference; set false to run without the minhash/conflict component instead. Consensus covers only positions with aligned reads and is inflated by multi-mapping reads, so a real reference is always preferable.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "consensus_min_depth": {
+                    "type": "number",
+                    "default": 1,
+                    "description": "Minimum read depth for samtools consensus to call a base (-d) when deriving reference sequence from a BAM.",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "consensus_min_bases": {
+                    "type": "number",
+                    "default": 500,
+                    "description": "Drop consensus records with fewer than this many non-N bases; prevents barely-covered references from adding empty sketches that drag every ANI comparison toward zero.",
+                    "fa_icon": "fas fa-ruler-horizontal"
+                },
+                "consensus_min_mapq": {
+                    "type": "number",
+                    "description": "Exclude reads below this mapping quality when calling consensus from a BAM (samtools consensus --min-MQ).",
+                    "fa_icon": "fas fa-filter"
+                },
+                "consensus_mode": {
+                    "type": "string",
+                    "default": "simple",
+                    "enum": ["simple", "bayesian"],
+                    "description": "samtools consensus calling mode (-m) used for BAM-derived reference sequence.",
+                    "fa_icon": "fas fa-sliders-h"
                 },
                 "sample": {
                     "type": "string",
@@ -825,6 +893,19 @@
                     "description": "only email if set to true",
                     "fa_icon": "fas fa-envelope"
                 },
+                "ncbi_api_key": {
+                    "type": "string",
+                    "description": "NCBI API key for the E-utilities taxid backup lookup.",
+                    "fa_icon": "fas fa-key",
+                    "help_text": "Raises the NCBI rate limit from 3 to 10 requests/second per IP and lets MAP_TAXID_ASSEMBLY run more tasks in parallel. Get one from https://www.ncbi.nlm.nih.gov/account/settings/."
+                },
+                "ncbi_batch_size": {
+                    "type": "integer",
+                    "default": 100,
+                    "description": "Accessions resolved per NCBI E-utilities request pair.",
+                    "fa_icon": "fas fa-layer-group",
+                    "help_text": "MAP_TAXID_ASSEMBLY resolves unmapped accessions in batches instead of one request pair per accession. Lower this if NCBI still returns HTTP 429 Too Many Requests."
+                },
                 "plaintext_email": {
                     "type": "boolean",
                     "description": "Send email in plaintext",
@@ -1044,6 +1125,93 @@
                     "default": "S"
                 }
             }
+        },
+        "report_sample_flags": {
+            "title": "Report sample QC flags",
+            "type": "object",
+            "fa_icon": "fas fa-flag",
+            "description": "Whole-sample criteria that seed the HTML report's Sample QC / Flags rule set. These are report DEFAULTS only - every sample still runs through the full workflow and appears in every output. A matching sample is marked in the Heatmap, Table, Metadata & Mapping and Summary tabs, and (with --report_flag_action hide) removed from those views. Every rule can be edited, added to or deleted live in the report.",
+            "properties": {
+                "report_flag_min_reads": {
+                    "type": ["number", "null"],
+                    "description": "Flag any sample with fewer than this many total reads.",
+                    "hint": "Reads the sample's total_reads metric. Typical values are 1e5-1e6 depending on assay; leave unset to skip this criterion.",
+                    "fa_icon": "fas fa-arrow-down-1-9"
+                },
+                "report_flag_min_aligned_reads": {
+                    "type": ["number", "null"],
+                    "description": "Flag any sample with fewer than this many aligned reads.",
+                    "hint": "Set to 1 to flag samples that produced no alignments at all.",
+                    "fa_icon": "fas fa-align-left"
+                },
+                "report_flag_min_organisms": {
+                    "type": ["number", "null"],
+                    "description": "Flag any sample with fewer than this many DISTINCT organisms at or above --report_flag_organism_tass.",
+                    "hint": "Counts unique taxids among strain-level detections whose TASS score clears the cutoff. Useful for spotting samples where nothing scored convincingly.",
+                    "fa_icon": "fas fa-bacteria"
+                },
+                "report_flag_organism_tass": {
+                    "type": ["number", "null"],
+                    "description": "TASS cutoff used by --report_flag_min_organisms (0-100).",
+                    "hint": "Defaults to --min_conf when that is set, otherwise 75, so 'organisms above TASS' means the same thing as the report's opening slider position.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "report_flag_min_detections": {
+                    "type": ["number", "null"],
+                    "description": "Flag any sample with fewer than this many detections passing their own threshold.",
+                    "fa_icon": "fas fa-list-check"
+                },
+                "report_flag_metadata": {
+                    "type": ["string", "null"],
+                    "description": "Metadata criteria, ';'-separated. Each clause is 'field:op:value' (or the shorthand 'field=value', meaning equals).",
+                    "hint": "Operators: == != contains !contains regex empty !empty < <= > >=. Example: sample_type:==:nasal;host_disease:contains:influenza;site:!empty: . The field is looked up in the run metadata first, then in the sample metadata.",
+                    "fa_icon": "fas fa-table-list"
+                },
+                "report_flag_logic": {
+                    "type": "string",
+                    "default": "any",
+                    "enum": ["any", "all"],
+                    "description": "Flag a sample when ANY criterion matches (default) or only when ALL of them do.",
+                    "fa_icon": "fas fa-code-branch"
+                },
+                "report_flag_action": {
+                    "type": "string",
+                    "default": "flag",
+                    "enum": ["flag", "hide"],
+                    "description": "What happens to a matching sample: 'flag' marks it but keeps it fully visible; 'hide' also removes it from every chart and table.",
+                    "hint": "Hiding is reversible inside the report - the sample is never deleted, just hidden the same way the sidebar eye icon hides one.",
+                    "fa_icon": "fas fa-eye-slash"
+                },
+                "report_flag_missing": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Treat a missing or blank value as a match.",
+                    "hint": "Off by default, so a criterion can never flag a sample purely because the field was never populated.",
+                    "fa_icon": "fas fa-question"
+                },
+                "report_flag_view": {
+                    "type": "string",
+                    "default": "all",
+                    "enum": ["all", "hide", "only"],
+                    "description": "Which samples the report opens on: all, hide flagged, or only flagged.",
+                    "hint": "'all' shows every sample (a rule with action 'hide' still hides its own matches), 'hide' hides every flagged sample, 'only' shows nothing but the flagged samples. Switchable in the report sidebar at any time.",
+                    "fa_icon": "fas fa-filter"
+                },
+                "report_flag_exclude_taxids": {
+                    "type": ["string", "null"],
+                    "description": "Taxids or organism names never counted toward the report's detection counts. Defaults to 9606 (human).",
+                    "hint": "Keeps host out of every 'distinct organisms' figure, so report_flag_min_organisms means the same thing whether or not the run was dehosted. Comma- or space-separated; taxids match exactly, names match anywhere in the organism / species / genus text. Set to an empty string to count host like any other organism.",
+                    "fa_icon": "fas fa-user-slash"
+                },
+                "report_flag_rules": {
+                    "type": ["string", "null"],
+                    "format": "file-path",
+                    "mimetype": "application/json",
+                    "description": "JSON file holding a full sample-QC rule list. Replaces every other report_flag_* parameter.",
+                    "hint": "Either a bare list of rule objects, or an object with logic / missing_fails / rules keys. A rule is {source, field, op, value[, agg, tass, action]} with source one of meta | derived | runmeta | data.",
+                    "fa_icon": "fas fa-file-code"
+                }
+            }
         }
     },
     "allOf": [
@@ -1087,6 +1255,9 @@
                     "anyOf": "When --skip_kraken2 is true, provide at least one of --reference_fasta, --organisms, or --organisms_file."
                 }
             }
+        },
+        {
+            "$ref": "#/definitions/report_sample_flags"
         }
     ]
 }

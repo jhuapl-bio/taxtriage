@@ -45,6 +45,10 @@
       best_cutoffs: {},
       run_metadata_records: [],
       has_geo: false,
+      novelty: { samples: {} },
+      novelty_downloads: [],
+      has_novelty: false,
+      annotations: { rowCols: [], rowData: {}, metaCols: [], hiddenCols: [] },
     };
   }
 
@@ -66,6 +70,58 @@
     BOOT.run_metadata_records = Array.isArray(b.run_metadata_records) ? b.run_metadata_records : [];
     BOOT.has_geo = !!b.has_geo;
     _ttDecodeContigB64(BOOT.contig_data);
+
+    // ── Novelty ────────────────────────────────────────────────────────────
+    // NOVELTY / NOVELTY_DL are const bindings from early.js, so they must be
+    // emptied IN PLACE rather than reassigned. Skipping this left the previous
+    // run's novelty payload live, and _allSampleIds() treats NOVELTY.samples as
+    // an authoritative sample source — which is why the sidebar kept showing
+    // the demo samples after "Start empty".
+    BOOT.novelty = b.novelty && typeof b.novelty === "object" ? b.novelty : { samples: {} };
+    BOOT.novelty_downloads = Array.isArray(b.novelty_downloads) ? b.novelty_downloads : [];
+    try {
+      if (typeof NOVELTY !== "undefined" && NOVELTY && NOVELTY.samples) {
+        Object.keys(NOVELTY.samples).forEach(function (k) {
+          delete NOVELTY.samples[k];
+        });
+        Object.assign(NOVELTY.samples, BOOT.novelty.samples || {});
+      }
+      if (typeof NOVELTY_DL !== "undefined" && Array.isArray(NOVELTY_DL)) {
+        NOVELTY_DL.length = 0;
+        Array.prototype.push.apply(NOVELTY_DL, BOOT.novelty_downloads);
+      }
+      HAS_NOVELTY = !!(typeof NOVELTY !== "undefined" && NOVELTY.samples && Object.keys(NOVELTY.samples).length);
+      BOOT.has_novelty = HAS_NOVELTY;
+      var _novBtn = document.getElementById("novelty-tab-btn");
+      if (_novBtn) _novBtn.classList.toggle("hidden", !HAS_NOVELTY);
+    } catch (e) {}
+
+    // Per-sample sidebar state is keyed by sample id, so anything left over
+    // points at samples that no longer exist.
+    try {
+      Object.keys(sampleColors || {}).forEach(function (k) {
+        delete sampleColors[k];
+      });
+      Object.keys(sampleHidden || {}).forEach(function (k) {
+        delete sampleHidden[k];
+      });
+      Object.keys(sampleRescale || {}).forEach(function (k) {
+        delete sampleRescale[k];
+      });
+      _sampleOrder = [];
+      if (typeof SPECIMEN_OVERRIDE !== "undefined") {
+        Object.keys(SPECIMEN_OVERRIDE).forEach(function (k) {
+          delete SPECIMEN_OVERRIDE[k];
+        });
+      }
+      if (typeof SPECIMEN_META_RESOLVED !== "undefined") {
+        Object.keys(SPECIMEN_META_RESOLVED).forEach(function (k) {
+          delete SPECIMEN_META_RESOLVED[k];
+        });
+      }
+      if (typeof watchlist !== "undefined" && watchlist && watchlist.clear) watchlist.clear();
+      if (typeof _updateWatchPanel === "function") _updateWatchPanel();
+    } catch (e) {}
 
     // Restore user annotations (detection-row notes + custom metadata cols).
     var _ann = b.annotations && typeof b.annotations === "object" ? b.annotations : {};
@@ -119,9 +175,25 @@
       app.watchlist = Array.from(watchlist || []);
       app.watchFilterMode = watchFilterMode;
     } catch (e) {}
+    // Sample QC rules — live edits must survive a save → reload round-trip,
+    // otherwise a reloaded session silently reverts to the pipeline defaults.
+    try {
+      if (typeof ttFlagCaptureConfig === "function") app.sampleFlags = ttFlagCaptureConfig();
+    } catch (e) {}
     try {
       app.sortCol = sortCol;
       app.sortAsc = sortAsc;
+    } catch (e) {}
+    // Shared metadata grouping: the selected columns plus the colour/shape
+    // assignments, so a reloaded session keeps the same groups in the same
+    // colours across the map, the group heatmap and the network.
+    try {
+      if (window.metaGrouping) app.metaGrouping = window.metaGrouping.capture();
+    } catch (e) {}
+    // Regions drawn on the map — the shapes, their names and whether they are
+    // currently shown / published as a grouping column.
+    try {
+      if (window.ttMapRegions) app.mapRegions = window.ttMapRegions.capture();
     } catch (e) {}
     return app;
   }
@@ -158,6 +230,25 @@
     try {
       sortCol = app.sortCol != null ? app.sortCol : null;
       sortAsc = app.sortAsc !== false;
+    } catch (e) {}
+    // Restore sample QC rules. app.sampleHidden above already carries whatever
+    // the rules had hidden at export time, so re-applying here is idempotent —
+    // but it re-populates _flagAutoHidden so the rules stay reversible.
+    try {
+      if (typeof ttFlagLoadConfig === "function") {
+        ttFlagLoadConfig(app.sampleFlags || (BOOT && BOOT.sample_flags) || null);
+        ttFlagInvalidate();
+        ttFlagApplyHide();
+        if (typeof ttFlagRenderSummary === "function") ttFlagRenderSummary();
+      }
+    } catch (e) {}
+    // Restore before the first redraw so the map draws with group colours on
+    // the very first paint rather than flashing per-sample colours first.
+    try {
+      if (window.metaGrouping) window.metaGrouping.restore(app.metaGrouping);
+    } catch (e) {}
+    try {
+      if (window.ttMapRegions && app.mapRegions) window.ttMapRegions.restore(app.mapRegions);
     } catch (e) {}
     try {
       if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
@@ -246,6 +337,12 @@
           RUN_META.some(function (r) {
             return r.latitude != null && r.longitude != null;
           }),
+        // Novelty payload — _ttApplyBoot() now resets NOVELTY / NOVELTY_DL in
+        // place from these keys, so they have to travel with the state file or
+        // a reload would come back without any novelty evidence.
+        novelty: typeof NOVELTY !== "undefined" && NOVELTY ? NOVELTY : { samples: {} },
+        novelty_downloads: typeof NOVELTY_DL !== "undefined" && Array.isArray(NOVELTY_DL) ? NOVELTY_DL : [],
+        has_novelty: !!(typeof HAS_NOVELTY !== "undefined" && HAS_NOVELTY),
         // User annotations typed into the report (detection-row notes +
         // custom metadata columns). Metadata cell *values* already ride
         // along on run_metadata_records above.
@@ -364,9 +461,53 @@
       "Upload your own data…</button>" +
       "</div></div></div>";
     document.body.appendChild(ov);
+    var _closed = false;
     function close() {
+      if (_closed) return;
+      _closed = true;
       ov.remove();
+      document.removeEventListener("keydown", onKey, true);
     }
+    // Escape was previously bound to the overlay itself. That only worked
+    // while focus stayed inside the dialog, and it was also the ONLY way out
+    // whenever the button handler below threw before reaching close().
+    // Bind it on the document instead, and always close BEFORE doing any work.
+    function onKey(e) {
+      if (e.key === "Escape" || e.key === "Esc") close();
+    }
+    document.addEventListener("keydown", onKey, true);
+    // Clicking the backdrop (outside the card) also dismisses.
+    ov.addEventListener("click", function (e) {
+      if (e.target === ov) close();
+    });
+
+    /* Empty the report. The dialog is dismissed FIRST so a throw anywhere in
+             the (large) teardown + redraw chain can never leave the modal stuck
+             on screen — the old ordering was `_ttApplyBoot(); close();`, which is
+             exactly how that happened.
+
+             Everything runs SYNCHRONOUSLY inside the click handler on purpose.
+             Deferring it (even by setTimeout 0) drops the browser's transient
+             user activation, and without activation Chrome silently ignores the
+             programmatic file-input .click() at the end of the upload path —
+             which is why "Upload your own data…" appeared to do nothing. */
+    function startEmpty(after) {
+      close();
+      try {
+        if (typeof window._emptyAllData === "function") window._emptyAllData();
+        else _ttApplyBoot(_ttEmptyBoot());
+      } catch (err) {
+        if (window.console && console.error) console.error("Start empty failed:", err);
+      }
+      if (typeof after === "function") {
+        try {
+          after();
+        } catch (e) {
+          if (window.console && console.error) console.error("Start empty follow-up failed:", e);
+        }
+      }
+    }
+
     var demoBtn = document.getElementById("tt-pages-demo");
     var emptyBtn = document.getElementById("tt-pages-empty");
     var upBtn = document.getElementById("tt-pages-upload");
@@ -376,24 +517,20 @@
       }); // demo already loaded on boot
     if (emptyBtn)
       emptyBtn.addEventListener("click", function () {
-        _ttApplyBoot(_ttEmptyBoot());
-        close();
+        startEmpty();
       });
     if (upBtn)
       upBtn.addEventListener("click", function () {
-        _ttApplyBoot(_ttEmptyBoot());
-        close();
-        var zone = document.getElementById("upload-zone");
-        if (zone && zone.scrollIntoView) zone.scrollIntoView({ behavior: "smooth", block: "center" });
-        var inp = document.getElementById("file-upload-input");
-        if (inp)
-          setTimeout(function () {
-            inp.click();
-          }, 250);
+        startEmpty(function () {
+          var zone = document.getElementById("upload-zone");
+          if (zone && zone.scrollIntoView) zone.scrollIntoView({ behavior: "smooth", block: "center" });
+          // Open the picker in the same task as the user's click. The previous
+          // 250ms setTimeout meant the call arrived without user activation and
+          // Chrome dropped it on the floor, so the button did nothing at all.
+          var inp = document.getElementById("file-upload-input");
+          if (inp) inp.click();
+        });
       });
-    ov.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") close();
-    });
     setTimeout(function () {
       if (demoBtn) demoBtn.focus();
     }, 30);

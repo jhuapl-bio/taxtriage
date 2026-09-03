@@ -1,3 +1,46 @@
+/* Append every element of `src` to `dst` without spreading.
+   `dst.push(...src)` passes one argument per element and every JS engine caps
+   the argument count (V8 ~125k), so a large src throws
+   "RangeError: Maximum call stack size exceeded". Pushing in chunks keeps the
+   argument list bounded regardless of how big the dataset gets. */
+function _ttPushAll(dst, src) {
+  if (!dst || !src || !src.length) return dst;
+  const CHUNK = 4096;
+  for (let i = 0; i < src.length; i += CHUNK) {
+    dst.push.apply(dst, src.slice(i, i + CHUNK));
+  }
+  return dst;
+}
+
+/* Array-safe Math.max / Math.min.
+   Spreading an array into Math.max passes one argument per element, and every
+   JS engine caps the argument count (V8 throws "RangeError: Maximum call stack
+   size exceeded" between ~50k and ~125k), which killed whole tabs on large
+   multi-sample reports. These fold instead of spreading, so no array size can
+   overflow the argument list.
+   Semantics deliberately mirror Math.max/Math.min: -Infinity / +Infinity for an
+   empty array, ToNumber coercion, and NaN propagation. */
+function _ttMax(arr) {
+  if (!arr) return -Infinity;
+  let m = -Infinity;
+  for (let i = 0; i < arr.length; i++) {
+    const v = Number(arr[i]);
+    if (Number.isNaN(v)) return NaN;
+    if (v > m) m = v;
+  }
+  return m;
+}
+function _ttMin(arr) {
+  if (!arr) return Infinity;
+  let m = Infinity;
+  for (let i = 0; i < arr.length; i++) {
+    const v = Number(arr[i]);
+    if (Number.isNaN(v)) return NaN;
+    if (v < m) m = v;
+  }
+  return m;
+}
+
 const BOOT = window.HEATMAP_BOOT || {};
 let DATA = BOOT.records || [];
 let ALL_COLS = (BOOT.all_cols || []).filter((c) => c !== "High ANI Matches" && c !== "ANI Annotated");
@@ -9,6 +52,79 @@ let SAMPLE_META = BOOT.sample_meta || {};
 const PROT = BOOT.prot_data || {};
 let HAS_PROT = BOOT.has_prot || false;
 const PROT_HIDDEN_PROPS = new Set();
+// ── Property categorisation ─────────────────────────────────────────────────
+// A hit's Property comes from one of two shapes:
+//   • merged XLSX  — a small controlled vocabulary ("Virulence Factor",
+//     "Antibiotic Resistance", "Drug Target", "Transporter")
+//   • standalone annotate_report — the raw BVBRC/VFDB vocabulary, hundreds of
+//     values ("Adherence", "Toxin;Pore-forming", "efflux pump conferring
+//     antibiotic resistance", …)
+// Source is the more reliable signal, so try it first and fall back to keywords.
+// Only "vf" and "amr" are shown by default; Drug Target / Transporter / anything
+// unrecognised starts hidden but stays clickable in the chart legend.
+const PROT_SOURCE_CATEGORY = {
+  vfdb: "vf",
+  victors: "vf",
+  patric_vf: "vf",
+  patricvf: "vf",
+  card: "amr",
+  ncbiamr: "amr",
+  resfinder: "amr",
+  argannot: "amr",
+  amrfinder: "amr",
+  megares: "amr",
+  tcdb: "transporter",
+  drugbank: "drug_target",
+};
+const PROT_DEFAULT_VISIBLE_CATEGORIES = new Set(["vf", "amr"]);
+/** Classify one hit row (or a bare property string) into a coarse category. */
+function protPropCategory(prop, row) {
+  const src = String((row && (row.Source || row.source)) || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (PROT_SOURCE_CATEGORY[src]) return PROT_SOURCE_CATEGORY[src];
+  const p = String(prop || "").toLowerCase();
+  if (!p) return "other";
+  // AMR before VF: "efflux pump conferring antibiotic resistance" is AMR, and
+  // the antibiotics columns are a strong positive signal on their own.
+  if (/resist|antibiotic|antimicrobial|\bamr\b|beta-lactam|efflux pump/.test(p)) return "amr";
+  if (
+    row &&
+    (String(row["Antibiotics Class"] || row.antibiotics_class || "").trim() ||
+      String(row["Antibiotics"] || row.antibiotics || "").trim())
+  )
+    return "amr";
+  if (/drug target/.test(p)) return "drug_target";
+  if (/transporter/.test(p)) return "transporter";
+  if (
+    /virulence|toxin|adhes|adherence|invasion|fimbri|flagell|capsule|secretion|immune|iron uptake|siderophore|biofilm|motility|intracellular|exoenzyme|protease|endotoxin|enterotoxin|phagocytosis|antiphagocytosis|host|pathogen|mimicry|evasion/.test(
+      p,
+    )
+  )
+    return "vf";
+  return "other";
+}
+/** True if this property should be visible when the report first opens. */
+function protPropVisibleByDefault(prop, row) {
+  return PROT_DEFAULT_VISIBLE_CATEGORIES.has(protPropCategory(prop, row));
+}
+// Guard so the VF/AMR-only default is applied exactly once per dataset. Without
+// it every redraw would clobber the user's own legend clicks.
+let PROT_HIDDEN_DEFAULTS_APPLIED = false;
+function _resetProtHiddenDefaults() {
+  PROT_HIDDEN_DEFAULTS_APPLIED = false;
+  PROT_HIDDEN_PROPS.clear();
+}
+// Which PROT keys actually hold VF/AMR annotation. "sample_overview" is the TASS
+// organism table — create_report.py emits it for every run even when annotation
+// was disabled or matched nothing — so it must never count towards HAS_PROT, or
+// the VF/AMR tab unhides itself and renders three empty panels.
+const PROT_ANNOTATION_KEYS = ["genus_summary", "per_gene_hits", "amr_genes", "genus_by_property"];
+function hasProtAnnotations(prot) {
+  const p = prot || PROT || {};
+  return PROT_ANNOTATION_KEYS.some((k) => Array.isArray(p[k]) && p[k].length > 0);
+}
 // Reference-free novelty payload from NOVELTY_COLLECT (per-sample summary + candidate taxa).
 const NOVELTY = BOOT.novelty || { samples: {} };
 const NOVELTY_DL = BOOT.novelty_downloads || [];

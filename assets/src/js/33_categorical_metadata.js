@@ -14,7 +14,21 @@ const _META_METRIC_LABELS = {
   tass: "Mean TASS Score",
 };
 const _GEO_META_FIELDS = ["sample_origin_country", "sample_origin_state_province_territory"];
-const _HOST_META_FIELDS = ["host_scientific_name", "host_disease", "environmental_site"];
+// Site columns, in preference order. `environmental_site` is the AMD-P/Talos
+// standard name; the rest are the generic spellings submitters actually use
+// for the same concept. Kept in one place because three separate surfaces
+// (this tab's enablement, its field dropdown, and the sub-tab warning) all
+// have to agree on what counts as a site column.
+const _SITE_META_FIELDS = [
+  "environmental_site",
+  "site",
+  "site_name",
+  "sampling_site",
+  "collection_site",
+  "site_type",
+  "site_id",
+];
+const _HOST_META_FIELDS = ["host_scientific_name", "host_disease"].concat(_SITE_META_FIELDS);
 
 function _metaViewId(sample) {
   return typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function"
@@ -537,15 +551,13 @@ function _ttAutofillGeoFromCoords(opts) {
       if (filled) {
         if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
         if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
-        // Switch to the geo sub-tab whenever autofill just populated geographic
-        // fields — the most useful thing to show after a lat/lon edit is the
-        // updated choropleth.  Fall back to the previously-active sub-tab if
-        // the geo sub-tab is still disabled (e.g. no boundary data available).
-        const _geoSubBtn = document.querySelector('.meta-subtab[data-metasub="geo"]');
-        const _targetSub = _geoSubBtn && !_geoSubBtn.disabled ? "geo" : _activeMetaSub;
-        if (typeof _targetSub !== "undefined" && _targetSub && typeof _switchMetaSub === "function") {
+        // Rebuild the Mapping tab whenever autofill just populated geographic
+        // fields — the updated choropleth is the useful thing to show after a
+        // lat/lon edit. The user is not yanked out of whatever tab they are on;
+        // the map is simply correct by the time they open it.
+        if (typeof _buildGeoComparison === "function") {
           try {
-            _switchMetaSub(_targetSub);
+            _buildGeoComparison();
           } catch (e) {}
         }
         if (typeof _rebuildMapMarkers === "function") {
@@ -1187,12 +1199,29 @@ function _geoDrawChoropleth(field, metric, ctx) {
       _geoRenderLegend(legendEl, color, maxV, metric);
       // Refresh any open pin windows against the current data/metric.
       _geoRefreshAllPins();
+      // Publish everything the group-highlight overlay needs to fade regions
+      // and draw centroid-to-centroid links. The projection is built inside
+      // this promise, so it cannot be recomputed from outside — it has to be
+      // handed over here.
+      window._geoLastDraw = { field, metric, proj, path, features, svg, metaByNorm, stateCountries, sel };
+      if (typeof _mgGeoHighlightOverlay === "function") _mgGeoHighlightOverlay();
     })
     .catch(() => {
       setStatus("Map boundaries unavailable (offline?) — use the ranked list →");
       if (legendEl) legendEl.style.display = "none";
+      window._geoLastDraw = null;
     });
 }
+
+/* Which samples sit in a given choropleth feature. Used by the group-highlight
+   overlay to decide whether a region belongs to a highlighted group. Exposed
+   because the matching rules (aliases, state→country disambiguation) live
+   here and must not be re-implemented elsewhere. */
+window._geoFeatureSamples = function (field, f, metaByNorm, stateCountries) {
+  const m = _geoFeatureMatch(field, f, metaByNorm, stateCountries);
+  if (!m) return [];
+  return Array.from(_geoSamplesForDatum(field, m.label) || []);
+};
 
 // Current ranked-bar data, kept so the overlay can re-render to fit on resize
 // without recomputing the aggregation.
@@ -1388,6 +1417,29 @@ function _buildHostDisease() {
   const fieldSel = document.getElementById("host-cmp-field");
   const metricSel = document.getElementById("host-cmp-metric");
   const noData = document.getElementById("host-cmp-no-data");
+
+  /* The dropdown ships with the three standard fields as fixed <option>s. Add
+     an option for any OTHER site column that carries data, so a run using a
+     plain `site` column can be charted here instead of being offered only an
+     "Environmental Site" entry that resolves to nothing. Purely additive: the
+     standard options and the current selection are left alone. */
+  if (fieldSel) {
+    const have = new Set(Array.from(fieldSel.options).map((o) => o.value));
+    _SITE_META_FIELDS.forEach((f) => {
+      if (have.has(f) || !_anyMetaValue([f])) return;
+      const o = document.createElement("option");
+      o.value = f;
+      o.textContent = typeof _metaKeyLabel === "function" ? _metaKeyLabel(f) : f;
+      fieldSel.appendChild(o);
+    });
+    // If the selected field has no values but some other one does, move to it —
+    // otherwise the tab opens on an empty chart for no visible reason.
+    if (!_anyMetaValue([fieldSel.value])) {
+      const firstLive = Array.from(fieldSel.options).find((o) => _anyMetaValue([o.value]));
+      if (firstLive) fieldSel.value = firstLive.value;
+    }
+  }
+
   const draw = () => {
     const field = (fieldSel && fieldSel.value) || "host_disease";
     const metric = (metricSel && metricSel.value) || "detections";

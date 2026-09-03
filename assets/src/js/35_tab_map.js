@@ -12,22 +12,168 @@
        -     State variables and drag listeners are declared earlier (before
        -     redraw()) to avoid the `let` Temporal Dead Zone.
 ═══════════════════════════════════════════════════════════════════════════ */
-function _svgDot(color, selected) {
-  const r = selected ? 11 : 8;
-  const ring = selected
-    ? `<circle cx="${r + 5}" cy="${r + 5}" r="${r + 3}" fill="none" stroke="${color}" stroke-width="2" opacity=".45"/>`
-    : "";
+/* `dimmed` renders a sample that does not match the active filters: smaller,
+   faint grey, no shadow. It stays on the map on purpose — seeing that the four
+   RSV-A hits sit in one place is only meaningful next to the samples that had
+   no hit, so hiding the non-matches would throw away the denominator. */
+function _svgDot(color, selected, dimmed, shape) {
+  const r = dimmed ? 5 : selected ? 11 : 8;
+  const fill = dimmed ? "#b9c3cd" : color;
+  const cx = r + 5;
+  const ring =
+    selected && !dimmed
+      ? `<circle cx="${cx}" cy="${cx}" r="${r + 3}" fill="none" stroke="${color}" stroke-width="2" opacity=".45"/>`
+      : "";
+  // Shape coding: when a metadata grouping is active every group gets its own
+  // colour AND its own glyph, so the categories stay separable past the
+  // 15-colour palette and in greyscale print.
+  const glyph =
+    shape && shape !== "circle" && typeof window._mgShapeEl === "function"
+      ? `${window._mgShapeEl(shape, cx, cx, r)} fill="${fill}" ` +
+        `stroke="rgba(255,255,255,${dimmed ? ".7" : ".9"})" stroke-width="${dimmed ? 1 : selected ? 2.5 : 1.5}" ` +
+        `${dimmed ? "" : 'filter="drop-shadow(0 1px 3px rgba(0,0,0,.38))"'} />`
+      : `<circle cx="${cx}" cy="${cx}" r="${r}" fill="${fill}"
+              stroke="rgba(255,255,255,${dimmed ? ".7" : ".9"})" stroke-width="${dimmed ? 1 : selected ? 2.5 : 1.5}"
+              ${dimmed ? "" : 'filter="drop-shadow(0 1px 3px rgba(0,0,0,.38))"'}/>`;
   return L.divIcon({
     className: "",
-    html: `<svg xmlns="http://www.w3.org/2000/svg" width="${(r + 5) * 2}" height="${(r + 5) * 2}">
-            <circle cx="${r + 5}" cy="${r + 5}" r="${r}" fill="${color}"
-              stroke="rgba(255,255,255,.9)" stroke-width="${selected ? 2.5 : 1.5}"
-              filter="drop-shadow(0 1px 3px rgba(0,0,0,.38))"/>
+    html: `<svg xmlns="http://www.w3.org/2000/svg" width="${cx * 2}" height="${cx * 2}"${
+      dimmed ? ' opacity="0.45"' : ""
+    }>
+            ${glyph}
             ${ring}
           </svg>`,
-    iconSize: [(r + 5) * 2, (r + 5) * 2],
-    iconAnchor: [r + 5, r + 5],
+    iconSize: [cx * 2, cx * 2],
+    iconAnchor: [cx, cx],
   });
+}
+
+/* ── Group styling for markers ───────────────────────────────────────────
+   With no grouping selected the map behaves exactly as before: one colour per
+   sample, drawn from `sampleColors`. Once the user picks columns in the shared
+   "Group by" bar, markers instead take the colour and shape of the group their
+   sample belongs to, which is what turns the map into a categorical comparison
+   (Agricultural vs Water vs Soil) rather than a per-sample scatter. */
+function _mapGroupStyle(sn) {
+  const mg = window.metaGrouping;
+  if (mg && mg.active()) {
+    const keys = mg.groupsOf(sn);
+    if (keys.length) {
+      return {
+        grouped: true,
+        group: keys[0],
+        groups: keys,
+        color: mg.color(keys[0]),
+        shape: mg.shape(keys[0]),
+      };
+    }
+    // Sample carries no value for any grouping column — draw it neutrally so
+    // it is visibly "ungrouped" rather than silently miscoloured.
+    return { grouped: true, group: null, groups: [], color: "#b0bec5", shape: "circle" };
+  }
+  return {
+    grouped: false,
+    group: null,
+    groups: [],
+    color: (typeof sampleColors !== "undefined" && sampleColors[sn]) || "#1565C0",
+    shape: "circle",
+  };
+}
+
+/* ── Filter scoping ──────────────────────────────────────────────────────
+   The map used to read RUN_META directly, so sidebar filters never reached it.
+   When _mapFilterScoped is on (default) a sample whose detections are all
+   filtered out is drawn dimmed. Only applied while a filter is actually
+   narrowing something — otherwise every marker would trivially "match". */
+let _mapFilterScoped = true;
+let _mapMatchedKeys = null;
+
+function _mapRefreshMatchSet() {
+  const cb = document.getElementById("map-filter-scope");
+  if (cb) _mapFilterScoped = !!cb.checked;
+  const active = typeof _ttAnyFilterActive === "function" && _ttAnyFilterActive();
+  _mapMatchedKeys =
+    _mapFilterScoped && active && typeof _ttFilterMatchedKeys === "function" ? _ttFilterMatchedKeys() : null;
+  // Small "(4 of 164 samples)" readout beside the toggle: without it a fully
+  // dimmed map is ambiguous between "nothing matched" and "scoping is off".
+  const out = document.getElementById("map-filter-scope-count");
+  if (out) {
+    if (!_mapMatchedKeys) {
+      out.textContent = _mapFilterScoped ? "(no active filter)" : "";
+    } else {
+      const geo = (typeof RUN_META !== "undefined" ? RUN_META : []).filter(
+        (r) => r.latitude != null && r.longitude != null,
+      );
+      const hit = geo.filter((r) => _ttSampleMatchesFilter(r.sample_name, _mapMatchedKeys)).length;
+      out.textContent = `(${hit} of ${geo.length} mapped sample(s))`;
+    }
+  }
+  return _mapMatchedKeys;
+}
+
+/* Wire the map's filter-scope checkbox once. Re-icons the existing markers
+   rather than rebuilding the layer, so the current zoom / selection survive. */
+function _wireMapFilterScope() {
+  const cb = document.getElementById("map-filter-scope");
+  if (!cb || cb._wired) return;
+  cb._wired = true;
+  cb.addEventListener("change", () => {
+    _mapFilterScoped = !!cb.checked;
+    _refreshMapMarkerColors();
+  });
+}
+
+/* ── Map-local sample visibility ─────────────────────────────────────────
+   A show/hide list that affects THIS MAP ONLY. Deliberately separate from the
+   sidebar's `sampleHidden`: that one removes a sample from every tab, which is
+   the wrong tool when you just want to declutter the map while keeping the
+   sample in the table, heatmap and cross-sample views.
+
+   Two independent mechanisms end up on the same markers, and they mean
+   different things:
+     • filter scoping (above) DIMS a sample the sidebar filters exclude —
+       context you still want to see.
+     • this list HIDES a sample outright — decluttering you asked for.
+   `sampleHidden` still wins over both, since that is a global "this sample is
+   out of the analysis" statement.
+
+   Stores the HIDDEN names, so the default (empty set) shows everything and new
+   samples arriving from an upload are visible without touching this state. */
+const _mapHiddenSamples = new Set();
+
+/** Is this marker hidden by the map-local list? Keyed on the marker's own name,
+ *  which is the specimen when merge is on and the raw sample otherwise. */
+function _mapLocallyHidden(sn) {
+  return _mapHiddenSamples.has(String(sn));
+}
+
+/** Everything that decides whether a marker is on the map at all. */
+function _mapMarkerVisible(sn, members) {
+  const list = Array.isArray(members) && members.length ? members : [sn];
+  if (list.every((s) => sampleHidden[s])) return false; // global sidebar hide
+  if (_mapLocallyHidden(sn)) return false; // map-only hide
+  // Group toggled off in the shared legend. A sample in several groups stays
+  // on the map while any one of them is still switched on.
+  try {
+    if (window.metaGrouping && window.metaGrouping.active() && !window.metaGrouping.sampleVisible(sn)) return false;
+  } catch (e) {}
+  return true;
+}
+
+/** True when this marker should be drawn faded. Two independent reasons:
+ *   • the sample falls outside the active sidebar filters, or
+ *   • a group is highlighted and this sample is in none of the highlighted
+ *     groups — the "click once to highlight, fade all others" state.
+ *  A merged specimen counts as matching if ANY of its member libraries does. */
+function _mapIsDimmed(sn, members) {
+  try {
+    if (window.metaGrouping && window.metaGrouping.sampleDimmed(sn)) return true;
+  } catch (e) {}
+  if (!_mapMatchedKeys) return false;
+  const list = Array.isArray(members) && members.length ? members : [sn];
+  if (typeof _ttSampleMatchesFilter !== "function") return false;
+  if (_ttSampleMatchesFilter(sn, _mapMatchedKeys)) return false;
+  return !list.some((m) => _ttSampleMatchesFilter(m, _mapMatchedKeys));
 }
 
 /* ── Pie-chart marker for co-located samples ──────────────────────── */
@@ -70,14 +216,119 @@ function _clusterIcon(cluster) {
   const n = cluster.getChildCount();
   const size = n < 10 ? 34 : n < 100 ? 42 : 50;
   const fs = n < 100 ? 14 : 12;
+  // With a filter active, a bubble reading just "40" hides the thing you are
+  // looking for. Show "4/40" and grey out bubbles with no match, so a cluster
+  // containing the hits is identifiable without zooming in first.
+  let label = String(n);
+  let bg = "rgba(21,101,192,.88)";
+  let title = `${n} sample(s)`;
+  if (_mapMatchedKeys) {
+    let hit = 0;
+    const kids = typeof cluster.getAllChildMarkers === "function" ? cluster.getAllChildMarkers() : [];
+    kids.forEach((m) => {
+      if (m && !m.ttDimmed) hit++;
+    });
+    label = `${hit}/${n}`;
+    bg = hit ? "rgba(21,101,192,.92)" : "rgba(150,163,176,.55)";
+    title = `${hit} of ${n} sample(s) match the active filters`;
+  }
+  // ── Group-composition bubble ──────────────────────────────────────────
+  // With a grouping active, a flat count bubble throws away the one thing the
+  // user asked the map to show. Draw the cluster as a donut whose wedges are
+  // the group mix inside it, so "this cluster is 3 Water / 1 Soil" is legible
+  // without zooming in.
+  const mg = window.metaGrouping;
+  if (mg && mg.active()) {
+    const kids = typeof cluster.getAllChildMarkers === "function" ? cluster.getAllChildMarkers() : [];
+    const tally = new Map();
+    kids.forEach((m) => {
+      const g = m && m.ttGroup != null ? m.ttGroup : "(ungrouped)";
+      tally.set(g, (tally.get(g) || 0) + 1);
+    });
+    const parts = Array.from(tally.entries()).sort((a, b) => b[1] - a[1]);
+    if (parts.length) {
+      const R = size / 2;
+      const cx = R;
+      const cy = R;
+      const rOuter = R - 2;
+      const rInner = rOuter * 0.56;
+      let acc = 0;
+      let wedges = "";
+      parts.forEach(([g, cnt]) => {
+        const a0 = (acc / n) * 2 * Math.PI - Math.PI / 2;
+        acc += cnt;
+        const a1 = (acc / n) * 2 * Math.PI - Math.PI / 2;
+        const col = g === "(ungrouped)" ? "#b0bec5" : mg.color(g);
+        const large = a1 - a0 > Math.PI ? 1 : 0;
+        // A single-group cluster has no arc to draw — use a full ring instead.
+        if (parts.length === 1) {
+          wedges = `<circle cx="${cx}" cy="${cy}" r="${
+            (rOuter + rInner) / 2
+          }" fill="none" stroke="${col}" stroke-width="${rOuter - rInner}"/>`;
+          return;
+        }
+        const p = (r, a) => `${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`;
+        wedges +=
+          `<path d="M${p(rOuter, a0)} A${rOuter},${rOuter} 0 ${large} 1 ${p(rOuter, a1)} ` +
+          `L${p(rInner, a1)} A${rInner},${rInner} 0 ${large} 0 ${p(rInner, a0)} Z" ` +
+          `fill="${col}" stroke="#fff" stroke-width="0.9"/>`;
+      });
+      const tip = parts.map(([g, c]) => `${g}: ${c}`).join("\n");
+      const gh =
+        `<div title="${_mgEscAttr(title + "\n" + tip)}" style="position:relative;width:${size}px;height:${size}px">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
+        `style="filter:drop-shadow(0 1px 4px rgba(0,0,0,.4))">` +
+        `<circle cx="${R}" cy="${R}" r="${rInner}" fill="rgba(255,255,255,.96)"/>${wedges}</svg>` +
+        `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;` +
+        `color:#263238;font-weight:700;font-size:${fs - 1}px;font-family:system-ui,sans-serif">${label}</div></div>`;
+      return L.divIcon({ html: gh, className: "tt-cluster", iconSize: [size, size] });
+    }
+  }
+
   const html =
-    `<div style="width:${size}px;height:${size}px;border-radius:50%;` +
-    `background:rgba(21,101,192,.88);border:2px solid rgba(255,255,255,.95);` +
+    `<div title="${title}" style="width:${size}px;height:${size}px;border-radius:50%;` +
+    `background:${bg};border:2px solid rgba(255,255,255,.95);` +
     `box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;` +
     `justify-content:center;color:#fff;font-weight:700;font-size:${fs}px;` +
-    `font-family:system-ui,sans-serif">${n}</div>`;
+    `font-family:system-ui,sans-serif">${label}</div>`;
   return L.divIcon({ html, className: "tt-cluster", iconSize: [size, size] });
 }
+
+function _mgEscAttr(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+/* Re-fit the map to whatever is currently visible. Called after a group
+   toggle so isolating a category actually zooms to it instead of leaving the
+   user looking at a mostly-empty world map. */
+function _mgMapFitVisible() {
+  if (!_leafletMap || !_markerObjects) return;
+  const pts = Object.keys(_markerObjects)
+    .filter((n) => {
+      const o = _markerObjects[n];
+      return o && _mapMarkerVisible(n, o.members);
+    })
+    .map((n) => [_markerObjects[n].lat, _markerObjects[n].lon]);
+  if (pts.length) _leafletMap.fitBounds(pts, { padding: [40, 40], maxZoom: 11 });
+}
+window._mgMapFitVisible = _mgMapFitVisible;
+
+/* Isolate one group on the map. Delegates to the shared engine so the Group
+   Heatmap and Group Network isolate with it — the grouping is one shared
+   selection, so its visibility should be shared too. Re-soloing the group
+   that is already alone restores the rest. */
+function _mgMapFocusGroup(key) {
+  const mg = window.metaGrouping;
+  if (!mg || !mg.active() || !key) return;
+  mg.solo(key); // broadcasts → markers, legends and the group views re-render
+  _mgMapFitVisible();
+  const picker = document.getElementById("map-sample-picker");
+  if (picker && picker.open && typeof _mapRenderSampleList === "function") _mapRenderSampleList();
+}
+window._mgMapFocusGroup = _mgMapFocusGroup;
 
 /* Create the marker container. Uses Leaflet.markercluster when available
    (zoom-based clustering with count bubbles); falls back to a plain layer
@@ -136,6 +387,9 @@ function _addMapClusterControl() {
    layer. Shared by _doInitMap and _rebuildMapMarkers. Returns lat/lon
    bounds for fitting the view. */
 function _addSampleMarkers() {
+  _wireMapFilterScope();
+  _wireMapSamplePicker();
+  _mapRefreshMatchSet();
   const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
   const mergeOn =
     typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function";
@@ -166,7 +420,7 @@ function _addSampleMarkers() {
       markerRows.push(rec);
     });
   } else {
-    markerRows.push(...geoRows);
+    _ttPushAll(markerRows, geoRows);
   }
 
   const sampleNames = [...new Set(markerRows.map((r) => r.sample_name))];
@@ -180,10 +434,15 @@ function _addSampleMarkers() {
     const lon = parseFloat(rec.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
     const sn = rec.sample_name;
-    const color = sampleColors[sn] || "#1565C0";
+    const style = _mapGroupStyle(sn);
+    const color = style.color;
     const selected = _selectedSample === sn;
-    const mk = L.marker([lat, lon], { icon: _svgDot(color, selected) });
+    const members0 = Array.isArray(rec.__mergedMembers) ? rec.__mergedMembers : [sn];
+    const dimmed0 = _mapIsDimmed(sn, members0);
+    const mk = L.marker([lat, lon], { icon: _svgDot(color, selected, dimmed0, style.shape) });
     mk.ttRec = rec; // used to list a cluster's samples in "list" mode
+    mk.ttDimmed = dimmed0; // read by _clusterIcon to show the matching share
+    mk.ttGroup = style.group; // read by _clusterIcon to build the group pie
     mk.on("click", () => {
       // Deselect any previously-selected dot, select this one, open its panel
       _selectedGroup = null;
@@ -193,28 +452,57 @@ function _addSampleMarkers() {
     });
     const members = Array.isArray(rec.__mergedMembers) ? rec.__mergedMembers : [sn];
     _markerObjects[sn] = { marker: mk, rec, color, lat, lon, members };
-    if (!members.every((s) => sampleHidden[s])) _markerLayer.addLayer(mk);
+    if (_mapMarkerVisible(sn, members)) _markerLayer.addLayer(mk);
     bounds.push([lat, lon]);
   });
+  // Drop picker entries for markers that no longer exist (e.g. after toggling
+  // specimen merge, where the names change from libraries to specimens) so a
+  // stale name can't keep something invisible with no way to switch it back on.
+  const _live = new Set(Object.keys(_markerObjects));
+  [..._mapHiddenSamples].forEach((n) => {
+    if (!_live.has(n)) _mapHiddenSamples.delete(n);
+  });
+  const _picker = document.getElementById("map-sample-picker");
+  if (_picker && _picker.open) _mapRenderSampleList();
   return bounds;
 }
 
 function _refreshMapMarkerColors() {
   if (!_markerObjects || !_leafletMap || !_markerLayer) return;
+  _mapRefreshMatchSet();
   Object.entries(_markerObjects).forEach(([sn, obj]) => {
     if (!obj.marker) return;
     const members = Array.isArray(obj.members) && obj.members.length ? obj.members : [sn];
-    if (members.every((s) => sampleHidden[s])) {
+    if (!_mapMarkerVisible(sn, members)) {
       if (_markerLayer.hasLayer(obj.marker)) _markerLayer.removeLayer(obj.marker);
       return;
     }
     if (!_markerLayer.hasLayer(obj.marker)) _markerLayer.addLayer(obj.marker);
-    const color = sampleColors[sn] || obj.color || "#1565C0";
+    const style = _mapGroupStyle(sn);
+    const color = style.color;
     obj.color = color;
-    obj.marker.setIcon(_svgDot(color, _selectedSample === sn));
+    obj.group = style.group;
+    const dimmed = _mapIsDimmed(sn, members);
+    obj.marker.ttDimmed = dimmed;
+    obj.marker.ttGroup = style.group;
+    obj.marker.setIcon(_svgDot(color, _selectedSample === sn, dimmed, style.shape));
   });
+  // Keep the map's own group legend in step with the markers. onPick refits
+  // the view after a toggle — the hide/show and shift-to-isolate behaviour is
+  // handled by the legend itself, shared with the other grouped views.
+  if (typeof window._mgRenderLegend === "function") {
+    window._mgRenderLegend("map-group-legend", { onPick: _mgMapFitVisible });
+  }
   // Recompute cluster bubbles (counts / membership may have changed)
-  if (typeof _markerLayer.refreshClusters === "function") _markerLayer.refreshClusters();
+  if (typeof _markerLayer.refreshClusters === "function") {
+    const liveMarkers = Object.values(_markerObjects)
+      .map((obj) => obj && obj.marker)
+      .filter((marker) => marker && _markerLayer.hasLayer(marker));
+    if (liveMarkers.length) _markerLayer.refreshClusters(liveMarkers);
+  }
+  // The picker annotates rows with "not in filter"; keep that in step.
+  const _pk = document.getElementById("map-sample-picker");
+  if (_pk && _pk.open) _mapRenderSampleList();
 }
 
 /* Move the reusable map markup (#map-split, parked in the hidden #map-host)
@@ -252,10 +540,285 @@ function _fitMapToData() {
     if (!isNaN(lat) && !isNaN(lon)) bounds.push([lat, lon]);
   });
   if (bounds.length > 0) {
-    _leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 9 });
+    // Measure first — the caller has usually just resized the container.
+    _leafletMap.invalidateSize({ animate: false });
+    _leafletMap.fitBounds(bounds, { padding: [45, 45], maxZoom: 9 });
   } else {
     _leafletMap.setView([20, 0], 2);
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   -  §  BASEMAPS
+   -     Every tile source here is keyless and needs no account: a report is
+   -     a file that gets emailed around and opened months later, so anything
+   -     that depends on a personal API key would be a map that works for the
+   -     person who built it and shows "API key required" tiles for everyone
+   -     else. If a provider starts demanding one anyway, the failover below
+   -     moves to the next source rather than leaving a grey grid.
+   -
+   -     "No basemap" is a first-class choice, not a failure state: markers,
+   -     clusters and drawn regions all work without tiles, which is what an
+   -     air-gapped or offline machine gets.
+   ═══════════════════════════════════════════════════════════════════════ */
+const _BASEMAPS = [
+  {
+    id: "osm",
+    label: "OpenStreetMap",
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  {
+    id: "carto",
+    label: "CARTO Voyager",
+    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    subdomains: "abcd",
+    maxZoom: 19,
+    attribution:
+      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © ' +
+      '<a href="https://carto.com/attributions">CARTO</a>',
+  },
+  {
+    id: "esri-gray",
+    label: "Esri Light Gray",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    maxZoom: 16,
+    attribution: "Tiles © Esri",
+  },
+  {
+    id: "esri-imagery",
+    label: "Esri Satellite",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    maxZoom: 19,
+    attribution: "Tiles © Esri, Maxar, Earthstar Geographics",
+  },
+  { id: "none", label: "No basemap", url: null },
+];
+
+let _basemapLayer = null;
+let _basemapId = null;
+const _BASEMAP_LS_KEY = "tt.map.basemap";
+
+function _savedBasemapId() {
+  try {
+    const v = localStorage.getItem(_BASEMAP_LS_KEY);
+    return _BASEMAPS.some((b) => b.id === v) ? v : null;
+  } catch (e) {
+    return null; // file:// or blocked site data — just use the default
+  }
+}
+
+function _mapNotice(html) {
+  const el = document.getElementById("map-basemap-note");
+  if (!el) return;
+  el.innerHTML = html || "";
+  el.style.display = html ? "" : "none";
+}
+
+/* Swap the tile layer. `auto` marks a switch the failover made rather than
+   one the user asked for, so only a deliberate choice is remembered. */
+function _applyBasemap(id, auto) {
+  if (!_leafletMap || typeof L === "undefined") return;
+  const spec = _BASEMAPS.find((b) => b.id === id) || _BASEMAPS[0];
+  if (_basemapLayer) {
+    _leafletMap.removeLayer(_basemapLayer);
+    _basemapLayer = null;
+  }
+  _basemapId = spec.id;
+  const sel = document.getElementById("map-basemap-sel");
+  if (sel && sel.value !== spec.id) sel.value = spec.id;
+  if (!auto) {
+    try {
+      localStorage.setItem(_BASEMAP_LS_KEY, spec.id);
+    } catch (e) {}
+  }
+  if (!spec.url) {
+    // A deliberate "No basemap" is not a problem worth a banner; one the
+    // failover arrived at keeps whatever explanation brought it here.
+    if (!auto) _mapNotice("");
+    return;
+  }
+
+  const opts = { attribution: spec.attribution, maxZoom: spec.maxZoom || 19 };
+  if (spec.subdomains) opts.subdomains = spec.subdomains;
+  _basemapLayer = L.tileLayer(spec.url, opts);
+
+  /* Failover. A provider that has started requiring a key answers with 401 /
+     403 / a placeholder tile, which reaches us as a burst of `tileerror` with
+     no successful load in between. One stray error is normal (a tile at the
+     edge of coverage), so the switch waits for several with nothing loading. */
+  let errors = 0;
+  let loadedOne = false;
+  _basemapLayer.on("load", () => {
+    loadedOne = true;
+    errors = 0;
+  });
+  _basemapLayer.on("tileload", () => {
+    loadedOne = true;
+  });
+  _basemapLayer.on("tileerror", () => {
+    errors += 1;
+    if (loadedOne || errors < 6) return;
+    const i = _BASEMAPS.findIndex((b) => b.id === spec.id);
+    const next = _BASEMAPS[i + 1];
+    if (!next) return;
+    _applyBasemap(next.id, true);
+    _mapNotice(
+      '<i class="fas fa-triangle-exclamation"></i> <b>' +
+        spec.label +
+        "</b> tiles did not load — the machine is offline, the tile host is blocked, or that provider now wants an " +
+        "API key. Switched to <b>" +
+        next.label +
+        "</b>." +
+        (next.url
+          ? " Pick a different basemap from the control on the map if this one is no better."
+          : " No tile source answered, so the map is drawing without a basemap — markers, clusters and drawn " +
+            "regions all still work."),
+    );
+  });
+  _basemapLayer.addTo(_leafletMap);
+  if (!auto) _mapNotice("");
+}
+
+/* On-map control: basemap picker + the fullscreen toggle live together in the
+   top-right corner, under the cluster-mode box. */
+let _basemapCtlAdded = false;
+function _addBasemapControl() {
+  if (typeof L.Control === "undefined" || _basemapCtlAdded || !_leafletMap) return;
+  const Ctl = L.Control.extend({
+    options: { position: "topright" },
+    onAdd: function () {
+      const div = L.DomUtil.create("div", "leaflet-bar tt-basemap-ctl");
+      div.innerHTML =
+        '<label for="map-basemap-sel">Basemap</label>' +
+        '<select id="map-basemap-sel" title="Every option here is keyless — no account or API key needed">' +
+        _BASEMAPS
+          .map(
+            (b) =>
+              '<option value="' + b.id + '"' + (b.id === _basemapId ? " selected" : "") + ">" + b.label + "</option>",
+          )
+          .join("") +
+        "</select>";
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      div.querySelector("select").addEventListener("change", (e) => _applyBasemap(e.target.value));
+      return div;
+    },
+  });
+  _leafletMap.addControl(new Ctl());
+  _basemapCtlAdded = true;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   -  §  MAP FULLSCREEN
+   -     Blows the whole map split — map, side panel, region cards, chart
+   -     overlay, controls — up to the full screen. The DOM is untouched, so
+   -     everything keeps working exactly as it does inline; nothing is
+   -     re-created and no state is lost on the way in or out.
+   -
+   -     Reports are often viewed inside a wrapper that forbids the Fullscreen
+   -     API (an iframe without allowfullscreen, some viewers), so a refusal
+   -     falls back to a fixed full-viewport overlay, which looks the same and
+   -     leaves Escape working.
+   ═══════════════════════════════════════════════════════════════════════ */
+function _mapFullscreenEl() {
+  return document.getElementById("map-split");
+}
+
+function _mapIsFullscreen() {
+  const el = _mapFullscreenEl();
+  if (!el) return false;
+  return document.fullscreenElement === el || el.classList.contains("tt-map-maximised");
+}
+
+function _syncMapFullscreenBtn() {
+  const on = _mapIsFullscreen();
+  document.querySelectorAll(".tt-fullscreen-btn").forEach((b) => {
+    b.innerHTML = on ? '<i class="fas fa-compress"></i> Exit full screen' : '<i class="fas fa-expand"></i> Full screen';
+    b.title = on ? "Leave full screen (Esc)" : "Expand the map to the whole screen";
+  });
+  // Drawn regions keep their toolbar and comparison table outside #map-split,
+  // which full screen hides — 44_map_regions.js moves them onto the map.
+  try {
+    if (typeof window._ttRegionOnFullscreen === "function") window._ttRegionOnFullscreen(on);
+  } catch (e) {}
+  // Leaflet measures on layout, so it has to be told after the box changes.
+  if (_leafletMap) {
+    setTimeout(() => _leafletMap.invalidateSize(), 60);
+    setTimeout(() => _leafletMap.invalidateSize(), 320);
+  }
+}
+
+function toggleMapFullscreen() {
+  const el = _mapFullscreenEl();
+  if (!el) return;
+  if (_mapIsFullscreen()) {
+    if (document.fullscreenElement === el && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+    el.classList.remove("tt-map-maximised");
+    document.body.classList.remove("tt-map-maximised-body");
+    _syncMapFullscreenBtn();
+    return;
+  }
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (req) {
+    // The promise rejects when the API is present but disallowed (sandboxed
+    // iframe, permissions policy) — fall back rather than doing nothing.
+    try {
+      const r = req.call(el);
+      if (r && typeof r.catch === "function") {
+        r.catch(() => {
+          el.classList.add("tt-map-maximised");
+          document.body.classList.add("tt-map-maximised-body");
+          _syncMapFullscreenBtn();
+        });
+      }
+    } catch (e) {
+      el.classList.add("tt-map-maximised");
+      document.body.classList.add("tt-map-maximised-body");
+    }
+  } else {
+    el.classList.add("tt-map-maximised");
+    document.body.classList.add("tt-map-maximised-body");
+  }
+  _syncMapFullscreenBtn();
+}
+window.toggleMapFullscreen = toggleMapFullscreen;
+
+document.addEventListener("fullscreenchange", _syncMapFullscreenBtn);
+document.addEventListener("keydown", (e) => {
+  // Escape leaves the CSS fallback; the real Fullscreen API handles its own.
+  if (e.key !== "Escape") return;
+  const el = _mapFullscreenEl();
+  if (el && el.classList.contains("tt-map-maximised")) {
+    el.classList.remove("tt-map-maximised");
+    document.body.classList.remove("tt-map-maximised-body");
+    _syncMapFullscreenBtn();
+  }
+});
+
+let _fsCtlAdded = false;
+function _addMapFullscreenControl() {
+  if (typeof L.Control === "undefined" || _fsCtlAdded || !_leafletMap) return;
+  const Ctl = L.Control.extend({
+    // Top-RIGHT, with the basemap picker: the top-left column is the zoom
+    // control's, and the floating region cards dock just to the right of it.
+    options: { position: "topright" },
+    onAdd: function () {
+      const div = L.DomUtil.create("div", "leaflet-bar tt-fullscreen-ctl");
+      const btn = L.DomUtil.create("button", "tt-fullscreen-btn", div);
+      btn.type = "button";
+      btn.innerHTML = '<i class="fas fa-expand"></i> Full screen';
+      L.DomEvent.disableClickPropagation(div);
+      btn.addEventListener("click", toggleMapFullscreen);
+      return div;
+    },
+  });
+  _leafletMap.addControl(new Ctl());
+  _fsCtlAdded = true;
+  _syncMapFullscreenBtn();
 }
 
 function _doInitMap() {
@@ -277,13 +840,9 @@ function _doInitMap() {
 
   _leafletMap = L.map("map-container", { zoomControl: true });
 
-  // CARTO Voyager — no Referer/policy restrictions
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    attribution:
-      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: "abcd",
-    maxZoom: 19,
-  }).addTo(_leafletMap);
+  _applyBasemap(_savedBasemapId() || _BASEMAPS[0].id);
+  _addBasemapControl();
+  _addMapFullscreenControl();
 
   _markerLayer = _makeMarkerLayer();
   _markerLayer.addTo(_leafletMap);
@@ -291,7 +850,8 @@ function _doInitMap() {
   // Cluster-click behaviour + its toggle control (only when clustering is on).
   if (typeof _markerLayer.on === "function" && typeof L.markerClusterGroup === "function") {
     _markerLayer.on("clusterclick", (a) => {
-      const cluster = a.layer;
+      const cluster = a && a.layer;
+      if (!cluster || typeof cluster.getAllChildMarkers !== "function") return;
       if (_mapClusterMode === "list") {
         // Open the panel listing every sample in the cluster.
         const recs = cluster
@@ -318,14 +878,31 @@ function _doInitMap() {
   const bounds = _addSampleMarkers();
 
   if (bounds.length > 0) {
-    _leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 9 });
+    // Do NOT fit here. The map is initialised while #map-split may still be
+    // in the hidden #map-host (or in a tab that has never been shown), so the
+    // container measures 0×0 and Leaflet derives a zoom from a viewport that
+    // does not exist — which is why the first view used to land over-zoomed
+    // on the centroid of the markers. Wait for a real size instead.
+    _mapFitWhenReady(bounds);
   } else {
     _leafletMap.setView([20, 0], 2);
   }
-  // Force Leaflet to recalculate container size in case flex layout settled late
-  setTimeout(() => {
-    if (_leafletMap) _leafletMap.invalidateSize();
-  }, 150);
+}
+
+/* Fit the view to `bounds`, but only once #map-container actually has a size.
+   Retries on a short interval and gives up after a few seconds rather than
+   spinning forever if the tab is never opened. */
+function _mapFitWhenReady(bounds, tries) {
+  if (!_leafletMap || !bounds || !bounds.length) return;
+  const el = document.getElementById("map-container");
+  const ready = el && el.clientWidth > 80 && el.clientHeight > 80;
+  if (ready) {
+    _leafletMap.invalidateSize({ animate: false });
+    _leafletMap.fitBounds(bounds, { padding: [45, 45], maxZoom: 9 });
+    return;
+  }
+  const n = tries || 0;
+  if (n < 60) setTimeout(() => _mapFitWhenReady(bounds, n + 1), 100);
 }
 
 /* ── Rebuild all map markers from current RUN_META ─────────────────── */
@@ -411,6 +988,9 @@ function _renderMapPanel(rec) {
   panel.style.display = "flex";
   const handle = document.getElementById("map-resize-handle");
   if (handle) handle.style.display = "block";
+  // Swap the detections section off its placeholder and make sure it is open —
+  // a marker click should always show what was found there.
+  _mapPanelOpenHits();
 
   // Header: sample name (truncate long names, full name on hover)
   const title = document.getElementById("map-panel-title");
@@ -472,6 +1052,7 @@ function _renderMapGroupPanel(recs) {
   panel.style.display = "flex";
   const handle = document.getElementById("map-resize-handle");
   if (handle) handle.style.display = "block";
+  _mapPanelOpenHits();
 
   // Title
   const title = document.getElementById("map-panel-title");
@@ -526,6 +1107,7 @@ function _refreshMapGroupPanelTable() {
     tbody.innerHTML = "";
     if (empty) empty.style.display = "block";
     if (footer) footer.textContent = "No results";
+    _setMapHitsCount(0);
     return;
   }
   if (empty) empty.style.display = "none";
@@ -601,6 +1183,7 @@ function _refreshMapGroupPanelTable() {
 
   const total = allRows.length;
   if (footer) footer.textContent = `${total} organism${total !== 1 ? "s" : ""} across ${_selectedGroup.length} samples`;
+  _setMapHitsCount(total);
 }
 
 function _renameSample(oldName, newName) {
@@ -793,6 +1376,7 @@ function _refreshMapPanelTable() {
     tbody.innerHTML = "";
     if (empty) empty.style.display = "block";
     if (footer) footer.textContent = "No results";
+    _setMapHitsCount(0);
     return;
   }
   if (empty) empty.style.display = "none";
@@ -834,6 +1418,7 @@ function _refreshMapPanelTable() {
   const dirLabel = _panelSortAsc ? "↑" : "↓";
   if (footer)
     footer.textContent = `${rows.length} organism${rows.length !== 1 ? "s" : ""} · sorted by ${sortLabel} ${dirLabel}`;
+  _setMapHitsCount(rows.length);
 }
 
 function closeMapPanel() {
@@ -861,7 +1446,7 @@ function closeMapPanel() {
   if (_leafletMap) setTimeout(() => _leafletMap.invalidateSize(), 50);
 }
 
-// "View" button: jump to Run Metadata tab and highlight this sample's row
+// "View" button: jump to the Metadata tab and highlight this sample's row
 function viewSampleInMetaTab() {
   if (!_selectedSample) return;
   _runmetaHighlightSample = _selectedSample;
@@ -873,4 +1458,305 @@ function viewSampleInMetaTab() {
   // Rebuild table with highlight (click triggers _buildRunMetaTable via tab handler)
   // But also call it directly in case the tab was already active
   _buildRunMetaTable();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   -  §  MAP SAMPLE PICKER
+   -     The collapsible "Samples on map" panel: one checkbox per mapped
+   -     sample, a search box to find one in a long list, and bulk actions.
+   -     Everything here writes only to _mapHiddenSamples, so nothing it does
+   -     leaks into the other tabs.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Marker names currently on the map, in the order they are drawn. Derived
+ *  from _markerObjects so it automatically follows the specimen-merge state
+ *  (specimen names when merged, raw sample ids otherwise). */
+function _mapPickerNames() {
+  return Object.keys(_markerObjects || {}).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+/** Re-render the checkbox list. `query` narrows which rows are LISTED; it does
+ *  not hide anything on the map — that is what the checkboxes are for. */
+function _mapRenderSampleList(query) {
+  const list = document.getElementById("map-sample-list");
+  if (!list) return;
+  const q = String(query == null ? (document.getElementById("map-sample-search") || {}).value || "" : query)
+    .trim()
+    .toLowerCase();
+  const names = _mapPickerNames();
+  const shown = q ? names.filter((n) => n.toLowerCase().includes(q)) : names;
+
+  if (!names.length) {
+    list.innerHTML = '<div style="padding:6px 8px;color:#8a97a4;font-size:.8em">No mapped samples yet.</div>';
+  } else if (!shown.length) {
+    list.innerHTML = `<div style="padding:6px 8px;color:#8a97a4;font-size:.8em">No sample matches “${q}”.</div>`;
+  } else {
+    list.innerHTML = shown
+      .map((n) => {
+        const hidden = _mapLocallyHidden(n);
+        const obj = _markerObjects[n] || {};
+        const dot = obj.color || sampleColors[n] || "#1565C0";
+        // Flag samples the sidebar filters exclude, so "hide everything that
+        // isn't a hit" is an informed click rather than a guess.
+        const off = obj.marker && obj.marker.ttDimmed ? " · not in filter" : "";
+        const globallyHidden = (obj.members || [n]).every((s) => sampleHidden[s]);
+        return (
+          `<label class="map-sample-row" title="${n}${globallyHidden ? " — hidden globally in the sidebar" : ""}" ` +
+          `style="display:flex;align-items:center;gap:7px;padding:3px 8px;cursor:pointer;` +
+          `${globallyHidden ? "opacity:.45;" : ""}">` +
+          `<input type="checkbox" data-map-sample="${String(n).replace(/"/g, "&quot;")}"${hidden ? "" : " checked"}${
+            globallyHidden ? " disabled" : ""
+          } />` +
+          `<span style="width:9px;height:9px;border-radius:50%;background:${dot};flex:0 0 auto;` +
+          `border:1px solid rgba(0,0,0,.2)"></span>` +
+          `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8em">${n}</span>` +
+          `<span style="margin-left:auto;color:#9aa6b4;font-size:.72em;white-space:nowrap">${off}</span>` +
+          `</label>`
+        );
+      })
+      .join("");
+  }
+
+  const count = document.getElementById("map-sample-count");
+  if (count) {
+    const visible = names.filter((n) => !_mapLocallyHidden(n)).length;
+    count.textContent = names.length ? `${visible} of ${names.length} shown` : "";
+  }
+}
+
+/** Apply a bulk action to the CURRENTLY LISTED samples (so a search term also
+ *  scopes the bulk action — "type RSV, click Only these" is the fast path). */
+function _mapBulkSamples(action) {
+  const q = ((document.getElementById("map-sample-search") || {}).value || "").trim().toLowerCase();
+  const names = _mapPickerNames();
+  const scoped = q ? names.filter((n) => n.toLowerCase().includes(q)) : names;
+  const scopedSet = new Set(scoped);
+
+  if (action === "all") {
+    scoped.forEach((n) => _mapHiddenSamples.delete(n));
+  } else if (action === "none") {
+    scoped.forEach((n) => _mapHiddenSamples.add(n));
+  } else if (action === "invert") {
+    scoped.forEach((n) => (_mapHiddenSamples.has(n) ? _mapHiddenSamples.delete(n) : _mapHiddenSamples.add(n)));
+  } else if (action === "only") {
+    // Keep only what the search listed — everything else off the map.
+    names.forEach((n) => (scopedSet.has(n) ? _mapHiddenSamples.delete(n) : _mapHiddenSamples.add(n)));
+  } else if (action === "matches") {
+    // Keep only samples the sidebar filters currently match.
+    const matched = typeof _ttFilterMatchedKeys === "function" ? _ttFilterMatchedKeys() : null;
+    names.forEach((n) => {
+      const obj = _markerObjects[n] || {};
+      const members = obj.members && obj.members.length ? obj.members : [n];
+      const hit =
+        matched && (_ttSampleMatchesFilter(n, matched) || members.some((m) => _ttSampleMatchesFilter(m, matched)));
+      if (hit) _mapHiddenSamples.delete(n);
+      else _mapHiddenSamples.add(n);
+    });
+  }
+  _refreshMapMarkerColors();
+  _mapRenderSampleList();
+}
+
+/** Wire the picker once. Uses event delegation for the checkboxes so the list
+ *  can be re-rendered freely without rebinding. */
+function _wireMapSamplePicker() {
+  const panel = document.getElementById("map-sample-picker");
+  if (!panel || panel._wired) return;
+  panel._wired = true;
+
+  const list = document.getElementById("map-sample-list");
+  if (list)
+    list.addEventListener("change", (e) => {
+      const cb = e.target.closest("input[data-map-sample]");
+      if (!cb) return;
+      const n = cb.getAttribute("data-map-sample");
+      if (cb.checked) _mapHiddenSamples.delete(n);
+      else _mapHiddenSamples.add(n);
+      _refreshMapMarkerColors();
+      const count = document.getElementById("map-sample-count");
+      if (count) {
+        const names = _mapPickerNames();
+        count.textContent = `${names.filter((x) => !_mapLocallyHidden(x)).length} of ${names.length} shown`;
+      }
+    });
+
+  const search = document.getElementById("map-sample-search");
+  if (search) search.addEventListener("input", () => _mapRenderSampleList());
+
+  panel.querySelectorAll("[data-map-bulk]").forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      _mapBulkSamples(btn.getAttribute("data-map-bulk"));
+    }),
+  );
+
+  // Populate lazily: building 160+ rows is wasted work until it's opened.
+  panel.addEventListener("toggle", () => {
+    if (panel.open) {
+      _mapRenderSampleList();
+      _mapPickerApplyHeight(); // re-assert the height the user dragged to
+    }
+    _mapPickerSaveLayout();
+  });
+
+  const hits = document.getElementById("map-panel-hits");
+  if (hits)
+    hits.addEventListener("toggle", () => {
+      _mapPickerApplyHeight();
+      _mapPickerSaveLayout();
+    });
+
+  _mapPickerMakeDockable(panel);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   -  §  SIDE-PANEL SECTION LAYOUT
+   -     The picker and the detections table are the two collapsible sections
+   -     of #map-panel. The picker's height is user-set by dragging the
+   -     splitter along its bottom edge; the detections table takes whatever
+   -     is left. Both states persist so the panel reopens the way it was.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const _MAP_PICKER_LS_KEY = "tt.mapSamplePicker.layout";
+const _MAP_PICKER_MIN_H = 110; // enough for the note + tools + a row or two
+const _MAP_HITS_MIN_H = 90; // never squeeze the table out of existence
+
+/** Remembered section layout, seeded from localStorage so it survives a
+ *  reload of the report. */
+let _mapPickerLayout = (() => {
+  const fallback = { height: 210, hitsOpen: true };
+  try {
+    const saved = JSON.parse(localStorage.getItem(_MAP_PICKER_LS_KEY) || "null");
+    if (!saved) return fallback;
+    return {
+      height: Number.isFinite(saved.height) ? saved.height : fallback.height,
+      // Default the detections table to OPEN — it is the reason the panel
+      // exists. Only an explicit `false` collapses it.
+      hitsOpen: saved.hitsOpen !== false,
+    };
+  } catch (e) {
+    return fallback;
+  }
+})();
+// The picker's open state is deliberately NOT persisted: it is a control, not
+// content, so every visit to the map starts with it collapsed and the
+// detections table at full height.
+
+function _mapPickerSaveLayout() {
+  const hits = document.getElementById("map-panel-hits");
+  if (hits) _mapPickerLayout.hitsOpen = !!hits.open;
+  try {
+    localStorage.setItem(_MAP_PICKER_LS_KEY, JSON.stringify(_mapPickerLayout));
+  } catch (e) {
+    /* private mode / quota — the panel still works, it just won't be remembered */
+  }
+}
+
+/** Push the remembered picker height onto the element, clamped so the
+ *  detections table below always keeps a usable minimum. With the table
+ *  collapsed the picker simply takes the rest of the panel. */
+function _mapPickerApplyHeight() {
+  const panel = document.getElementById("map-sample-picker");
+  const side = document.getElementById("map-panel");
+  const hits = document.getElementById("map-panel-hits");
+  if (!panel || !side) return;
+
+  if (!panel.open) {
+    panel.style.height = "";
+    panel.style.flex = "";
+    return;
+  }
+  // Table collapsed → the picker is the only thing that can grow. "auto"
+  // rather than "" so it overrides the fixed height in the stylesheet.
+  if (hits && !hits.open) {
+    panel.style.height = "auto";
+    panel.style.flex = "1 1 auto";
+    return;
+  }
+  panel.style.flex = "0 0 auto";
+
+  const avail = side.clientHeight || 0;
+  if (!avail) return; // panel not laid out yet (hidden tab / closed panel)
+  const chrome = _mapPanelChromeHeight();
+  // Two ceilings: leave the table its minimum, and never let the picker take
+  // more than ~55% of the panel even when there is room to spare.
+  const max = Math.max(_MAP_PICKER_MIN_H, Math.min(avail - chrome - _MAP_HITS_MIN_H, avail * 0.55));
+  const h = Math.max(_MAP_PICKER_MIN_H, Math.min(_mapPickerLayout.height, max));
+  _mapPickerLayout.height = h;
+  panel.style.height = h + "px";
+}
+
+/** Height of everything in the side panel that is not the picker body:
+ *  the blue header plus both section title bars. */
+function _mapPanelChromeHeight() {
+  const head = document.getElementById("map-panel-header");
+  const hitsSummary = document.querySelector("#map-panel-hits > summary");
+  return (head ? head.offsetHeight : 34) + (hitsSummary ? hitsSummary.offsetHeight : 28);
+}
+
+/** One-time setup: restore section state and wire the height splitter. */
+function _mapPickerMakeDockable(panel) {
+  const grip = document.getElementById("map-sample-picker-grip");
+  const hits = document.getElementById("map-panel-hits");
+
+  // The picker always starts collapsed; only the table's state is restored.
+  panel.open = false;
+  if (hits) hits.open = _mapPickerLayout.hitsOpen;
+
+  if (grip) {
+    let drag = null;
+    grip.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      drag = { id: e.pointerId, y: e.clientY, h: panel.offsetHeight };
+      const side = document.getElementById("map-panel");
+      if (side) side.classList.add("mp-resizing");
+      try {
+        grip.setPointerCapture(e.pointerId);
+      } catch (err) {
+        /* capture is a nicety, not a requirement */
+      }
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      _mapPickerLayout.height = drag.h + (e.clientY - drag.y);
+      _mapPickerApplyHeight();
+    });
+    const endDrag = (e) => {
+      if (!drag || (e && e.pointerId !== drag.id)) return;
+      try {
+        grip.releasePointerCapture(drag.id);
+      } catch (err) {
+        /* nothing captured */
+      }
+      drag = null;
+      const side = document.getElementById("map-panel");
+      if (side) side.classList.remove("mp-resizing");
+      _mapPickerSaveLayout();
+    };
+    grip.addEventListener("pointerup", endDrag);
+    grip.addEventListener("pointercancel", endDrag);
+  }
+
+  // The panel changes height with the window and with #map-split; re-clamp.
+  window.addEventListener("resize", () => _mapPickerApplyHeight());
+  const side = document.getElementById("map-panel");
+  if (side && typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => _mapPickerApplyHeight()).observe(side);
+  }
+}
+
+/** Expand the detections section (a marker click implies the user wants to
+ *  see the hits) and re-clamp the picker above it. */
+function _mapPanelOpenHits() {
+  const hits = document.getElementById("map-panel-hits");
+  if (hits && !hits.open) hits.open = true; // fires toggle → saves + re-clamps
+  else _mapPickerApplyHeight();
+}
+
+/** Count shown next to the "Detections" section title. */
+function _setMapHitsCount(n) {
+  const el = document.getElementById("map-panel-hits-count");
+  if (!el) return;
+  el.textContent = n == null ? "" : `${n} organism${n !== 1 ? "s" : ""}`;
 }

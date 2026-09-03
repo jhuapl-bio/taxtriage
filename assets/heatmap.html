@@ -44,7 +44,14 @@
     </div>
 
     <div id="banner">
-      <i class="fas fa-bacteria"></i>
+      <svg class="banner-logo" viewBox="0 0 64 64" role="img" aria-label="TaxTriage logo">
+        <g fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round">
+          <line x1="10" y1="18" x2="40" y2="18" />
+          <line x1="10" y1="32" x2="32" y2="32" />
+          <line x1="10" y1="46" x2="24" y2="46" />
+        </g>
+        <circle cx="52" cy="18" r="7" fill="#ffffff" />
+      </svg>
       TaxTriage Multi-Run Analysis
       <span class="sub" id="banner-sub"></span>
       <button id="pipeline-info-btn" type="button" aria-label="Show pipeline run metadata">
@@ -133,9 +140,25 @@
         class="tab-btn"
         id="runmeta-tab-btn"
         data-tab="runmeta"
-        title="Per-sample metadata and mapping. Add latitude/longitude or country/state here to plot samples."
+        title="The per-sample metadata table. Add or edit columns here — including latitude/longitude, which enable the Mapping tab."
       >
-        <i class="fas fa-map-location-dot"></i> Metadata &amp; Mapping
+        <i class="fas fa-table-list"></i> Metadata
+      </button>
+      <button
+        class="tab-btn"
+        id="map-tab-btn"
+        data-tab="map"
+        title="Map samples by coordinates, or aggregate detections by country / state. Draw regions to summarise an area."
+      >
+        <i class="fas fa-map-location-dot"></i> Mapping
+      </button>
+      <button
+        class="tab-btn"
+        id="trends-tab-btn"
+        data-tab="trends"
+        title="Longitudinal trends, host &amp; disease breakdowns, and the group heatmap / network / cross-entry views."
+      >
+        <i class="fas fa-chart-line"></i> Trends
       </button>
       <button
         class="tab-btn tab-optional hidden"
@@ -248,7 +271,7 @@
           </div>
 
           <div class="sum-inner-pane active" id="sum-inner-detections">
-            <div class="chart-wrap">
+            <div class="chart-wrap" id="summary-det-wrap">
               <div class="chart-title">
                 <i class="fas fa-triangle-exclamation"></i> Detections
                 <button
@@ -443,7 +466,7 @@
                   <i class="fas fa-times"></i> Unpin All
                 </button>
               </div>
-              <div id="summary-top-wrap" style="overflow: auto"></div>
+              <div id="summary-top-wrap"></div>
             </div>
           </div>
           <!-- end sum-inner-detections -->
@@ -490,7 +513,7 @@
                 </button>
               </div>
               <div id="summary-annot-cards" class="summary-kpi-row" style="margin-bottom: 0.8em"></div>
-              <div id="summary-annot-genus" style="overflow: auto"></div>
+              <div id="summary-annot-genus"></div>
             </div>
           </div>
           <!-- end sum-inner-vfamr -->
@@ -784,17 +807,9 @@
                 <option value="sqrt">Sqrt</option>
               </select>
             </div>
-            <div
-              id="coverage-legend-wrap"
-              style="
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.4em 1.2em;
-                margin: 0.5em 0 0.2em;
-                font-size: 0.82em;
-                align-items: center;
-              "
-            ></div>
+            <!-- Legend is a collapsed count by default (see drawCoverage); the
+                 chips inside it are what needs the flex row, not this wrapper. -->
+            <div id="coverage-legend-wrap" style="margin: 0.5em 0 0.2em; font-size: 0.82em"></div>
             <div id="coverage-svg-wrap"></div>
           </div>
         </div>
@@ -884,9 +899,9 @@
                 min="0"
                 max="100"
                 step="5"
-                value="90"
+                value="75"
                 style="width: 62px; padding: 0.3em 0.4em; border: 1px solid #ccc; border-radius: 4px; font-size: 0.82em"
-                title="Filter rows where %id ≥ this value (default 90%)"
+                title="Filter rows where %id ≥ this value (default 75%)"
               />
               <select
                 id="prot-keyword-group"
@@ -912,6 +927,22 @@
                 <option value="mobile">📦 Mobile Genetic Element</option>
               </select>
               <span id="prot-table-count" style="font-size: 0.78em; color: #888"></span>
+              <!-- Shown when the tab was opened via a "view VF/AMR" jump from
+                   another tab, so a one-organism prefilter is never invisible. -->
+              <span
+                id="prot-jump-badge"
+                style="
+                  display: none;
+                  align-items: center;
+                  gap: 0.2em;
+                  font-size: 0.75em;
+                  background: #e3f2fd;
+                  color: #1565c0;
+                  border: 1px solid #90caf9;
+                  border-radius: 10px;
+                  padding: 0.1em 0.5em;
+                "
+              ></span>
               <span
                 id="prot-bar-filter-badge"
                 style="
@@ -955,36 +986,10 @@
               "
             >
               <span style="font-weight: 600; color: #555">Category:</span>
-              <span style="display: flex; align-items: center; gap: 0.3em"
-                ><span
-                  style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #e53935"
-                ></span
-                >Virulence Factor</span
-              >
-              <span style="display: flex; align-items: center; gap: 0.3em"
-                ><span
-                  style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #fb8c00"
-                ></span
-                >Antibiotic Resistance / AMR</span
-              >
-              <span style="display: flex; align-items: center; gap: 0.3em"
-                ><span
-                  style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #8e24aa"
-                ></span
-                >Drug Target</span
-              >
-              <span style="display: flex; align-items: center; gap: 0.3em"
-                ><span
-                  style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #00897b"
-                ></span
-                >Transporter</span
-              >
-              <span style="display: flex; align-items: center; gap: 0.3em"
-                ><span
-                  style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #90a4ae"
-                ></span
-                >Other</span
-              >
+              <!-- Built by _renderProtCatLegend() from the categories actually
+                   present in the data. Each chip toggles that category in both
+                   the table and the charts above (shared PROT_HIDDEN_PROPS). -->
+              <span id="prot-cat-legend" style="display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap"></span>
               <span style="margin-left: 0.6em; font-weight: 600; color: #555">TASS:</span>
               <span style="display: flex; align-items: center; gap: 0.3em"
                 ><span
@@ -1023,6 +1028,39 @@
                 <tbody id="prot-table-body"></tbody>
               </table>
             </div>
+            <!-- Pagination — the annotation table routinely holds 10k+ rows, which
+                 is far too many to put in the DOM in one go. -->
+            <div
+              id="prot-pager"
+              style="
+                display: flex;
+                align-items: center;
+                gap: 0.4em;
+                flex-wrap: wrap;
+                margin-top: 0.5em;
+                font-size: 0.78em;
+                color: #555;
+              "
+            >
+              <button id="prot-page-first" type="button" class="prot-page-btn" title="First page">« First</button>
+              <button id="prot-page-prev" type="button" class="prot-page-btn" title="Previous page">‹ Prev</button>
+              <span id="prot-page-status" style="min-width: 190px; text-align: center"></span>
+              <button id="prot-page-next" type="button" class="prot-page-btn" title="Next page">Next ›</button>
+              <button id="prot-page-last" type="button" class="prot-page-btn" title="Last page">Last »</button>
+              <label style="margin-left: auto; display: flex; align-items: center; gap: 0.35em">
+                Rows per page
+                <select
+                  id="prot-page-size"
+                  style="padding: 0.2em 0.4em; border: 1px solid #ccc; border-radius: 4px; font-size: 1em"
+                >
+                  <option value="50">50</option>
+                  <option value="100" selected>100</option>
+                  <option value="250">250</option>
+                  <option value="500">500</option>
+                  <option value="0">All</option>
+                </select>
+              </label>
+            </div>
           </div>
           <!-- Organism detail panel -->
           <div
@@ -1058,7 +1096,10 @@
                 style="flex: 1; font-size: 0.92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
               ></strong>
               <button
-                onclick="document.getElementById('prot-detail-panel').style.display='none';document.getElementById('prot-detail-panel').classList.remove('open')"
+                onclick="
+                  document.getElementById('prot-detail-panel').style.display = 'none';
+                  document.getElementById('prot-detail-panel').classList.remove('open');
+                "
                 style="
                   background: transparent;
                   border: 1px solid rgba(255, 255, 255, 0.5);
@@ -1213,7 +1254,7 @@
 
             <div class="chart-wrap" style="margin-bottom: 0.9em">
               <div class="chart-title" style="margin: 0 0 0.4em">Per-sample novelty</div>
-              <div style="overflow-x: auto">
+              <div class="tt-scroll-table">
                 <table class="data-table" id="novelty-summary-table" style="font-size: 0.82em; width: 100%">
                   <thead id="novelty-summary-head"></thead>
                   <tbody id="novelty-summary-body"></tbody>
@@ -1253,7 +1294,7 @@
                   <button id="novelty-cand-last" class="pg-btn" title="Last page">»</button>
                 </div>
               </div>
-              <div style="overflow-x: auto">
+              <div class="tt-scroll-table">
                 <table class="data-table" id="novelty-cand-table" style="font-size: 0.82em; width: 100%">
                   <thead id="novelty-cand-head"></thead>
                   <tbody id="novelty-cand-body"></tbody>
@@ -1824,8 +1865,8 @@
                 z-index: 10;
                 transition: background 0.15s;
               "
-              onmouseenter="this.style.background='linear-gradient(180deg,#90b8e8,#b8d4f5,#90b8e8)'"
-              onmouseleave="this.style.background='linear-gradient(180deg,#c5d8f5,#e0ecff,#c5d8f5)'"
+              onmouseenter="this.style.background = 'linear-gradient(180deg,#90b8e8,#b8d4f5,#90b8e8)'"
+              onmouseleave="this.style.background = 'linear-gradient(180deg,#c5d8f5,#e0ecff,#c5d8f5)'"
             >
               <div
                 style="
@@ -1939,123 +1980,192 @@
                   ✕
                 </button>
               </div>
-              <!-- run metadata strip -->
-              <div
-                id="map-panel-meta"
-                style="
-                  padding: 0.35em 0.75em;
-                  font-size: 0.76em;
-                  color: #555;
-                  border-bottom: 1px solid #eee;
-                  line-height: 1.7;
-                  flex-shrink: 0;
-                "
-              ></div>
-              <!-- search bar -->
-              <div style="padding: 0.35em 0.6em; border-bottom: 1px solid #eee; flex-shrink: 0">
-                <input
-                  id="map-panel-search"
-                  type="text"
-                  placeholder="🔍  Filter organisms…"
-                  oninput="_refreshMapPanelTable()"
-                  style="
-                    width: 100%;
-                    padding: 0.3em 0.6em;
-                    font-size: 0.8em;
-                    border: 1px solid #c5d8f5;
-                    border-radius: 5px;
-                    outline: none;
-                    background: #f5f9ff;
-                  "
-                />
-              </div>
-              <!-- scrollable table body -->
-              <div id="map-panel-body" style="flex: 1; overflow-y: auto; min-height: 0">
-                <table
-                  id="map-panel-table"
-                  style="width: 100%; border-collapse: collapse; font-size: 0.79em; table-layout: fixed"
-                >
-                  <colgroup>
-                    <col style="width: 40%" />
-                    <col style="width: 14%" />
-                    <col style="width: 13%" />
-                    <col style="width: 13%" />
-                    <col style="width: 20%" />
-                  </colgroup>
-                  <thead>
-                    <tr id="map-panel-thead" style="position: sticky; top: 0; background: #f0f6ff; z-index: 2">
-                      <th
-                        id="mph-organism"
-                        data-col="Detected Organism"
-                        data-num="0"
-                        class="mph sortable-col"
-                        style="padding: 5px 8px; text-align: left; cursor: pointer; user-select: none"
-                      >
-                        Organism <span class="sort-arrow"></span>
-                      </th>
-                      <th
-                        id="mph-tass"
-                        data-col="TASS Score"
-                        data-num="1"
-                        class="mph sortable-col"
-                        style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
-                      >
-                        TASS&nbsp;% <span class="sort-arrow">▼</span>
-                      </th>
-                      <th
-                        id="mph-reads"
-                        data-col="% Reads"
-                        data-num="1"
-                        class="mph sortable-col"
-                        style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
-                      >
-                        %&nbsp;Reads <span class="sort-arrow"></span>
-                      </th>
-                      <th
-                        id="mph-cov"
-                        data-col="Coverage"
-                        data-num="1"
-                        class="mph sortable-col"
-                        style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
-                      >
-                        Cov&nbsp;% <span class="sort-arrow"></span>
-                      </th>
-                      <th
-                        id="mph-cat"
-                        data-col="Microbial Category"
-                        data-num="0"
-                        class="mph sortable-col"
-                        style="padding: 5px 8px; text-align: left; cursor: pointer; user-select: none"
-                      >
-                        Category <span class="sort-arrow"></span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody id="map-panel-tbody"></tbody>
-                </table>
-                <p
-                  id="map-panel-empty"
-                  style="display: none; text-align: center; color: #999; padding: 1.8em 1em; font-size: 0.84em"
-                >
-                  <i
-                    class="fas fa-circle-xmark"
-                    style="display: block; font-size: 1.6em; margin-bottom: 0.4em; opacity: 0.35"
-                  ></i>
-                  No organisms pass the current filters.
-                </p>
-              </div>
-              <!-- footer -->
-              <div
-                id="map-panel-footer"
-                style="
-                  padding: 0.3em 0.75em;
-                  font-size: 0.71em;
-                  color: #aaa;
-                  border-top: 1px solid #eee;
-                  flex-shrink: 0;
-                  text-align: right;
-                "
-              ></div>
+
+              <!-- ══ SECTION 1 — map-only sample show/hide ══════════════════
+                   Docked here rather than floating over the map so the tab
+                   never shows more than two panes. Writes to
+                   _mapHiddenSamples only, never to the sidebar's
+                   sampleHidden, so every other tab keeps all its samples.
+                   Collapsed by default; drag its bottom edge to give it more
+                   room at the expense of the detections table below. ══ -->
+              <details id="map-sample-picker" class="mp-section">
+                <summary title="Show or hide markers on this map. Nothing here changes the rest of the report.">
+                  <i class="fas fa-map-pin" style="font-size: 0.9em"></i>
+                  <span class="mp-title">Samples on map</span>
+                  <span id="map-sample-count"></span>
+                  <span class="mp-hint">— click to show / hide markers</span>
+                  <span class="mp-scope-badge">map only</span>
+                </summary>
+                <div id="map-sample-picker-body">
+                  <p class="map-sample-scope-note">
+                    <i class="fas fa-circle-info"></i>
+                    <span
+                      >Unchecking a sample <b>only removes its marker from this map</b>. It stays in every other tab, in
+                      the tables and in any export. To drop a sample from the whole report, use the sidebar.</span
+                    >
+                  </p>
+                  <div class="map-sample-tools">
+                    <input
+                      type="search"
+                      id="map-sample-search"
+                      placeholder="Find a sample…"
+                      title="Narrows the list below. The bulk buttons then act on what's listed."
+                    />
+                    <button type="button" data-map-bulk="all" title="Show every sample listed below">Show all</button>
+                    <button type="button" data-map-bulk="none" title="Hide every sample listed below">Hide all</button>
+                    <button
+                      type="button"
+                      data-map-bulk="only"
+                      title="Show only the samples listed below (hide everything else)"
+                    >
+                      Only these
+                    </button>
+                    <button type="button" data-map-bulk="invert" title="Flip shown / hidden for the listed samples">
+                      Invert
+                    </button>
+                    <button
+                      type="button"
+                      data-map-bulk="matches"
+                      title="Show only the samples matching the active sidebar filters"
+                    >
+                      Only filter matches
+                    </button>
+                  </div>
+                  <div id="map-sample-list"></div>
+                </div>
+                <!-- drag this to trade height with the detections table -->
+                <div id="map-sample-picker-grip" title="Drag to resize"></div>
+              </details>
+
+              <!-- ══ SECTION 2 — detections for the clicked marker(s) ══════
+                   Open by default. Collapsing it hands the whole panel to
+                   the sample picker above. ══ -->
+              <details id="map-panel-hits" class="mp-section" open>
+                <summary title="Organisms detected in the selected sample(s)">
+                  <i class="fas fa-vial" style="font-size: 0.9em"></i>
+                  <span class="mp-title">Detections</span>
+                  <span id="map-panel-hits-count"></span>
+                </summary>
+                <div id="map-panel-hits-body">
+                  <!-- run metadata strip -->
+                  <div
+                    id="map-panel-meta"
+                    style="
+                      padding: 0.35em 0.75em;
+                      font-size: 0.76em;
+                      color: #555;
+                      border-bottom: 1px solid #eee;
+                      line-height: 1.7;
+                      flex-shrink: 0;
+                    "
+                  ></div>
+                  <!-- search bar -->
+                  <div style="padding: 0.35em 0.6em; border-bottom: 1px solid #eee; flex-shrink: 0">
+                    <input
+                      id="map-panel-search"
+                      type="text"
+                      placeholder="🔍  Filter organisms…"
+                      oninput="_refreshMapPanelTable()"
+                      style="
+                        width: 100%;
+                        padding: 0.3em 0.6em;
+                        font-size: 0.8em;
+                        border: 1px solid #c5d8f5;
+                        border-radius: 5px;
+                        outline: none;
+                        background: #f5f9ff;
+                      "
+                    />
+                  </div>
+                  <!-- scrollable table body -->
+                  <div id="map-panel-body" style="flex: 1; overflow-y: auto; min-height: 0">
+                    <table
+                      id="map-panel-table"
+                      style="width: 100%; border-collapse: collapse; font-size: 0.79em; table-layout: fixed"
+                    >
+                      <colgroup>
+                        <col style="width: 40%" />
+                        <col style="width: 14%" />
+                        <col style="width: 13%" />
+                        <col style="width: 13%" />
+                        <col style="width: 20%" />
+                      </colgroup>
+                      <thead>
+                        <tr id="map-panel-thead" style="position: sticky; top: 0; background: #f0f6ff; z-index: 2">
+                          <th
+                            id="mph-organism"
+                            data-col="Detected Organism"
+                            data-num="0"
+                            class="mph sortable-col"
+                            style="padding: 5px 8px; text-align: left; cursor: pointer; user-select: none"
+                          >
+                            Organism <span class="sort-arrow"></span>
+                          </th>
+                          <th
+                            id="mph-tass"
+                            data-col="TASS Score"
+                            data-num="1"
+                            class="mph sortable-col"
+                            style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
+                          >
+                            TASS&nbsp;% <span class="sort-arrow">▼</span>
+                          </th>
+                          <th
+                            id="mph-reads"
+                            data-col="% Reads"
+                            data-num="1"
+                            class="mph sortable-col"
+                            style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
+                          >
+                            %&nbsp;Reads <span class="sort-arrow"></span>
+                          </th>
+                          <th
+                            id="mph-cov"
+                            data-col="Coverage"
+                            data-num="1"
+                            class="mph sortable-col"
+                            style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
+                          >
+                            Cov&nbsp;% <span class="sort-arrow"></span>
+                          </th>
+                          <th
+                            id="mph-cat"
+                            data-col="Microbial Category"
+                            data-num="0"
+                            class="mph sortable-col"
+                            style="padding: 5px 8px; text-align: left; cursor: pointer; user-select: none"
+                          >
+                            Category <span class="sort-arrow"></span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody id="map-panel-tbody"></tbody>
+                    </table>
+                    <p
+                      id="map-panel-empty"
+                      style="display: none; text-align: center; color: #999; padding: 1.8em 1em; font-size: 0.84em"
+                    >
+                      <i
+                        class="fas fa-circle-xmark"
+                        style="display: block; font-size: 1.6em; margin-bottom: 0.4em; opacity: 0.35"
+                      ></i>
+                      No organisms pass the current filters.
+                    </p>
+                  </div>
+                  <!-- footer -->
+                  <div
+                    id="map-panel-footer"
+                    style="
+                      padding: 0.3em 0.75em;
+                      font-size: 0.71em;
+                      color: #aaa;
+                      border-top: 1px solid #eee;
+                      flex-shrink: 0;
+                      text-align: right;
+                    "
+                  ></div>
+                </div>
+              </details>
             </div>
           </div>
         </div>
@@ -2065,9 +2175,11 @@
           <div class="optional-hint">
             <i class="fas fa-circle-info"></i>
             <span
-              ><strong>Optional tab.</strong> This view appears whenever samples or metadata are present. Add per-sample
-              metadata columns here — including <code>latitude</code> / <code>longitude</code>, which also enable the
-              <strong>Map</strong> tab.</span
+              ><strong>The metadata table.</strong> One row per sample — edit any cell, add columns, or upload a
+              metadata CSV. Adding <code>latitude</code> / <code>longitude</code> (or
+              <code>sample_origin_country</code> / <code>…state…</code>) lights up the <strong>Mapping</strong> tab; a
+              <code>collection_time</code> column lights up <strong>Trends</strong>. The <strong>Group by</strong> bar
+              underneath is shared — whatever you pick here also drives the Mapping and Trends tabs.</span
             >
           </div>
           <div class="chart-wrap" style="padding-bottom: 0.5em">
@@ -2116,6 +2228,18 @@
             >
               <i class="fas fa-file-export"></i> Export
             </button>
+            <!-- ── Opt-in filter scoping for the metadata table. OFF by
+                 default: this table is the run inventory, so it stays complete
+                 unless you deliberately narrow it to extract a subset. ── -->
+            <label
+              id="runmeta-filter-scope-wrap"
+              style="display: inline-flex; align-items: center; gap: 0.4em; cursor: pointer; user-select: none"
+              title="Show only samples matching the active sidebar filters. Off by default so the table stays a complete inventory of the run."
+            >
+              <input type="checkbox" id="runmeta-filter-scope" />
+              <span>Only filtered samples</span>
+              <span id="runmeta-filter-scope-count" style="color: #789"></span>
+            </label>
             <span style="color: #888">
               <i class="fas fa-pen" style="font-size: 0.9em"></i> Click any cell to edit — saved with exported state.
             </span>
@@ -2134,189 +2258,25 @@
             style="display: none; align-items: center; gap: 0.35em; margin: 0.5em 0 0; font-size: 0.82em"
           ></div>
 
-          <!-- ── Analysis sub-tabs ── -->
-          <div id="meta-subtabs">
-            <button class="meta-subtab" data-metasub="longi">
-              <i class="fas fa-chart-line"></i> Longitudinal Analysis
-            </button>
-            <button class="meta-subtab" data-metasub="geo">
-              <i class="fas fa-earth-americas"></i> Mapping &amp; Geography
-            </button>
-            <button class="meta-subtab" data-metasub="host">
-              <i class="fas fa-virus-covid"></i> Host &amp; Disease
-            </button>
-            <button class="meta-subtab" data-metasub="cmp">
-              <i class="fas fa-diagram-project"></i> Cross-Entry Comparison
-            </button>
-          </div>
+          <!-- Shared "Group by" bar — mounted by _mgMountGroupBars() (38_meta_grouping.js).
+               This is the PRIMARY instance; the Mapping and Trends tabs mount mirrors of it
+               that read and write the same selection. -->
+          <div class="mg-bar-mount" data-mg-mount="meta"></div>
+        </div>
+        <!-- /pane-runmeta -->
 
-          <!-- ── Longitudinal Analysis sub-pane ── -->
-          <div class="meta-subpane" id="meta-subpane-longi">
-            <div id="meta-subtab-warn-longi" class="meta-subtab-warn" style="display: none">
-              <i class="fas fa-triangle-exclamation"></i>
-              <span id="meta-subtab-warn-longi-msg"></span>
-            </div>
-            <div id="longi-section">
-              <div class="chart-title" style="margin-bottom: 1em">
-                <i class="fas fa-chart-line"></i> Longitudinal Analysis
-              </div>
-              <!-- Controls row -->
-              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
-                <div style="display: flex; flex-direction: column; gap: 0.3em; min-width: 200px; flex: 2">
-                  <label style="font-size: 0.81em; font-weight: 600; color: #555">
-                    Organisms
-                    <span id="longi-org-count" style="font-weight: 400; color: #888; font-size: 0.9em"></span>
-                  </label>
-                  <input
-                    id="longi-org-search"
-                    type="text"
-                    placeholder="Search organisms…"
-                    style="
-                      border: 1px solid #ccd6e8;
-                      border-radius: 6px;
-                      padding: 5px 9px;
-                      font-size: 0.82em;
-                      outline: none;
-                    "
-                  />
-                  <!-- Scrollable chip list — click to select/deselect -->
-                  <div
-                    id="longi-org-list"
-                    style="
-                      border: 1px solid #ccd6e8;
-                      border-radius: 6px;
-                      background: #fff;
-                      max-height: 110px;
-                      overflow-y: auto;
-                      padding: 4px 5px;
-                      display: flex;
-                      flex-wrap: wrap;
-                      gap: 4px;
-                      align-content: flex-start;
-                    "
-                  ></div>
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 0.3em">
-                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Axis</label>
-                  <select
-                    id="longi-y-sel"
-                    style="
-                      border: 1px solid #ccd6e8;
-                      border-radius: 6px;
-                      padding: 5px 9px;
-                      font-size: 0.82em;
-                      background: #fff;
-                    "
-                  >
-                    <option value="TASS Score" selected>TASS Score</option>
-                    <option value="Coverage">Coverage (%)</option>
-                    <option value="Breadth %">Breadth (%)</option>
-                    <option value="# Reads Aligned"># Reads Aligned</option>
-                    <option value="Mean Depth">Mean Depth</option>
-                    <option value="Minhash Score">Minhash Score</option>
-                  </select>
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 0.3em">
-                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Scale</label>
-                  <select
-                    id="longi-scale-sel"
-                    style="
-                      border: 1px solid #ccd6e8;
-                      border-radius: 6px;
-                      padding: 5px 9px;
-                      font-size: 0.82em;
-                      background: #fff;
-                    "
-                  >
-                    <option value="linear" selected>Linear</option>
-                    <option value="log">Log</option>
-                    <option value="sqrt">Square Root</option>
-                  </select>
-                </div>
-              </div>
-              <!-- Chart + right sample panel -->
-              <div style="display: flex; gap: 0.8em; align-items: flex-start">
-                <div id="longi-chart-wrap" style="flex: 1; min-width: 0; position: relative; overflow: visible"></div>
-                <div
-                  id="longi-sample-panel"
-                  style="
-                    width: 155px;
-                    flex-shrink: 0;
-                    border: 1px solid #dce7f5;
-                    border-radius: 8px;
-                    padding: 0.65em;
-                    background: #f8fbff;
-                    max-height: 340px;
-                    overflow-y: auto;
-                  "
-                >
-                  <div
-                    style="
-                      font-size: 0.77em;
-                      font-weight: 700;
-                      color: #1565c0;
-                      margin-bottom: 0.45em;
-                      border-bottom: 1px solid #dce7f5;
-                      padding-bottom: 0.3em;
-                      display: flex;
-                      align-items: center;
-                      justify-content: space-between;
-                    "
-                  >
-                    <span>Show / Hide</span>
-                    <span style="display: flex; gap: 5px">
-                      <button
-                        id="longi-show-all"
-                        title="Show all samples"
-                        style="
-                          font-size: 0.82em;
-                          padding: 1px 6px;
-                          border: 1px solid #90caf9;
-                          border-radius: 4px;
-                          background: #e3f2fd;
-                          color: #1565c0;
-                          cursor: pointer;
-                          font-weight: 600;
-                          line-height: 1.5;
-                        "
-                      >
-                        All
-                      </button>
-                      <button
-                        id="longi-hide-all"
-                        title="Hide all samples"
-                        style="
-                          font-size: 0.82em;
-                          padding: 1px 6px;
-                          border: 1px solid #b0bec5;
-                          border-radius: 4px;
-                          background: #f5f5f5;
-                          color: #546e7a;
-                          cursor: pointer;
-                          font-weight: 600;
-                          line-height: 1.5;
-                        "
-                      >
-                        None
-                      </button>
-                    </span>
-                  </div>
-                  <div id="longi-sample-list"></div>
-                </div>
-              </div>
-              <div
-                id="longi-no-data"
-                style="display: none; text-align: center; padding: 2.5em 1em; color: #999; font-size: 0.88em"
-              >
-                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
-                No data for this organism / metric in the visible samples.
-              </div>
-            </div>
+        <div class="pane" id="pane-map">
+          <div class="optional-hint">
+            <i class="fas fa-circle-info"></i>
+            <span
+              ><strong>Mapping.</strong> Plot samples at their coordinates or aggregate them by country / state.
+              Coordinates and geography come from the <strong>Metadata</strong> tab — the
+              <a href="#" class="mg-goto-meta-link">metadata table</a> is where you add or edit them.</span
+            >
           </div>
-          <!-- /meta-subpane-longi -->
-
+          <div class="mg-bar-mount" data-mg-mount="map"></div>
           <!-- ── Geographic Comparison sub-pane ── -->
-          <div class="meta-subpane" id="meta-subpane-geo">
+          <div class="meta-subpane active" id="meta-subpane-geo">
             <div id="meta-subtab-warn-geo" class="meta-subtab-warn" style="display: none">
               <i class="fas fa-triangle-exclamation"></i>
               <span id="meta-subtab-warn-geo-msg"></span>
@@ -2328,7 +2288,8 @@
               <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
                 Plot samples at their precise coordinates, or aggregate the visible detections by country or state /
                 province / territory. Add <code>latitude</code> / <code>longitude</code> or
-                <code>sample_origin_country</code> / <code>…state…</code> in the table above to populate this view.
+                <code>sample_origin_country</code> / <code>…state…</code> in the
+                <a href="#" class="mg-goto-meta-link">Metadata tab</a> to populate this view.
               </div>
               <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
                 <div style="display: flex; flex-direction: column; gap: 0.3em">
@@ -2375,7 +2336,101 @@
                   Sample locations plotted from latitude / longitude metadata. Click a marker (or a cluster) to view
                   organisms for those samples — respects active sidebar filters.
                 </p>
+                <!-- ── Filter scoping for the map. On by default: a search like
+                     an organism name or a taxid greys out the samples it does
+                     not match, and cluster bubbles show "matched / total". ── -->
+                <label
+                  id="map-filter-scope-wrap"
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.4em;
+                    margin: 0 0 0.6em;
+                    font-size: 0.82em;
+                    color: #37474f;
+                    cursor: pointer;
+                    user-select: none;
+                  "
+                  title="Grey out samples that don't match the active filters, and show matched / total on cluster bubbles. Non-matching samples stay on the map so you can still see where the negatives were."
+                >
+                  <input type="checkbox" id="map-filter-scope" checked />
+                  <span>Highlight only samples matching the active filters</span>
+                  <span id="map-filter-scope-count" style="color: #789"></span>
+                </label>
+                <!-- ── Group legend for the map. Populated by _mgRenderLegend
+                     whenever a grouping is active; hidden otherwise. Clicking
+                     an entry focuses the map on that group. ── -->
+                <div id="map-group-legend" class="mg-legend" style="display: none"></div>
+                <!-- The map-only sample show/hide picker used to live here. It
+                     is now a collapsible section of the map side panel — see
+                     #map-sample-picker inside #map-panel. -->
+                <!-- ══ Region drawing toolbar ═══════════════════════════════
+                     Optional. Off until the user arms a draw tool; regions the
+                     user has drawn survive toggling the overlay off and back
+                     on (see 44_map_regions.js). ═══════════════════════════ -->
+                <div id="mapdraw-bar">
+                  <div id="mapdraw-bar-row">
+                    <span id="mapdraw-label"><i class="fas fa-draw-polygon"></i> Regions</span>
+                    <!-- Collapses the draw tools (lasso / rectangle / clear all)
+                         out of the way without touching any drawn region. -->
+                    <button
+                      type="button"
+                      class="mapdraw-btn"
+                      id="mapdraw-tools-toggle"
+                      aria-expanded="true"
+                      title="Hide the draw tools"
+                    >
+                      <i class="fas fa-chevron-left"></i> Tools
+                    </button>
+                    <button
+                      type="button"
+                      class="mapdraw-btn"
+                      id="mapdraw-lasso"
+                      data-draw="lasso"
+                      title="Freehand lasso — hold the mouse down on the map and trace an area"
+                    >
+                      <i class="fas fa-signature"></i> Lasso
+                    </button>
+                    <button
+                      type="button"
+                      class="mapdraw-btn"
+                      id="mapdraw-rect"
+                      data-draw="rect"
+                      title="Rectangle — click and drag a box on the map"
+                    >
+                      <i class="far fa-square"></i> Rectangle
+                    </button>
+                    <label
+                      id="mapdraw-toggle-wrap"
+                      title="Hide the drawn regions without deleting them — flip it back on to bring them straight back"
+                    >
+                      <input type="checkbox" id="mapdraw-toggle" checked />
+                      <span>Show regions</span>
+                      <span id="mapdraw-count"></span>
+                    </label>
+                    <label
+                      id="mapdraw-group-wrap"
+                      title="Add a map_region metadata column from the drawn regions so the Group by bar, group heatmap, network and cross-entry views can use them"
+                    >
+                      <input type="checkbox" id="mapdraw-group" />
+                      <span>Group by region</span>
+                    </label>
+                    <button type="button" class="mapdraw-btn mapdraw-danger" id="mapdraw-clear" style="display: none">
+                      <i class="fas fa-trash"></i> Clear all
+                    </button>
+                    <span id="mapdraw-hint"></span>
+                  </div>
+                  <div id="mapdraw-chips"></div>
+                </div>
+                <!-- Basemap failover notice — only shown when tiles refuse
+                     to load (offline, blocked, or a provider that has started
+                     asking for an API key). -->
+                <div id="map-basemap-note" style="display: none"></div>
                 <div id="geo-precise-slot"></div>
+                <!-- ── Per-region summaries + cross-region comparison.
+                     Rendered by _ttRegionRenderPanel(); empty until the user
+                     draws something. ── -->
+                <div id="mapdraw-report" style="display: none"></div>
                 <div
                   id="geo-precise-no-data"
                   style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
@@ -2385,7 +2440,8 @@
                     style="font-size: 1.6em; display: block; margin-bottom: 0.4em; opacity: 0.4"
                   ></i>
                   No <code>latitude</code> / <code>longitude</code> in the visible samples. Add coordinate columns in
-                  the table above (or switch the Level to Country / State) to map your samples.
+                  the <a href="#" class="mg-goto-meta-link">Metadata tab</a> (or switch the Level to Country / State) to
+                  map your samples.
                 </div>
               </div>
 
@@ -2429,9 +2485,241 @@
                 </div>
               </div>
               <!-- /geo-agg-wrap -->
+
+              <!-- ══ Group network panel ══════════════════════════════════
+                   Appears only while a group is HIGHLIGHTED (first click of
+                   the legend's normal → highlight → hidden cycle). Sits BELOW
+                   the map rather than floating over it, and collapses from its
+                   header, so it never hides the thing it describes. ═══════ -->
+              <div id="mg-map-net-panel" style="display: none">
+                <div id="mg-map-net-head" title="Click to collapse / expand this panel">
+                  <i id="mg-map-net-caret" class="fas fa-chevron-down"></i>
+                  <span id="mg-map-net-title"></span>
+                  <button type="button" id="mg-map-net-clear" title="Clear the highlight and restore the full map">
+                    <i class="fas fa-xmark"></i> Clear highlight
+                  </button>
+                </div>
+                <div id="mg-map-net-body">
+                  <div id="mg-map-net-controls">
+                    <div class="mg-ctl">
+                      <label>Level</label>
+                      <select id="mg-map-net-level">
+                        <option value="genus" selected>Genus</option>
+                        <option value="species">Species</option>
+                      </select>
+                    </div>
+                    <div class="mg-ctl">
+                      <label>Profile basis</label>
+                      <select id="mg-map-net-basis">
+                        <option value="presence" selected>Presence / abundance</option>
+                        <option value="tass">TASS score</option>
+                        <option value="coverage">Coverage (breadth %)</option>
+                      </select>
+                    </div>
+                    <div class="mg-ctl">
+                      <label>Similarity</label>
+                      <select id="mg-map-net-sim">
+                        <option value="cosine" selected>Cosine</option>
+                        <option value="jaccard">Jaccard overlap</option>
+                        <option value="shared">Shared taxa count</option>
+                      </select>
+                    </div>
+                    <div class="mg-ctl">
+                      <label>Link threshold <span id="mg-map-net-threshold-val">0.50</span></label>
+                      <input id="mg-map-net-threshold" type="range" min="0" max="1" step="0.02" value="0.5" />
+                    </div>
+                  </div>
+                  <div id="mg-map-net-table-wrap"></div>
+                </div>
+              </div>
             </div>
           </div>
           <!-- /meta-subpane-geo -->
+        </div>
+        <!-- /pane-map -->
+
+        <div class="pane" id="pane-trends">
+          <div class="optional-hint">
+            <i class="fas fa-circle-info"></i>
+            <span
+              ><strong>Trends &amp; group analysis.</strong> Time series, host / site breakdowns and the group-level
+              heatmap, network and cross-entry comparison. All of them read the <strong>Group by</strong> selection
+              below, which is shared with the <a href="#" class="mg-goto-meta-link">Metadata</a> and Mapping tabs.</span
+            >
+          </div>
+          <div class="mg-bar-mount" data-mg-mount="trends"></div>
+          <!-- ── Analysis sub-tabs (Mapping now has its own top-level tab) ── -->
+          <div id="meta-subtabs">
+            <button class="meta-subtab" data-metasub="longi">
+              <i class="fas fa-chart-line"></i> Longitudinal Analysis
+            </button>
+            <button class="meta-subtab" data-metasub="host">
+              <i class="fas fa-virus-covid"></i> Host &amp; Disease
+            </button>
+            <button class="meta-subtab" data-metasub="ghm"><i class="fas fa-border-all"></i> Group Heatmap</button>
+            <button class="meta-subtab" data-metasub="net"><i class="fas fa-circle-nodes"></i> Group Network</button>
+            <button class="meta-subtab" data-metasub="cmp">
+              <i class="fas fa-diagram-project"></i> Cross-Entry Comparison
+            </button>
+          </div>
+          <!-- ── Longitudinal Analysis sub-pane ── -->
+          <div class="meta-subpane" id="meta-subpane-longi">
+            <div id="meta-subtab-warn-longi" class="meta-subtab-warn" style="display: none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-longi-msg"></span>
+            </div>
+            <div id="longi-section">
+              <div class="chart-title" style="margin-bottom: 1em">
+                <i class="fas fa-chart-line"></i> Longitudinal Analysis
+              </div>
+              <!-- Controls row -->
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div style="display: flex; flex-direction: column; gap: 0.3em; min-width: 200px; flex: 2">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">
+                    Organisms
+                    <span id="longi-org-count" style="font-weight: 400; color: #888; font-size: 0.9em"></span>
+                  </label>
+                  <!-- Collapsed, searchable organism picker (see
+                       43_multiselect.js). Was a scrollable chip wall, which a
+                       run with hundreds of organisms turned into a scroll
+                       hunt. -->
+                  <div id="longi-org-list"></div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Axis</label>
+                  <select
+                    id="longi-y-sel"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="TASS Score" selected>TASS Score</option>
+                    <option value="Coverage">Coverage (%)</option>
+                    <option value="Breadth %">Breadth (%)</option>
+                    <option value="# Reads Aligned"># Reads Aligned</option>
+                    <option value="Mean Depth">Mean Depth</option>
+                    <option value="Minhash Score">Minhash Score</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Scale</label>
+                  <select
+                    id="longi-scale-sel"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="linear" selected>Linear</option>
+                    <option value="log">Log</option>
+                    <option value="sqrt">Square Root</option>
+                  </select>
+                </div>
+                <!-- Area fill under each line. Off by default: with many
+                     organisms selected the fills stack up, so it is opt-in
+                     for the two-or-three-series reading where the shape of
+                     the trend matters more than the exact points. -->
+                <label id="longi-fill-wrap" title="Shade the area under each organism's line down to the baseline">
+                  <input type="checkbox" id="longi-fill-toggle" />
+                  <span>Fill area</span>
+                </label>
+              </div>
+              <!-- Chart + right sample panel -->
+              <div style="display: flex; gap: 0.8em; align-items: flex-start">
+                <div id="longi-chart-wrap" style="flex: 1; min-width: 0; position: relative; overflow: visible"></div>
+                <div
+                  id="longi-sample-panel"
+                  style="
+                    width: 186px;
+                    flex-shrink: 0;
+                    border: 1px solid #dce7f5;
+                    border-radius: 8px;
+                    padding: 0.65em;
+                    background: #f8fbff;
+                  "
+                >
+                  <div
+                    style="
+                      font-size: 0.77em;
+                      font-weight: 700;
+                      color: #1565c0;
+                      margin-bottom: 0.45em;
+                      border-bottom: 1px solid #dce7f5;
+                      padding-bottom: 0.3em;
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                    "
+                  >
+                    <span>Show / Hide <span id="longi-sample-count"></span></span>
+                    <span style="display: flex; gap: 5px">
+                      <button
+                        id="longi-show-all"
+                        title="Show all samples"
+                        style="
+                          font-size: 0.82em;
+                          padding: 1px 6px;
+                          border: 1px solid #90caf9;
+                          border-radius: 4px;
+                          background: #e3f2fd;
+                          color: #1565c0;
+                          cursor: pointer;
+                          font-weight: 600;
+                          line-height: 1.5;
+                        "
+                      >
+                        All
+                      </button>
+                      <button
+                        id="longi-hide-all"
+                        title="Hide all samples"
+                        style="
+                          font-size: 0.82em;
+                          padding: 1px 6px;
+                          border: 1px solid #b0bec5;
+                          border-radius: 4px;
+                          background: #f5f5f5;
+                          color: #546e7a;
+                          cursor: pointer;
+                          font-weight: 600;
+                          line-height: 1.5;
+                        "
+                      >
+                        None
+                      </button>
+                    </span>
+                  </div>
+                  <!-- Search + pager for the sample list. Same matcher as the
+                       sidebar filters: plain text is a substring, a valid
+                       regular expression is used as one. All / None act on
+                       whatever the search currently matches. -->
+                  <input
+                    type="search"
+                    id="longi-sample-search"
+                    placeholder="Find a sample…"
+                    title="Filter this list — plain text or a regular expression, e.g. Site1|Site2_A. All / None apply to what matches."
+                  />
+                  <div id="longi-sample-list"></div>
+                  <div id="longi-sample-pager"></div>
+                </div>
+              </div>
+              <div
+                id="longi-no-data"
+                style="display: none; text-align: center; padding: 2.5em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                No data for this organism / metric in the visible samples.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-longi -->
 
           <!-- ── Host &amp; Disease sub-pane ── -->
           <div class="meta-subpane" id="meta-subpane-host">
@@ -2579,6 +2867,136 @@
           <!-- /meta-subpane-host -->
 
           <!-- ── Cross-Entry Comparison sub-pane ── -->
+          <!-- ══ Group × Organism heatmap ══════════════════════════════════
+               Rows are whatever the "Group by" bar produced; columns are the
+               most-detected organisms. With no grouping the rows fall back to
+               individual samples so the view is never empty. ═══════════════ -->
+          <div class="meta-subpane" id="meta-subpane-ghm">
+            <div id="meta-subtab-warn-ghm" class="meta-subtab-warn" style="display: none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-ghm-msg"></span>
+            </div>
+            <div id="mg-heat-section">
+              <div class="chart-title" style="margin-bottom: 0.35em">
+                <i class="fas fa-border-all"></i> Group &times; Organism Heatmap
+              </div>
+              <div id="mg-heat-hint" style="font-size: 0.8em; color: #777; margin-bottom: 0.9em"></div>
+
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div class="mg-ctl">
+                  <label>Level</label>
+                  <select id="mg-heat-level">
+                    <option value="genus" selected>Genus</option>
+                    <option value="species">Species</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Cell value</label>
+                  <select id="mg-heat-metric">
+                    <option value="detections" selected>Detections</option>
+                    <option value="reads"># Reads Aligned</option>
+                    <option value="tass">TASS Score (max)</option>
+                    <option value="coverage">Breadth % (max)</option>
+                    <option value="prevalence">Prevalence (% of samples)</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Organisms shown</label>
+                  <select id="mg-heat-topn">
+                    <option value="15">Top 15</option>
+                    <option value="25" selected>Top 25</option>
+                    <option value="50">Top 50</option>
+                    <option value="100">Top 100</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Group show/hide toggles. Same chips as the shared bar: click
+                   hides a group, shift-click isolates it, and the state is
+                   shared with the map and the network. -->
+              <div id="mg-heat-legend" class="mg-legend mg-legend-toggles" style="display: none"></div>
+
+              <div id="mg-heat-chart" style="position: relative; overflow: auto"></div>
+              <div
+                id="mg-heat-no-data"
+                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                No organism hits in the current filter. Widen the sidebar filters or pick a different grouping.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-ghm -->
+
+          <!-- ══ Group network / chord ═════════════════════════════════════
+               Nodes are groups (or samples), edges are organism-profile
+               similarity. Same colour + shape coding as the map, so a node
+               here and a marker there are visibly the same category. ═══════ -->
+          <div class="meta-subpane" id="meta-subpane-net">
+            <div id="meta-subtab-warn-net" class="meta-subtab-warn" style="display: none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-net-msg"></span>
+            </div>
+            <div id="mg-net-section">
+              <div class="chart-title" style="margin-bottom: 0.35em">
+                <i class="fas fa-circle-nodes"></i> Group Network
+              </div>
+              <div id="mg-net-hint" style="font-size: 0.8em; color: #777; margin-bottom: 0.9em"></div>
+
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div class="mg-ctl">
+                  <label>Layout</label>
+                  <select id="mg-net-layout">
+                    <option value="force" selected>Force-directed network</option>
+                    <option value="chord">Chord diagram</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Level</label>
+                  <select id="mg-net-level">
+                    <option value="genus" selected>Genus</option>
+                    <option value="species">Species</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Profile basis</label>
+                  <select id="mg-net-basis">
+                    <option value="presence" selected>Presence / abundance</option>
+                    <option value="tass">TASS score</option>
+                    <option value="coverage">Coverage (breadth %)</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Similarity</label>
+                  <select id="mg-net-sim">
+                    <option value="cosine" selected>Cosine</option>
+                    <option value="jaccard">Jaccard overlap</option>
+                    <option value="shared">Shared taxa count</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Link threshold <span id="mg-net-threshold-val">0.30</span></label>
+                  <input id="mg-net-threshold" type="range" min="0" max="1" step="0.02" value="0.3" />
+                </div>
+              </div>
+
+              <!-- Group show/hide toggles — shared with the heatmap and map. -->
+              <div id="mg-net-legend" class="mg-legend mg-legend-toggles" style="display: none"></div>
+
+              <div id="mg-net-stats" style="font-size: 0.78em; color: #888; margin-bottom: 0.6em"></div>
+              <div id="mg-net-chart" style="position: relative; overflow: auto"></div>
+              <div
+                id="mg-net-no-data"
+                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                Need at least two groups (or two samples) with organism hits. Widen the filters or pick a grouping with
+                more than one value.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-net -->
+
           <div class="meta-subpane" id="meta-subpane-cmp">
             <div id="meta-subtab-warn-cmp" class="meta-subtab-warn" style="display: none">
               <i class="fas fa-triangle-exclamation"></i>
@@ -2686,6 +3104,7 @@
           </div>
           <!-- /meta-subpane-cmp -->
         </div>
+        <!-- /pane-trends -->
 
         <!-- IN-SILICO SUITE (spike-in / dilution-series: expected vs reality) -->
         <div class="pane" id="pane-insilico">
@@ -3070,6 +3489,36 @@
           </div>
         </div>
 
+        <h3 style="display: flex; align-items: center; gap: 0.4em">
+          Sample QC / Flags
+          <button
+            class="info-tip-btn"
+            id="flag-tip-btn"
+            aria-label="Sample QC help"
+            data-tip="&lt;b&gt;Sample QC rules&lt;/b&gt; — filters that act on WHOLE SAMPLES rather than on individual detections.&lt;br&gt;&lt;br&gt;Build any number of rules from four sources: &lt;b&gt;sample metrics&lt;/b&gt; (total / aligned reads, platform, control type), &lt;b&gt;detection counts&lt;/b&gt; (distinct organisms above a TASS cutoff, detections passing threshold, highest TASS), &lt;b&gt;metadata columns&lt;/b&gt; (equals / contains / regex / is empty) and any &lt;b&gt;numeric detection column&lt;/b&gt; rolled up per sample.&lt;br&gt;&lt;br&gt;A matching sample is &lt;b&gt;flagged&lt;/b&gt; — marked in the Heatmap, Table, Metadata &amp;amp; Mapping and Summary tabs but still fully visible — or &lt;b&gt;flagged and hidden&lt;/b&gt;, which drops it from every chart and table exactly as the eye icon does.&lt;br&gt;&lt;br&gt;The dropdown beside &lt;b&gt;Filters…&lt;/b&gt; in this panel switches the whole report between &lt;b&gt;all samples&lt;/b&gt;, &lt;b&gt;hide flagged&lt;/b&gt; and &lt;b&gt;only flagged&lt;/b&gt; &mdash; nothing is ever removed from the data, only from the views.&lt;br&gt;&lt;br&gt;Organism counts are taken over the whole dataset (not just the rows currently displayed) and ignore host by default.&lt;br&gt;&lt;br&gt;These are SAMPLE flags, separate from the per-organism follow-up star.&lt;br&gt;&lt;br&gt;Defaults come from the pipeline&#39;s &lt;code&gt;--report_flag_*&lt;/code&gt; parameters; everything can be edited here and is saved with the session state."
+          >
+            &#x24D8;
+          </button>
+        </h3>
+        <div id="flag-summary">
+          <div id="flag-summary-line" class="flag-line quiet"></div>
+          <div id="flag-summary-actions">
+            <button type="button" id="flag-open-btn" title="Open the sample filter / flag rule builder">
+              <i class="fas fa-flag"></i> Filter Samples
+            </button>
+            <label
+              id="flag-view-mode-lbl"
+              title="Which samples every chart and table shows: all of them, everything except the flagged ones, or nothing but the flagged ones"
+            >
+              <select id="flag-view-mode">
+                <option value="all">All samples</option>
+                <option value="hide">Hide flagged</option>
+                <option value="only">Only flagged</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         <h3 style="display: flex; align-items: center; justify-content: space-between; gap: 0.4em">
           Samples
           <span style="display: flex; gap: 0.3em; flex-shrink: 0">
@@ -3217,8 +3666,9 @@
               <input
                 id="sample-list-search"
                 type="search"
-                placeholder="Search samples…"
-                aria-label="Search samples in the right panel"
+                placeholder="Search samples… (regex, e.g. A|B)"
+                title="Matches as a case-insensitive regex — e.g. sampleA|sampleB, or ^ctrl"
+                aria-label="Search samples in the right panel (supports regex, e.g. A|B)"
                 style="
                   box-sizing: border-box;
                   width: 100%;
@@ -3251,6 +3701,23 @@
               <option value="100">100</option>
             </select>
           </div>
+          <label
+            for="sample-list-hide-nonmatch"
+            title="When you type a search above, also hide (from charts &amp; tables) every sample that doesn't match — not just from this list"
+            style="
+              display: flex;
+              align-items: center;
+              gap: 0.35em;
+              flex: 1 0 100%;
+              font-size: 0.68em;
+              color: #607d8b;
+              cursor: pointer;
+              user-select: none;
+            "
+          >
+            <input id="sample-list-hide-nonmatch" type="checkbox" checked style="margin: 0; cursor: pointer" />
+            Hide samples that don't match search
+          </label>
           <div style="display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto">
             <button
               id="sample-list-prev"
@@ -3300,10 +3767,16 @@
         <h3>Upload Data</h3>
         <div
           id="upload-zone"
-          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragover="
+            event.preventDefault();
+            this.classList.add('drag-over');
+          "
           ondragleave="this.classList.remove('drag-over')"
           ondrop="handleUploadDrop(event)"
-          onclick="if(event.target.tagName!=='LABEL'&&event.target.tagName!=='INPUT')document.getElementById('file-upload-input').click()"
+          onclick="
+            if (event.target.tagName !== 'LABEL' && event.target.tagName !== 'INPUT')
+              document.getElementById('file-upload-input').click();
+          "
         >
           <i class="fas fa-cloud-upload-alt" style="font-size: 1.4em; color: #6c9abf"></i>
           <span style="display: block; font-size: 0.78em; margin: 0.3em 0 0.5em"
@@ -3325,13 +3798,19 @@
         </button>
 
         <!-- ── Metadata CSV upload ── -->
-        <h3 style="margin-top: 1em">Upload Metadata CSV</h3>
+        <h3 style="margin-top: 1em">Upload Metadata File</h3>
         <div
           id="meta-upload-zone"
-          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragover="
+            event.preventDefault();
+            this.classList.add('drag-over');
+          "
           ondragleave="this.classList.remove('drag-over')"
           ondrop="handleMetaDrop(event)"
-          onclick="if(event.target.tagName!=='LABEL'&&event.target.tagName!=='INPUT')document.getElementById('meta-upload-input').click()"
+          onclick="
+            if (event.target.tagName !== 'LABEL' && event.target.tagName !== 'INPUT')
+              document.getElementById('meta-upload-input').click();
+          "
           style="
             border: 2px dashed #b0cce8;
             border-radius: 8px;
@@ -3391,36 +3870,6 @@
         <div id="state-status" style="font-size: 0.75em; color: #555; margin-top: 0.4em"></div>
 
         <div id="data-capability-notice" style="display: none"></div>
-
-        <!-- ── Legend panel: sample colors + TASS cutoffs ── -->
-        <div
-          id="sidebar-legend"
-          style="display: none; margin-top: 0.9em; padding-top: 0.7em; border-top: 1px solid #d8e4f0"
-        >
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35em">
-            <span
-              style="
-                font-size: 0.78em;
-                font-weight: 700;
-                color: #37474f;
-                text-transform: uppercase;
-                letter-spacing: 0.04em;
-              "
-              >Legend</span
-            >
-            <button
-              id="sidebar-legend-toggle"
-              title="Collapse legend"
-              style="background: none; border: none; cursor: pointer; color: #90a4ae; font-size: 0.82em; padding: 0 2px"
-            >
-              &#9650;
-            </button>
-          </div>
-          <div id="sidebar-legend-body">
-            <div id="sidebar-legend-samples" style="margin-bottom: 0.5em"></div>
-            <div id="sidebar-legend-tass"></div>
-          </div>
-        </div>
       </div>
 
       <!-- /sidebar -->
@@ -3637,6 +4086,94 @@
       </div>
     </div>
 
+    <!-- ══ Sample QC: filter / flag rule builder ══════════════════════════ -->
+    <div id="flag-modal-overlay" class="export-modal-overlay" aria-hidden="true">
+      <div class="export-modal flag-modal" role="dialog" aria-modal="true" aria-labelledby="flag-modal-title">
+        <header>
+          <i class="fas fa-flag"></i>
+          <span id="flag-modal-title">Sample filters &amp; flags</span>
+          <button type="button" id="flag-modal-close" aria-label="Close">&times;</button>
+        </header>
+        <div class="flag-modal-body">
+          <p class="flag-modal-intro">
+            These rules act on <b>whole samples</b>, not on individual detections. A sample that matches is
+            <b>flagged</b> &mdash; marked in the Heatmap, Table, Metadata &amp; Mapping and Summary tabs but still
+            visible &mdash; or <b>flagged and hidden</b>, which removes it from every view. <b>Show</b> below sets what
+            the whole report displays: all samples, everything except the flagged ones, or nothing but them. Counts come
+            from the full dataset, not from what the current filters happen to display, and skip the organisms listed
+            under <b>Ignore in counts</b> (host by default). Changes apply as you make them.
+          </p>
+          <div class="flag-modal-top">
+            <label title="Turn the whole rule set off without deleting it">
+              <input type="checkbox" id="flag-enabled" checked /> Rules active
+            </label>
+            <label>
+              Flag a sample when
+              <select id="flag-logic">
+                <option value="any">any rule matches</option>
+                <option value="all">every rule matches</option>
+              </select>
+            </label>
+            <label title="A sample with no value at all for a rule's field counts as matching that rule">
+              <input type="checkbox" id="flag-missing-fails" /> Missing values count as a match
+            </label>
+            <label
+              title="All samples: rules with a 'hide' action still hide their own matches. Hide flagged: promote every flag to a hide. Only flagged: the inverse - show the flagged samples and hide everything that passed."
+            >
+              Show
+              <select id="flag-view-mode-modal">
+                <option value="all">all samples</option>
+                <option value="hide">everything except flagged</option>
+                <option value="only">only flagged samples</option>
+              </select>
+            </label>
+            <label
+              class="flag-exclude-lbl"
+              title="Taxids or organism names that never count toward a 'distinct organisms' figure. Host lives here: on a run without dehosting, human would otherwise count as one of the organisms a low-complexity rule is looking for. Comma-separated; taxids match exactly, names match anywhere in the organism / species / genus text."
+            >
+              Ignore in counts
+              <input
+                type="text"
+                id="flag-exclude-taxids"
+                placeholder="9606"
+                size="18"
+                aria-label="Taxids or organism names excluded from detection counts"
+              />
+              <button type="button" id="flag-exclude-reset" title="Back to the default (9606, human)">reset</button>
+            </label>
+          </div>
+          <div id="flag-rule-list"></div>
+          <div class="flag-modal-addrow">
+            <button type="button" id="flag-add-rule"><i class="fas fa-plus"></i> Add rule</button>
+            <span class="flag-preset-wrap">
+              Presets:
+              <button type="button" class="flag-preset" data-preset="lowreads">Low read depth</button>
+              <button type="button" class="flag-preset" data-preset="noalign">No alignments</button>
+              <button type="button" class="flag-preset" data-preset="fewtaxa">Few organisms above TASS</button>
+              <button type="button" class="flag-preset" data-preset="nodetect">No passing detections</button>
+              <button type="button" class="flag-preset" data-preset="control">Control samples</button>
+              <button
+                type="button"
+                class="flag-preset"
+                data-preset="k2only"
+                title="Flag a sample carrying an organism the classifier called loudly but the aligner barely supports"
+              >
+                Classifier-only organisms
+              </button>
+            </span>
+          </div>
+          <div id="flag-preview"></div>
+        </div>
+        <div class="export-modal-actions">
+          <button type="button" id="flag-reset-btn" title="Restore the rules the pipeline shipped with this report">
+            Reset to pipeline defaults
+          </button>
+          <button type="button" id="flag-clear-btn">Remove all rules</button>
+          <button type="button" id="flag-apply-btn" class="primary">Done</button>
+        </div>
+      </div>
+    </div>
+
     <script src="pages.js"></script>
     <script src="src/js/early.js"></script>
     <script src="src/js/00_preamble.js"></script>
@@ -3677,7 +4214,14 @@
     <script src="src/js/35_tab_map.js"></script>
     <script src="src/js/36_guided_help_tour.js"></script>
     <script src="src/js/37_specimen_merge.js"></script>
-    <script src="src/js/38_tab_insilico.js"></script>
+    <script src="src/js/38_meta_grouping.js"></script>
+    <script src="src/js/39_meta_group_views.js"></script>
+    <script src="src/js/40_map_group_network.js"></script>
+    <script src="src/js/41_sample_flags.js"></script>
+    <script src="src/js/42_sample_flags_ui.js"></script>
+    <script src="src/js/43_multiselect.js"></script>
+    <script src="src/js/44_map_regions.js"></script>
+    <script src="src/js/45_tab_insilico.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

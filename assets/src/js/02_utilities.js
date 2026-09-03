@@ -23,9 +23,18 @@ function isTruthy(v) {
          (no manual bookkeeping needed) because every UI change alters at
          least one of the inputs we hash. */
 let _FD_CACHE = { key: null, value: null };
+// Second slot for the ignoreThreshold variant. The cross-sample pass/below
+// breakdown asks for it on every redraw and it costs as much as the main pass,
+// so it gets its own cache rather than recomputing each time.
+let _FD_CACHE_ALL = { key: null, value: null };
 function _invalidateFilterCache() {
   _FD_CACHE.key = null;
   _FD_CACHE.value = null;
+  _FD_CACHE_ALL.key = null;
+  _FD_CACHE_ALL.value = null;
+  // The specimen grouping memos are derived from the same inputs; every site
+  // that changes grouping already calls this, so reset them here too.
+  if (typeof _invalidateSpecimenCache === "function") _invalidateSpecimenCache();
 }
 function _hasAnyRescale() {
   for (const k in sampleRescale) if (sampleRescale[k]) return true;
@@ -120,7 +129,8 @@ function filteredData(opts) {
     watchFilterMode === "all" ? "" : Array.from(watchlist).sort().join(","),
     typeof _hashSpecimenMerge === "function" ? _hashSpecimenMerge() : "",
   ].join("\u0001");
-  if (!_ignoreThr && _FD_CACHE.key === cacheKey && _FD_CACHE.value) return _FD_CACHE.value;
+  const _slot = _ignoreThr ? _FD_CACHE_ALL : _FD_CACHE;
+  if (_slot.key === cacheKey && _slot.value) return _slot.value;
 
   // Compile the search pattern defensively. While the user is still
   // typing, an incomplete pattern (e.g. "(" or "[a-") would otherwise
@@ -255,8 +265,75 @@ function filteredData(opts) {
   ) {
     out = _collapseSpecimens(out);
   }
-  _FD_CACHE = { key: cacheKey, value: out };
+  if (_ignoreThr) _FD_CACHE_ALL = { key: cacheKey, value: out };
+  else _FD_CACHE = { key: cacheKey, value: out };
   return out;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   -  §  FILTER SCOPE FOR THE METADATA / MAPPING TAB
+   -     Every other tab renders from filteredData(). The metadata table and the
+   -     Leaflet map historically iterated RUN_META directly, so a search like
+   -     "Respiratory syncytial virus" narrowed every view EXCEPT those two.
+   -
+   -     These helpers give both a cheap way to ask "did this sample survive the
+   -     current filters?" without changing what they iterate — the table keeps
+   -     its full run inventory by default and the map dims rather than drops
+   -     non-matching markers, so the geographic denominator stays visible.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Names present in the current filtered view. With specimen merge on these
+ *  are specimen names; otherwise raw sample ids. Cheap — filteredData() is
+ *  memoized, so this is a walk of the already-computed result. */
+function _ttFilterMatchedKeys() {
+  const set = new Set();
+  const fd = typeof filteredData === "function" ? filteredData() : [];
+  for (let i = 0; i < fd.length; i++) {
+    const v = fd[i]["Specimen ID"];
+    if (v) set.add(String(v));
+  }
+  return set;
+}
+
+/** Does `sampleName` survive the current filters? `matched` is the set from
+ *  _ttFilterMatchedKeys() (pass it in and reuse it across a render loop).
+ *  Handles the merged case: filteredData() labels rows with the SPECIMEN, so a
+ *  member library matches whenever its specimen does. */
+function _ttSampleMatchesFilter(sampleName, matched) {
+  if (!matched) return true;
+  const s = String(sampleName == null ? "" : sampleName);
+  if (!s) return false;
+  if (matched.has(s)) return true;
+  if (typeof specimenKey === "function") {
+    const k = specimenKey(s);
+    if (k && matched.has(k)) return true;
+  }
+  return false;
+}
+
+/** Whether any filter is actually narrowing the view. Used to avoid dimming
+ *  the entire map when nothing is filtered — with no active filter every
+ *  sample "matches" trivially and dimming would be noise. */
+function _ttAnyFilterActive() {
+  const val = (id) => {
+    const el = document.getElementById(id);
+    return el ? el.value : "";
+  };
+  const on = (id) => {
+    const el = document.getElementById(id);
+    return !!(el && el.checked);
+  };
+  if ((val("filter-text") || "").trim()) return true;
+  if (parseFloat(val("filter-min")) > 0) return true;
+  if (on("filter-hc") || on("filter-pass")) return true;
+  const mc = document.getElementById("filter-mc");
+  if (mc && mc.selectedOptions && mc.selectedOptions.length) return true;
+  if (document.querySelectorAll(".fk-cb:checked").length) return true;
+  const mt = ["filter-mt-dna", "filter-mt-rna", "filter-mt-both"];
+  if (mt.some((id) => document.getElementById(id) && !on(id))) return true;
+  if (typeof watchFilterMode !== "undefined" && watchFilterMode !== "all") return true;
+  for (const k in sampleHidden) if (sampleHidden[k]) return true;
+  return false;
 }
 
 /* ── Collapse filtered rows into one row per (specimen, organism) ─────────
@@ -307,16 +384,26 @@ function _collapseSpecimens(rows) {
     const key = [spec, r["Level"] || "Strain", r["Subkey"] || "", orgKey].join("");
     let g = groups.get(key);
     if (!g) {
-      g = { spec, members: new Set(), rep: r, repTass: num(r["TASS Score"]) };
+      g = { spec, members: new Set(), rep: r, repTass: num(r["TASS Score"]), rows: [] };
       groups.set(key, g);
     }
     g.members.add(r["Specimen ID"]);
+    // Collect the contributing rows as we go. This grouping pass already
+    // computes exactly the predicate the aggregation below needs (same
+    // specimen + same organism / level / subkey), so keeping the rows here
+    // replaces a full rows.filter() per group. That scan was O(groups x rows)
+    // and was the dominant cost of a merged redraw on a large run.
+    g.rows.push(r);
     const t = num(r["TASS Score"]);
     if (t > g.repTass) {
       g.repTass = t;
       g.rep = r;
     }
   }
+  // Hoisted out of the per-group loop below: specimenGroups() was being
+  // recomputed (twice) for every group, and each call walks all of
+  // SAMPLE_META + DATA.
+  const _allGroups = typeof specimenGroups === "function" ? specimenGroups() : new Map();
   const out = [];
   groups.forEach((g) => {
     const members = Array.from(g.members).sort();
@@ -327,7 +414,7 @@ function _collapseSpecimens(rows) {
     }
     const merged = Object.assign({}, g.rep);
     merged["Specimen ID"] = g.spec;
-    const contrib = rows.filter((r) => specimenOf(r["Specimen ID"]) === g.spec && _sameOrgLevel(r, g.rep));
+    const contrib = g.rows;
     _SPECIMEN_SUM_COLS.forEach((c) => {
       let any = false;
       const s = contrib.reduce((acc, r) => {
@@ -361,10 +448,7 @@ function _collapseSpecimens(rows) {
     });
     // Recompute normalized abundance against the full merged specimen, not
     // whichever member happened to have the highest TASS score.
-    const specimenMembers =
-      typeof specimenGroups === "function" && specimenGroups().has(g.spec)
-        ? specimenGroups().get(g.spec).slice()
-        : members;
+    const specimenMembers = _allGroups.has(g.spec) ? _allGroups.get(g.spec) : members;
     // ── TASS / coverage combine method (user-selectable) ──────────────────
     // MAX is set above; when the analyst picks median / mean / min / detection
     // in the cross-sample "Combine" control, re-reduce the score columns from
@@ -379,7 +463,7 @@ function _collapseSpecimens(rows) {
         const vals = contrib.filter((r) => r[c] !== undefined && r[c] !== null && r[c] !== "").map((r) => num(r[c]));
         if (!vals.length) return;
         merged[c] =
-          typeof _xsReduceMembers === "function" ? _xsReduceMembers(vals, _aggMethod, _memberTotal) : Math.max(...vals);
+          typeof _xsReduceMembers === "function" ? _xsReduceMembers(vals, _aggMethod, _memberTotal) : _ttMax(vals);
       });
     }
     const activeMembers = specimenMembers.filter((s) => !sampleHidden[s]);
@@ -406,7 +490,9 @@ function _collapseSpecimens(rows) {
     if (mts.size > 1) merged["Mol Type"] = "both";
     merged.__merged = true;
     merged.__mergedFrom = members;
-    merged.__specimenMembers = specimenMembers;
+    // Copy: specimenMembers may be the memoized specimenGroups() array, which
+    // callers must not mutate through a row they were handed.
+    merged.__specimenMembers = specimenMembers.slice();
     merged.__mergedCount = specimenMembers.length;
     out.push(merged);
   });
@@ -1399,7 +1485,9 @@ function _tabLabel(tab) {
 
 /** Renders all enabled metadata sub-tabs so their charts appear in the PDF. */
 async function _renderMetaSubTabsForPdf() {
-  const subIds = ["longi", "geo", "host", "cmp"];
+  // "ghm" / "net" are the grouping-driven views; they only render when the
+  // user has an active grouping, and _switchMetaSub skips disabled tabs below.
+  const subIds = ["longi", "host", "ghm", "net", "cmp"];
   const originalSub = _activeMetaSub;
   for (const id of subIds) {
     const btn = document.querySelector(`.meta-subtab[data-metasub="${id}"]`);
@@ -1469,7 +1557,9 @@ async function _renderTabsForPdf() {
       if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
       if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
       await _pdfDelay(80);
-      _setPdfProgress("Rendering metadata sub-tabs…", i, tabs.length);
+    } else if (tab === "trends") {
+      if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+      _setPdfProgress("Rendering trends sub-tabs…", i, tabs.length);
       await _renderMetaSubTabsForPdf();
       // Make all rendered sub-tab snapshots visible for print
       const snap = document.getElementById("cmp-print-snapshots");
@@ -1486,6 +1576,10 @@ async function _renderTabsForPdf() {
         }
         await _pdfDelay(900);
       }
+      // The geo view owns the choropleth + the drawn-region report.
+      if (typeof _buildGeoComparison === "function") _buildGeoComparison();
+      if (typeof _ttRegionRefresh === "function") _ttRegionRefresh();
+      await _pdfDelay(200);
     } else {
       const pane = document.getElementById(`pane-${tab}`);
       const hasRenderedContent = !!(pane && pane.querySelector("svg,table"));
@@ -1795,13 +1889,18 @@ const PDF_SECTION_INFO = {
   },
   map: {
     group: "Provenance & Geography",
-    what: "Geographic placement of samples that carry latitude/longitude metadata.",
-    how: "Each pin is a sampling site, coloured by sample. Use it to track spread across locations for surveillance.",
+    what: "Geographic placement of samples that carry latitude/longitude metadata, plus the country / state choropleth.",
+    how: "Each pin is a sampling site, coloured by sample or by the shared grouping. Draw a lasso or rectangle to summarise an area and compare regions against each other.",
   },
   runmeta: {
     group: "Provenance & Geography",
     what: "Per-sample run provenance — sample type, sequencing platform, and any uploaded metadata fields — collected in one table.",
-    how: "Use it to confirm each sample's origin and sequencing context when interpreting the detections above.",
+    how: "Use it to confirm each sample's origin and sequencing context when interpreting the detections above. The Group by bar at the bottom is shared with the Mapping and Trends tabs.",
+  },
+  trends: {
+    group: "Provenance & Geography",
+    what: "Time-series, host/site breakdowns and the group-level heatmap, network and cross-entry comparison — everything driven by the shared Group by selection.",
+    how: "Pick the metadata columns to group on, then read each sub-tab as a different cut of those groups: change over time, host/site composition, group × organism matrix, and group similarity.",
   },
 };
 
@@ -1842,7 +1941,7 @@ function _pdfKpiCards() {
       cutVal = vals[0].toFixed(1);
       cutSub = cut.items.length === 1 ? cut.items[0].type : "all types";
     } else {
-      cutVal = `${Math.min(...vals).toFixed(0)}–${Math.max(...vals).toFixed(0)}`;
+      cutVal = `${_ttMin(vals).toFixed(0)}–${_ttMax(vals).toFixed(0)}`;
       cutSub = "by sample type";
     }
   } else {
@@ -1995,4 +2094,93 @@ async function _exportReportPdf() {
       if (document.body.classList.contains("report-pdf-printing")) cleanup();
     }, 1500);
   }, 120 + _mapSettleDelay);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   -  §  "CALCULATING…" INDICATOR
+   -     A small pill in the top-right that appears while a heavy recompute is
+   -     running (filter change, specimen merge toggle, cross-sample redraw) so
+   -     a multi-second pause on a large run doesn't look like a frozen page.
+   -
+   -     The work is synchronous and blocks the main thread, so the pill has to
+   -     be PAINTED BEFORE the work starts — hence the two-frame yield in
+   -     ttBusyRun(). That yield costs a frame, so it is only paid when the task
+   -     is expected to be slow: durations are remembered per label and a task
+   -     that last ran fast is executed inline with no indicator at all. The
+   -     first run of a label guesses from the dataset size.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const _TT_BUSY_MS = new Map(); // label → last measured duration
+let _TT_BUSY_DEPTH = 0;
+let _TT_BUSY_EL = null;
+// Below this a spinner would flash faster than the eye resolves — not worth
+// the extra frame of latency.
+const _TT_BUSY_MIN_MS = 120;
+
+function _ttBusyEl() {
+  if (_TT_BUSY_EL && _TT_BUSY_EL.isConnected) return _TT_BUSY_EL;
+  const el = document.createElement("div");
+  el.id = "tt-busy";
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  el.innerHTML = '<span class="tt-busy-ring" aria-hidden="true"></span><span class="tt-busy-label"></span>';
+  document.body.appendChild(el);
+  _TT_BUSY_EL = el;
+  return el;
+}
+
+function ttBusyShow(label) {
+  _TT_BUSY_DEPTH++;
+  const el = _ttBusyEl();
+  el.querySelector(".tt-busy-label").textContent = label || "Calculating…";
+  el.classList.add("on");
+}
+
+function ttBusyHide() {
+  _TT_BUSY_DEPTH = Math.max(0, _TT_BUSY_DEPTH - 1);
+  if (_TT_BUSY_DEPTH === 0 && _TT_BUSY_EL) _TT_BUSY_EL.classList.remove("on");
+}
+
+/** Whether `label` is worth showing an indicator for: slow last time, or —
+ *  never run yet — a dataset big enough that it probably will be. */
+function _ttBusyWorthIt(label) {
+  const prev = _TT_BUSY_MS.get(label);
+  if (prev !== undefined) return prev >= _TT_BUSY_MIN_MS;
+  return typeof DATA !== "undefined" && DATA && DATA.length >= 4000;
+}
+
+/** Run `work` with a "calculating" pill up, if it's likely to take long enough
+ *  to be noticeable. Returns a Promise resolving to work()'s return value.
+ *
+ *  Callers must not depend on the DOM being updated synchronously on return —
+ *  await the promise (or pass a continuation) if they need the result. Nested
+ *  calls run inline so the pill isn't shown twice. */
+function ttBusyRun(label, work) {
+  if (_TT_BUSY_DEPTH > 0 || !_ttBusyWorthIt(label)) {
+    const t0 = performance.now();
+    const out = work(); // a throw here propagates; the timing below is skipped
+    // Only time completed work. A run that threw finished early for the wrong
+    // reason, and recording its near-zero duration would wrongly mark a slow
+    // task as fast and suppress the indicator from then on.
+    if (_TT_BUSY_DEPTH === 0) _TT_BUSY_MS.set(label, performance.now() - t0);
+    return Promise.resolve(out);
+  }
+  ttBusyShow(label);
+  return new Promise((resolve, reject) => {
+    // Two frames: the first commits the style change, the second guarantees it
+    // has been painted before we block the thread.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const t0 = performance.now();
+        try {
+          const out = work();
+          _TT_BUSY_MS.set(label, performance.now() - t0);
+          resolve(out);
+        } catch (e) {
+          reject(e); // see note above — deliberately not recorded
+        } finally {
+          ttBusyHide();
+        }
+      }),
+    );
+  });
 }

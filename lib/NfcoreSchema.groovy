@@ -285,12 +285,35 @@ class NfcoreSchema {
         }
 
         // Check for unexpected parameters
+        //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+        // Reserved namespaces: an unknown param inside one of these is always a
+        // typo, never a deliberate extra. They get a hard error with the
+        // correct spelling, because silently dropping one produces a run that
+        // LOOKS right — e.g. a report whose sample-QC panel is simply empty.
+        def reservedPrefixes = ['report_flag']
+        for (unexpectedParam in unexpectedParams) {
+            def prefix = reservedPrefixes.find { unexpectedParam.startsWith(it) }
+            if (!prefix) continue
+            def near = nearestParam(unexpectedParam, expectedParams.findAll { it.startsWith(prefix) })
+            log.error "ERROR: '--${unexpectedParam}' is not a recognised parameter." +
+                      (near ? " Did you mean '--${near}'?" : "") +
+                      "\n       Parameters starting with '${prefix}' must match one of: " +
+                      expectedParams.findAll { it.startsWith(prefix) }.sort().join(', ')
+            has_error = true
+        }
+
         if (unexpectedParams.size() > 0) {
             Map colors = NfcoreTemplate.logColours(params.monochrome_logs)
             println ''
             def warn_msg = 'Found unexpected parameters:'
             for (unexpectedParam in unexpectedParams) {
-                warn_msg = warn_msg + "\n* --${unexpectedParam}: ${params[unexpectedParam].toString()}"
+                // A close match to a real parameter is almost always a typo.
+                // Saying so inline is what makes this warning actionable —
+                // without it a mistyped name is one line in a list of many and
+                // reads as just another harmless extra.
+                def near = nearestParam(unexpectedParam, expectedParams)
+                warn_msg = warn_msg + "\n* --${unexpectedParam}: ${params[unexpectedParam].toString()}" +
+                           (near ? "   (did you mean --${near}?)" : "")
             }
             log.warn warn_msg
             log.info "- ${colors.dim}Ignore this warning: params.schema_ignore_params = \"${unexpectedParams.join(',')}\" ${colors.reset}"
@@ -300,6 +323,36 @@ class NfcoreSchema {
         if (has_error) {
             System.exit(1)
         }
+    }
+
+    //
+    // Closest schema parameter to `name`, or null when nothing is close enough
+    // to be worth suggesting. The threshold scales with length so short names
+    // do not match everything ("meta" -> "minq" is noise, not a suggestion).
+    //
+    private static String nearestParam(String name, List<String> candidates) {
+        if (!name || !candidates) return null
+        def best = null
+        def bestDist = Integer.MAX_VALUE
+        for (c in candidates) {
+            def d = levenshtein(name, c)
+            if (d < bestDist) { bestDist = d; best = c }
+        }
+        def limit = Math.min(3, Math.max(1, (int) (name.length() / 4)))
+        return bestDist <= limit ? best : null
+    }
+
+    private static int levenshtein(String a, String b) {
+        if (a == b) return 0
+        def prev = (0..b.length()).toList()
+        for (int i = 1; i <= a.length(); i++) {
+            def cur = [i]
+            for (int j = 1; j <= b.length(); j++) {
+                cur << [prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1)].min()
+            }
+            prev = cur
+        }
+        return prev[b.length()]
     }
 
     //

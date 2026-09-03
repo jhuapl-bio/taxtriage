@@ -19,9 +19,9 @@
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    nf-core/taxtriage
+    jhuapl-bio/taxtriage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    Github : https://github.com/nf-core/taxtriage
+    Github : https://github.com/jhuapl-bio/taxtriage
     Website: https://nf-co.re/taxtriage
     Slack  : https://nfcore.slack.com/channels/taxtriage
 ----------------------------------------------------------------------------------------
@@ -45,7 +45,7 @@ nextflow.enable.dsl = 2
 
 include { TAXTRIAGE } from './workflows/taxtriage'
 //
-// WORKFLOW: Run main nf-core/taxtriage analysis pipeline
+// WORKFLOW: Run main jhuapl-bio/taxtriage analysis pipeline
 //
 
 

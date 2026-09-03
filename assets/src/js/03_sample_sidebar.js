@@ -85,10 +85,11 @@ function _deleteSampleData(id) {
   delete sampleColors[id];
   delete sampleHidden[id];
   delete sampleRescale[id];
+  _filterAutoHidden.delete(id);
   _sampleOrder = _sampleOrder.filter((s) => s !== id);
   if (typeof SPECIMEN_OVERRIDE !== "undefined") delete SPECIMEN_OVERRIDE[id];
   // Re-evaluate VF/AMR tab visibility after the prune
-  HAS_PROT = Object.keys(PROT || {}).some((k) => Array.isArray(PROT[k]) && PROT[k].length > 0);
+  HAS_PROT = hasProtAnnotations(PROT);
   const protBtn = document.getElementById("prot-tab-btn");
   if (protBtn) protBtn.classList.toggle("hidden", !HAS_PROT);
   // Re-evaluate histogram tab visibility too
@@ -124,22 +125,58 @@ function removeAllSamples() {
     } and their data?\n\nThis cannot be undone.`,
   );
   if (!ok) return;
+  _emptyAllData();
+}
+
+/* ── Tear every data source down to an empty report ──────────────────────────
+         The unconditional half of removeAllSamples(): no confirm(), no
+         "nothing to do" early return, so it is safe to call when the report is
+         already empty. Also used by the GitHub-Pages startup dialog's
+         "Start empty" / "Upload your own data" buttons, which previously went
+         through _ttApplyBoot(_ttEmptyBoot()) — that path never touched NOVELTY,
+         NOVELTY_DL or the watchlist, so novelty-only samples survived in the
+         sidebar (_allSampleIds() treats NOVELTY.samples as authoritative). */
+function _emptyAllData() {
+  const samples = Array.from(_allSampleIds()).filter(Boolean);
+
+  /* Every teardown step is individually guarded. This used to be one straight
+           run of statements, so the FIRST failure (a chart helper that doesn't
+           expect an empty dataset, a tab that isn't mounted yet, …) aborted the
+           whole function — leaving the data half-cleared and, because the rebuild
+           calls sit at the bottom, the sidebar and Detections table still showing
+           the samples that had just been deleted. Nothing here depends on a later
+           step succeeding, so a failure in one must not skip the rest. */
+  const step = (label, fn) => {
+    try {
+      fn();
+    } catch (e) {
+      if (window.console && console.warn) console.warn("_emptyAllData: " + label + " failed", e);
+    }
+  };
+
   // Batch delete — clear EVERY data source, including BOOT and the
   // upload buffers. Without this, dropping a new JSON afterwards would
   // re-merge BOOT.records (and any previously-uploaded rows) on top of
   // the freshly-emptied dataset, resurrecting the samples the user
   // just told us to delete.
-  DATA.length = 0;
-  RUN_META.length = 0;
-  CONTIG_DATA.length = 0;
-  if (NOVELTY && NOVELTY.samples) Object.keys(NOVELTY.samples).forEach((k) => delete NOVELTY.samples[k]);
-  NOVELTY_DL.length = 0;
-  HAS_NOVELTY = false;
-  const noveltyBtn = document.getElementById("novelty-tab-btn");
-  if (noveltyBtn) noveltyBtn.classList.add("hidden");
-  if (typeof _invalidateSummaryHistMap === "function") _invalidateSummaryHistMap();
+  step("detections", () => {
+    DATA.length = 0;
+    RUN_META.length = 0;
+    CONTIG_DATA.length = 0;
+  });
+  step("novelty", () => {
+    if (NOVELTY && NOVELTY.samples) Object.keys(NOVELTY.samples).forEach((k) => delete NOVELTY.samples[k]);
+    NOVELTY_DL.length = 0;
+    HAS_NOVELTY = false;
+    const noveltyBtn = document.getElementById("novelty-tab-btn");
+    if (noveltyBtn) noveltyBtn.classList.add("hidden");
+  });
+  step("summary-hist-cache", () => {
+    if (typeof _invalidateSummaryHistMap === "function") _invalidateSummaryHistMap();
+  });
   // Reset BOOT in place so all references see the change.
-  if (BOOT) {
+  step("boot", () => {
+    if (!BOOT) return;
     if (Array.isArray(BOOT.records)) BOOT.records.length = 0;
     if (Array.isArray(BOOT.contig_data)) BOOT.contig_data.length = 0;
     if (Array.isArray(BOOT.run_metadata_records)) BOOT.run_metadata_records.length = 0;
@@ -153,42 +190,109 @@ function removeAllSamples() {
       });
     }
     BOOT.has_prot = false;
-  }
+    BOOT.has_novelty = false;
+  });
   // Empty PROT in place, keep the same key set so the rest of the code
   // that does `PROT.per_gene_hits` etc. still finds an array.
-  Object.keys(PROT || {}).forEach((k) => {
-    if (Array.isArray(PROT[k])) PROT[k].length = 0;
+  step("proteins", () => {
+    Object.keys(PROT || {}).forEach((k) => {
+      if (Array.isArray(PROT[k])) PROT[k].length = 0;
+    });
+    HAS_PROT = false;
+    const protBtn = document.getElementById("prot-tab-btn");
+    if (protBtn) protBtn.classList.add("hidden");
   });
-  HAS_PROT = false;
-  const protBtn = document.getElementById("prot-tab-btn");
-  if (protBtn) protBtn.classList.add("hidden");
   // Drop accumulated upload state so the next drop is a clean start.
-  if (window._clearUploadBuffers) window._clearUploadBuffers();
-  samples.forEach((id) => {
-    delete sampleColors[id];
-    delete sampleHidden[id];
-    delete sampleRescale[id];
+  step("upload-buffers", () => {
+    if (window._clearUploadBuffers) window._clearUploadBuffers();
   });
-  _sampleOrder = [];
-  if (typeof SPECIMEN_OVERRIDE !== "undefined") {
-    Object.keys(SPECIMEN_OVERRIDE).forEach((k) => delete SPECIMEN_OVERRIDE[k]);
-  }
-  if (typeof SPECIMEN_META_RESOLVED !== "undefined") {
-    Object.keys(SPECIMEN_META_RESOLVED).forEach((k) => delete SPECIMEN_META_RESOLVED[k]);
-  }
-  // Clear SAMPLE_META so % classified resets to N/A with no data
-  Object.keys(SAMPLE_META).forEach((k) => delete SAMPLE_META[k]);
-  if (BOOT && BOOT.sample_meta) Object.keys(BOOT.sample_meta).forEach((k) => delete BOOT.sample_meta[k]);
-  buildSampleList();
-  buildTable();
-  _rebuildMapMarkers();
+  step("per-sample-state", () => {
+    samples.forEach((id) => {
+      delete sampleColors[id];
+      delete sampleHidden[id];
+      delete sampleRescale[id];
+    });
+    _filterAutoHidden.clear();
+    _sampleOrder = [];
+    if (typeof SPECIMEN_OVERRIDE !== "undefined") {
+      Object.keys(SPECIMEN_OVERRIDE).forEach((k) => delete SPECIMEN_OVERRIDE[k]);
+    }
+    if (typeof SPECIMEN_META_RESOLVED !== "undefined") {
+      Object.keys(SPECIMEN_META_RESOLVED).forEach((k) => delete SPECIMEN_META_RESOLVED[k]);
+    }
+  });
+  // Clear SAMPLE_META so % classified resets to N/A with no data. This is also
+  // what the Detections table reads to synthesize its "no passing detections
+  // for this sample" indicator rows, so a sample left here comes back as a row
+  // even when it owns no data at all.
+  step("sample-meta", () => {
+    Object.keys(SAMPLE_META).forEach((k) => delete SAMPLE_META[k]);
+    if (BOOT && BOOT.sample_meta) Object.keys(BOOT.sample_meta).forEach((k) => delete BOOT.sample_meta[k]);
+  });
+  // Watchlist / follow-up chips are keyed by organism+sample, so they would
+  // otherwise keep pointing at rows that no longer exist.
+  step("watchlist", () => {
+    if (typeof watchlist !== "undefined" && watchlist && watchlist.clear) watchlist.clear();
+    if (typeof watchFilterMode !== "undefined") watchFilterMode = "all";
+    if (typeof _updateWatchPanel === "function") _updateWatchPanel();
+  });
+  // Row annotations reference deleted rows; drop the data but keep the arrays
+  // so the column-picker UI still has something to read.
+  step("annotations", () => {
+    if (typeof TT_ANNOT !== "undefined" && TT_ANNOT) {
+      TT_ANNOT.rowData = {};
+      if (BOOT && BOOT.annotations) BOOT.annotations = { rowCols: [], rowData: {}, metaCols: [], hiddenCols: [] };
+    }
+  });
+  step("filter-cache", () => {
+    if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
+  });
+
+  /* Safety net: whatever the steps above may have missed, _allSampleIds() is
+           the single source of truth for the sidebar and the indicator rows. If
+           anything still answers to it, fall back to the per-sample delete path
+           (which prunes every store for one id) so the report cannot be left in
+           a half-emptied state. */
+  step("sweep-leftovers", () => {
+    const left = Array.from(_allSampleIds()).filter(Boolean);
+    left.forEach((id) => {
+      try {
+        _deleteSampleData(id);
+      } catch (e) {}
+    });
+  });
+
+  // Rebuild — these run last and must run even if a teardown step above threw.
+  step("sample-list", () => buildSampleList());
+  step("table", () => buildTable());
+  step("map", () => _rebuildMapMarkers());
+  // RUN_META was emptied above — rebuild the Metadata & Mapping tab and
+  // re-evaluate its sub-tabs, otherwise the old grid stays on screen.
+  step("run-meta", () => {
+    if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
+    if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+    if (window.metaGrouping && typeof window.metaGrouping.refresh === "function") window.metaGrouping.refresh();
+    if (typeof _mgSyncGroupBar === "function") _mgSyncGroupBar();
+  });
+  // The specimen-merge bar counts groups from data that is now gone.
+  step("specimen-merge", () => {
+    if (window.specimenMerge && typeof window.specimenMerge.refreshBar === "function") {
+      window.specimenMerge.refreshBar();
+    }
+  });
   // Hide the histogram tab again (it was shown when contigs existed)
-  const histBtn = document.getElementById("hist-tab-btn");
-  if (histBtn) histBtn.classList.add("hidden");
-  if (window._resetHistSelectors) window._resetHistSelectors();
-  document.getElementById("banner-sub").textContent = _buildBannerSub();
-  redraw();
+  step("histogram", () => {
+    const histBtn = document.getElementById("hist-tab-btn");
+    if (histBtn) histBtn.classList.add("hidden");
+    if (window._resetHistSelectors) window._resetHistSelectors();
+  });
+  step("banner", () => {
+    const bs = document.getElementById("banner-sub");
+    if (bs) bs.textContent = _buildBannerSub();
+  });
+  step("redraw", () => redraw());
 }
+window._emptyAllData = _emptyAllData;
 
 /* ── Hide / show every sample at once.
          If any sample is currently visible, hide them all. Otherwise (all
@@ -202,6 +306,9 @@ function toggleAllSamples() {
   const next = anyVisible; // true = hide all; false = show all
   samples.forEach((id) => {
     sampleHidden[id] = next;
+    // Bulk action is an explicit user override — the search-filter toggle
+    // no longer "owns" these samples' visibility.
+    _filterAutoHidden.delete(id);
   });
   buildSampleList();
   _syncToggleAllSamplesBtn();
@@ -278,19 +385,81 @@ const _LOW_READ_THRESHOLD = 1000; // total reads below this == "few reads"
 let _sampleListPage = 0;
 let _sampleListPageIds = [];
 
+// True when the current sample-list search box holds text that doesn't
+// compile as a regex (e.g. an unclosed "(" mid-typing). Set by
+// _sampleListFilteredOrder(); read by _updateSampleListTools() to surface a
+// hint next to the match count, mirroring the "incomplete pattern" flag
+// the organism search (filter-text) already shows.
+let _sampleListSearchInvalid = false;
+
 function _sampleListFilteredOrder() {
   const input = document.getElementById("sample-list-search");
-  const q = String((input && input.value) || "")
-    .trim()
-    .toLowerCase();
-  if (!q) return _sampleOrder.slice();
+  const raw = String((input && input.value) || "").trim();
+  _sampleListSearchInvalid = false;
+  if (!raw) return _sampleOrder.slice();
+  // Same convention as the organism search box: the query is a regex,
+  // case-insensitive, so "A|B" matches either A or B, "^ctrl" anchors, etc.
+  // An incomplete/invalid pattern (mid-typing) falls back to a plain
+  // substring match rather than showing zero results.
+  let rx = null;
+  try {
+    rx = new RegExp(raw, "i");
+  } catch (e) {
+    rx = null;
+    _sampleListSearchInvalid = true;
+  }
+  const q = raw.toLowerCase();
   return _sampleOrder.filter((id) => {
     const specimen =
       typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function"
         ? specimenOf(id)
         : "";
+    if (rx) return rx.test(id) || (specimen && rx.test(specimen));
     return id.toLowerCase().includes(q) || (specimen && specimen.toLowerCase().includes(q));
   });
+}
+
+/* ── Auto-hide samples that don't match the sidebar search ─────────────────
+         Applies (or reverts) the effect of the "Hide filtered-out samples"
+         toggle. `matchedIds` is the set of sample ids the current search
+         query matches (pre-pagination). Only touches sampleHidden for ids
+         WE previously auto-hid (tracked in _filterAutoHidden) — a sample the
+         user hid manually via the eye icon is left alone either way.
+         Returns true if it changed any visibility, so the caller knows
+         whether a redraw() is needed. */
+function _applyFilterAutoHide(matchedIds) {
+  const searchInput = document.getElementById("sample-list-search");
+  const q = String((searchInput && searchInput.value) || "").trim();
+  const active = _sampleListHideNonMatches && q.length > 0;
+  const matchedSet = new Set(matchedIds);
+  let changed = false;
+  if (active) {
+    _sampleOrder.forEach((id) => {
+      if (!matchedSet.has(id)) {
+        if (!sampleHidden[id]) {
+          sampleHidden[id] = true;
+          _filterAutoHidden.add(id);
+          changed = true;
+        }
+      } else if (_filterAutoHidden.has(id)) {
+        // Matches again (query changed) — restore it, but only because we
+        // were the one who hid it, and only if a sample QC rule with a
+        // "hide" action isn't holding it down as well.
+        if (typeof _flagAutoHidden === "undefined" || !_flagAutoHidden.has(id)) sampleHidden[id] = false;
+        _filterAutoHidden.delete(id);
+        changed = true;
+      }
+    });
+  } else if (_filterAutoHidden.size) {
+    // Toggle switched off, or the search box was cleared — give back
+    // visibility to everything we auto-hid.
+    _filterAutoHidden.forEach((id) => {
+      if (typeof _flagAutoHidden === "undefined" || !_flagAutoHidden.has(id)) sampleHidden[id] = false;
+    });
+    _filterAutoHidden.clear();
+    changed = true;
+  }
+  return changed;
 }
 
 function _wireSampleListTools() {
@@ -298,6 +467,17 @@ function _wireSampleListTools() {
   const size = document.getElementById("sample-list-page-size");
   const prev = document.getElementById("sample-list-prev");
   const next = document.getElementById("sample-list-next");
+  const hideToggle = document.getElementById("sample-list-hide-nonmatch");
+  if (hideToggle && !hideToggle._wired) {
+    hideToggle._wired = true;
+    hideToggle.checked = _sampleListHideNonMatches;
+    hideToggle.addEventListener("change", () => {
+      _sampleListHideNonMatches = hideToggle.checked;
+      buildSampleList();
+      _syncToggleAllSamplesBtn();
+      redraw();
+    });
+  }
   if (search && !search._wired) {
     search._wired = true;
     search.addEventListener("input", () => {
@@ -351,6 +531,7 @@ function _updateSampleListTools(filteredCount, totalCount, pages) {
       filteredCount === totalCount
         ? `${start}–${end} of ${totalCount} samples`
         : `${start}–${end} of ${filteredCount} matches · ${totalCount} total`;
+    if (_sampleListSearchInvalid) match.textContent += " (incomplete pattern — using plain text match)";
   }
   if (prev) {
     prev.disabled = _sampleListPage <= 0;
@@ -400,13 +581,25 @@ function buildSampleList() {
     .filter((id) => !knownSet.has(id))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
   _sampleOrder = _sampleOrder.filter((id) => rawSamples.includes(id));
-  _sampleOrder.push(...newOnes);
+  _ttPushAll(_sampleOrder, newOnes);
+
+  //  Sample QC verdicts are derived from DATA + metadata, so they have to be
+  //  re-applied whenever the sample inventory changes — an upload, a delete,
+  //  or a whole-dataset swap (the GitHub Pages "Start empty" / state-load
+  //  paths all land here). Without this the row icons below and the sidebar
+  //  summary keep showing the previous dataset's verdict. The evaluation
+  //  itself is memoized, so this is a cache hit whenever nothing changed.
+  const _flagHideChanged = typeof ttFlagApplyHide === "function" ? ttFlagApplyHide() : false;
 
   const cont = document.getElementById("sample-list");
   if (!cont) return;
   cont.innerHTML = "";
   _wireSampleListTools();
   const filteredOrder = _sampleListFilteredOrder();
+  // Apply the "hide filtered-out samples" toggle before paginating/rendering
+  // so the eye icons drawn below reflect the up-to-date hidden state, and so
+  // charts elsewhere pick up the change on the redraw() this triggers.
+  const _hideToggleChanged = _applyFilterAutoHide(filteredOrder);
   const pageSize = parseInt((document.getElementById("sample-list-page-size") || {}).value, 10) || 25;
   const pages = Math.max(1, Math.ceil(filteredOrder.length / pageSize));
   _sampleListPage = Math.max(0, Math.min(_sampleListPage, pages - 1));
@@ -513,6 +706,29 @@ function buildSampleList() {
     // Surfaced for samples with few reads or no alignment hits so the user
     // knows their plots/scores may be unreliable. Uses the app's instant
     // tooltip (showTip/moveTip/hideTip) to explain the caveat on hover.
+    // ── Sample QC flag icon ────────────────────────────────────────
+    // Set by the rule engine in 41_sample_flags.js. Hovering lists every
+    // rule the sample tripped; clicking opens the rule builder.
+    const _flagState = typeof ttFlagStateFor === "function" ? ttFlagStateFor(id) : null;
+    let flagIcon = null;
+    if (_flagState && _flagState.flagged) {
+      flagIcon = document.createElement("i");
+      flagIcon.className =
+        "fas " +
+        (_flagState.hide ? "fa-eye-slash" : "fa-flag") +
+        " sample-flag-icon" +
+        (_flagState.hide ? " hides" : "");
+      flagIcon.addEventListener("mouseover", (ev) => showTip(ttFlagTipHTML(id), ev));
+      flagIcon.addEventListener("mousemove", moveTip);
+      flagIcon.addEventListener("mouseout", hideTip);
+      flagIcon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        hideTip();
+        if (typeof ttFlagOpenModal === "function") ttFlagOpenModal();
+      });
+    }
+    div.classList.toggle("flagged-sample", !!(_flagState && _flagState.flagged));
+
     const _warn = _sampleDataWarning(id);
     let warnIcon = null;
     if (_warn.warn) {
@@ -537,6 +753,10 @@ function buildSampleList() {
     btn.appendChild(icon);
     btn.addEventListener("click", () => {
       sampleHidden[id] = !sampleHidden[id];
+      // The user is now explicitly deciding this sample's visibility, so
+      // stop treating it as something the search-filter toggle owns —
+      // otherwise clearing the search box would silently flip it back.
+      _filterAutoHidden.delete(id);
       icon.className = `fas ${sampleHidden[id] ? "fa-eye-slash" : "fa-eye"}`;
       btn.style.opacity = sampleHidden[id] ? "0.35" : "1";
       _syncToggleAllSamplesBtn();
@@ -628,6 +848,7 @@ function buildSampleList() {
 
     div.appendChild(colorIn);
     div.appendChild(span);
+    if (flagIcon) div.appendChild(flagIcon);
     if (warnIcon) div.appendChild(warnIcon);
     div.appendChild(editBtn);
     div.appendChild(rescaleBtn);
@@ -643,68 +864,16 @@ function buildSampleList() {
   _syncToggleAllSamplesBtn();
   // Rebuild per-sample-type TASS cutoff UI
   buildPerTypeTassUI();
-  // Update the sidebar legend (sample swatches + TASS cutoffs)
-  _updateSidebarLegend();
+  // Sample QC summary line + chips, re-rendered from the verdict applied above.
+  if (typeof ttFlagRenderSummary === "function") ttFlagRenderSummary();
   if (window.specimenMerge && typeof window.specimenMerge.refreshBar === "function") {
     window.specimenMerge.refreshBar();
   }
-}
-
-/** Rebuild the sidebar legend: sample color swatches + active TASS cutoffs.
- *  Called whenever buildSampleList() runs or TASS thresholds change. */
-function _updateSidebarLegend() {
-  const panel = document.getElementById("sidebar-legend");
-  const samplesEl = document.getElementById("sidebar-legend-samples");
-  const tassEl = document.getElementById("sidebar-legend-tass");
-  if (!panel || !samplesEl || !tassEl) return;
-
-  // ── sample swatches ──────────────────────────────────────────────
-  if (_sampleOrder.length > 0) {
-    let swatchHtml = `<div style="font-size:0.72em;font-weight:600;color:#546e7a;margin-bottom:0.25em">Sample Colors <span style="font-weight:400;color:#90a4ae">(current page)</span></div>`;
-    swatchHtml += '<div style="display:flex;flex-direction:column;gap:0.18em">';
-    _sampleListPageIds.forEach((id) => {
-      const col = sampleColors[id] || "#888";
-      const hidden = sampleHidden[id];
-      swatchHtml +=
-        `<div style="display:flex;align-items:center;gap:0.4em;opacity:${hidden ? 0.4 : 1}">` +
-        `<span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:${col};border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>` +
-        `<span style="font-size:0.78em;color:#37474f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px" title="${id}">${id}</span>` +
-        `</div>`;
-    });
-    if (!_sampleListPageIds.length) {
-      swatchHtml += '<div style="font-size:0.75em;color:#90a4ae;font-style:italic">No matching samples.</div>';
-    }
-    swatchHtml += "</div>";
-    samplesEl.innerHTML = swatchHtml;
-    panel.style.display = "";
-  } else {
-    samplesEl.innerHTML = "";
-    panel.style.display = "none";
-  }
-
-  // ── TASS cutoffs ─────────────────────────────────────────────────
-  const cs = _tassCutoffSummary();
-  let tassHtml =
-    '<div style="font-size:0.72em;font-weight:600;color:#546e7a;margin:0.45em 0 0.25em">TASS Cutoffs</div>';
-  if (cs.mode === "byType" && cs.items.length) {
-    tassHtml += '<div style="display:flex;flex-direction:column;gap:0.15em">';
-    cs.items.forEach(({ type, applied }) => {
-      tassHtml +=
-        `<div style="display:flex;align-items:center;gap:0.4em">` +
-        `<span style="display:inline-block;width:11px;height:2px;background:#f59f00;flex-shrink:0;border-radius:1px"></span>` +
-        `<span style="font-size:0.78em;color:#37474f">${type}: <b>${applied}</b></span>` +
-        `</div>`;
-    });
-    tassHtml += "</div>";
-  } else {
-    const v = cs.global || 0;
-    tassHtml +=
-      `<div style="display:flex;align-items:center;gap:0.4em">` +
-      `<span style="display:inline-block;width:11px;height:2px;background:#f59f00;flex-shrink:0;border-radius:1px"></span>` +
-      `<span style="font-size:0.78em;color:#37474f">Global: <b>${v}</b></span>` +
-      `</div>`;
-  }
-  tassEl.innerHTML = tassHtml;
+  // The auto-hide toggle just changed sampleHidden for one or more samples —
+  // push that out to the charts/tables. redraw() is safe to call here even
+  // though buildSampleList() is itself sometimes called FROM redraw()'s
+  // callers, because this only fires when visibility actually changed.
+  if ((_hideToggleChanged || _flagHideChanged) && typeof redraw === "function") redraw();
 }
 
 /* ── Per-sample-type TASS helpers ────────────────────────────────────── */
@@ -995,7 +1164,6 @@ function buildPerTypeTassUI() {
       _invalidateFilterCache();
       redraw();
       if (window._resetHistSelectors) window._resetHistSelectors();
-      _updateSidebarLegend();
     });
   }
 }

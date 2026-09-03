@@ -10,7 +10,10 @@ on:
 jobs:
   run-tower:
     name: Run AWS full tests
-    if: github.repository == 'nf-core/taxtriage'
+    # Disabled: this is the nf-core AWS megatest, which this fork does not run.
+    # It was already inert (the repository gate never matched), and it triggers
+    # on `release` — enabling it would fire an AWS run on every version tag.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Launch workflow via tower

@@ -42,6 +42,264 @@ function _getTassPrefixSet() {
   return set;
 }
 
+/* ── Microbial category of the organism a VF/AMR hit is linked to ───────────
+       A hit carries the annotation database's Species / Genus, not a detection
+       row, so the microbial category lives on the DATA side. Build the same kind
+       of memoized prefix index _getTassPrefixSet() uses — organism name (and each
+       whitespace/comma-bounded leading prefix, so "escherichia coli" resolves a
+       detection recorded as "Escherichia coli O157:H7") → Set of categories seen
+       under that name. Genus names are indexed too, as a coarser fallback.
+       Cache is keyed on DATA.length, matching the TASS set's invalidation. */
+let _PROT_CAT_CACHE = { len: -1, map: null };
+function _getOrgCategoryMap() {
+  if (_PROT_CAT_CACHE.len === DATA.length && _PROT_CAT_CACHE.map) return _PROT_CAT_CACHE.map;
+  const map = new Map();
+  const add = (name, cat) => {
+    if (!name) return;
+    let s = map.get(name);
+    if (!s) map.set(name, (s = new Set()));
+    s.add(cat);
+  };
+  for (let i = 0; i < DATA.length; i++) {
+    const r = DATA[i];
+    const cat = r["Microbial Category"] || "Unknown";
+    const o = (r["Detected Organism"] || "").trim().toLowerCase();
+    if (o) {
+      add(o, cat);
+      for (let j = 0; j < o.length; j++) {
+        const ch = o.charCodeAt(j);
+        if (ch === 32 || ch === 44) add(o.slice(0, j), cat);
+      }
+    }
+    const g = (r["Genus"] || "").trim().toLowerCase();
+    if (g) add(g, cat);
+  }
+  _PROT_CAT_CACHE = { len: DATA.length, map };
+  return map;
+}
+/* make_report.py stamps every VF/AMR row with a `pathogen` descriptor resolved
+     from the row's Source ID against the pathogen sheet, by canonical taxid:
+       {match, name, class, status, hc, genus, taxid}
+     `class` is exactly the microbial-category vocabulary the filter-mc control
+     uses (primary / commensal / opportunistic / potential). This is authoritative
+     and, crucially, independent of whether the organism ever produced a detection
+     row — so a primary pathogen that never aligned, or that fell below the TASS
+     threshold, still classifies as Primary instead of collapsing to Unknown. */
+const _PROT_CLASS_LABEL = {
+  primary: "Primary",
+  commensal: "Commensal",
+  opportunistic: "Opportunistic",
+  potential: "Potential",
+};
+function _protPathogenClass(r) {
+  if (!r) return null;
+  // Charts read the raw PROT rows (`pathogen`); the table reads rows that have
+  // been through _protExpandRow (`_pathogen` + a flattened "Pathogen Class").
+  const p = r._pathogen || r.pathogen;
+  let c = p && typeof p === "object" ? p.class : null;
+  if (!c) c = r["Pathogen Class"];
+  c = String(c || "")
+    .trim()
+    .toLowerCase();
+  if (!c) return null;
+  return _PROT_CLASS_LABEL[c] || c.charAt(0).toUpperCase() + c.slice(1);
+}
+/** True when this hit is a known pathogen of a class we must never filter away
+       on the grounds of "not detected" — it has a canonical pathogen-sheet entry. */
+function _protIsPathogenHit(r) {
+  return !!_protPathogenClass(r);
+}
+/** Categories attributable to a hit row. null → nothing could be resolved.
+       Order matters: the server-side pathogen stamp wins over guessing from the
+       detections table, because the detection may not exist at all. */
+function _protRowCategories(r) {
+  const stamped = _protPathogenClass(r);
+  if (stamped) return new Set([stamped]);
+  const map = _getOrgCategoryMap();
+  const sp = String(r["Species"] || r["species"] || "")
+    .trim()
+    .toLowerCase();
+  if (sp && map.has(sp)) return map.get(sp);
+  const org = String(r["Organism"] || r["Reference Organism"] || "")
+    .trim()
+    .toLowerCase();
+  if (org && map.has(org)) return map.get(org);
+  const gn = String(r["Genus"] || r["genus"] || "")
+    .trim()
+    .toLowerCase();
+  if (gn && map.has(gn)) return map.get(gn);
+  return null;
+}
+/** The current global Microbial Category selection, or null when unrestricted. */
+function _protCategoryFilter() {
+  const el = document.getElementById("filter-mc");
+  if (!el || !el.selectedOptions) return null;
+  const sel = Array.from(el.selectedOptions).map((o) => o.value);
+  return sel.length ? new Set(sel) : null; // nothing selected = show everything
+}
+/** Does this hit's linked organism fall in the selected categories?
+       A hit with no matching detection (an "Ext" row) has no category of its own,
+       so it is treated as "Unknown" — exactly how filteredData() treats a
+       detection row with a blank Microbial Category. */
+function _protRowInCategories(r, catFilter) {
+  if (!catFilter) return true;
+  const cats = _protRowCategories(r);
+  if (!cats || !cats.size) return catFilter.has("Unknown");
+  for (const c of cats) if (catFilter.has(c)) return true;
+  return false;
+}
+
+/* ── Sample identity for a hit row ──────────────────────────────────────────
+       The merged XLSX names the sample column "Specimen ID" in the Per-Gene Hits
+       sheet but "Sample" in the AMR Genes sheet (create_report.py writes them from
+       different frames). The charts read PROT.* raw — only the table runs rows
+       through _applyProtColRemap — so reading "Specimen ID" alone silently gave
+       every AMR row an empty sample id, and every AMR row was then dropped from
+       both charts. Accept every spelling here. */
+function _protRowSample(r) {
+  return r["Specimen ID"] || r["Sample"] || r["sample"] || r["sample_name"] || "";
+}
+function _protRowGenus(r) {
+  return String(r["Genus"] || r["genus"] || "").trim() || "Unknown";
+}
+// Clean category labels used when a row carries no Property of its own. The AMR
+// Genes sheet has no Property column at all (it has Classification, which is a
+// long semicolon-joined string), so those rows used to bucket as "Unknown" and
+// sat in the legend as a separate grey series next to the CARD hits they belong
+// with. Fall back to the row's category label instead.
+const _PROT_CATEGORY_LABEL = {
+  amr: "Antibiotic Resistance",
+  vf: "Virulence Factor",
+  transporter: "Transporter",
+  drug_target: "Drug Target",
+  other: "Unknown",
+};
+function _protRowProp(r) {
+  const explicit = r["Property"] || r["Class"] || r["property"];
+  if (explicit) return explicit;
+  return _PROT_CATEGORY_LABEL[protPropCategory("", r)] || "Unknown";
+}
+
+/* ── Shared visibility gate for the two VF/AMR charts ───────────────────────
+       Previously both charts intersected hits against the set of
+       `Specimen ID||Genus` pairs in filteredData(). Any hit whose genus had no
+       matching detection row was discarded without a trace, so the charts read
+       "No genus annotation data." while the table below them listed thousands of
+       hits. That happens routinely:
+         • de-novo / unaligned annotation (no reference row exists at all)
+         • taxonomy renames — the detections table says "Orthoebolavirus" while
+           the annotation DB still says "Ebolavirus"
+         • any hit attributed to a genus below the TASS threshold
+       The charts now follow the same rule the Annotation Table already uses: the
+       `prot-tass-filter` control ("All hits" by default). Sample visibility is
+       always honoured; the in-TASS restriction is applied only when the user
+       explicitly asks for it, via the same _getTassPrefixSet() lookup the table
+       uses, so all three views agree. */
+function _protVisibleSamples() {
+  const s = new Set();
+  filteredData().forEach((r) => {
+    const raw = r["Specimen ID"];
+    s.add(typeof specimenKey === "function" ? specimenKey(raw) : String(raw == null ? "" : raw));
+  });
+  return s;
+}
+function _protHitFilter() {
+  const visibleSamples = _protVisibleSamples();
+  const tassMode = (document.getElementById("prot-tass-filter") || {}).value || "all";
+  const tassSet = tassMode === "all" ? null : _getTassPrefixSet();
+  const catFilter = _protCategoryFilter();
+  return (r) => {
+    const raw = _protRowSample(r);
+    if (sampleHidden[raw]) return false;
+    const key = typeof specimenKey === "function" ? specimenKey(raw) : String(raw);
+    if (!visibleSamples.has(key)) return false;
+    if (!_protRowInCategories(r, catFilter)) return false;
+    if (!tassSet) return true;
+    const sp = String(r["Species"] || r["species"] || "")
+      .trim()
+      .toLowerCase();
+    const gn = _protRowGenus(r).toLowerCase();
+    const inTass = (sp && tassSet.has(sp)) || (gn !== "unknown" && tassSet.has(gn));
+    return tassMode === "in" ? inTass : !inTass;
+  };
+}
+/** Every VF/AMR hit row that passes the shared gate, as one flat array. */
+function _protVisibleHits() {
+  const keep = _protHitFilter();
+  const out = [];
+  (PROT.per_gene_hits || []).forEach((r) => {
+    if (keep(r)) out.push(r);
+  });
+  (PROT.amr_genes || []).forEach((r) => {
+    if (keep(r)) out.push(r);
+  });
+  return out;
+}
+/** Total hit rows present before any filtering — used for the empty-state copy. */
+function _protTotalHits() {
+  return (PROT.per_gene_hits || []).length + (PROT.amr_genes || []).length;
+}
+
+/* ── Shared "does this hit survive the UI filters?" predicate ───────────────
+     The Summary tab reports VF/AMR counts of its own (the per-row chips and the
+     "no passing detections but N VF/AMR hits" indicator). Those used to count
+     every raw row in PROT, so they disagreed with the VF/AMR tab as soon as any
+     filter was applied — reporting Drug Target hits against host organisms
+     (DrugBank targets are human/bovine proteins, genus "Homo"/"Bos") that the
+     VF/AMR tab hides by default. Both surfaces now share this predicate.
+     Only the category-level filters are applied here — sample visibility is
+     handled by the caller, which knows its own sample context. */
+function _protHitPassesUiFilters(r, opts) {
+  const o = opts || {};
+  const prop = _protRowProp(r);
+  if (prop && PROT_HIDDEN_PROPS.has(prop)) return false;
+  if (!_protRowInCategories(r, o.catFilter === undefined ? _protCategoryFilter() : o.catFilter)) return false;
+  const minPid = o.minPid === undefined ? _protMinPid() : o.minPid;
+  if (minPid > 0) {
+    const pid = parseFloat(r["%id"] ?? r["pident"] ?? r["%ID"]);
+    if (!isNaN(pid) && pid < minPid) return false;
+  }
+  return true;
+}
+function _protMinPid() {
+  const v = parseFloat((document.getElementById("prot-pid-min") || {}).value);
+  return isNaN(v) ? 0 : v;
+}
+/* Cache key covering everything _protHitPassesUiFilters depends on, so callers
+     that memoize their own rollups know when to recompute. */
+function _protUiFilterKey() {
+  const cats = _protCategoryFilter();
+  return [[...PROT_HIDDEN_PROPS].sort().join(","), cats ? [...cats].sort().join(",") : "*", _protMinPid()].join("|");
+}
+
+/* On first draw, hide every property that is not a Virulence Factor or an AMR
+     determinant (Drug Target, Transporter, unclassified). Runs once per dataset so
+     that redraws never clobber the user's own legend clicks; _resetProtHiddenDefaults()
+     re-arms it when a new dataset is uploaded. */
+// property -> one representative hit row, so the legend tooltip can re-derive the
+// property's category (which needs the row's Source column, not just its name).
+let _protPropRow = {};
+function _applyProtHiddenDefaults(hits) {
+  const seen = new Map(); // property -> representative row (for the Source signal)
+  (hits || []).forEach((r) => {
+    const p = _protRowProp(r);
+    if (p && !seen.has(p)) seen.set(p, r);
+  });
+  (PROT.genus_summary || []).forEach((r) => {
+    const p = r["Property"] || "Unknown";
+    if (p && !seen.has(p)) seen.set(p, r);
+  });
+  _protPropRow = Object.fromEntries(seen);
+  if (PROT_HIDDEN_DEFAULTS_APPLIED) return;
+  PROT_HIDDEN_DEFAULTS_APPLIED = true;
+  seen.forEach((row, p) => {
+    if (!protPropVisibleByDefault(p, row)) PROT_HIDDEN_PROPS.add(p);
+  });
+  // Never let the default blank the chart out: if nothing at all was classified
+  // as VF/AMR, show everything rather than an empty panel.
+  if (seen.size && PROT_HIDDEN_PROPS.size >= seen.size) PROT_HIDDEN_PROPS.clear();
+}
+
 function drawProteins() {
   drawProtGenus();
   drawProtProperty();
@@ -54,26 +312,16 @@ function drawProtGenus() {
 
   // Build aggregation from per-row hit data so sampleHidden filtering works.
   // Fall back to pre-aggregated genus_summary only when no per-row data exists.
-  const hasByRow = (PROT.per_gene_hits || []).length > 0 || (PROT.amr_genes || []).length > 0;
+  const hasByRow = _protTotalHits() > 0;
   const agg = {};
   const propSet = new Set();
 
   if (hasByRow) {
-    const _pgFdPairs = new Set(filteredData().map((r) => `${r["Specimen ID"]}||${r["Genus"] || "Unknown"}`));
-    const _pgPair = (r) => {
-      const raw = r["Specimen ID"] || "";
-      const sample = typeof specimenKey === "function" ? specimenKey(raw) : raw;
-      return `${sample}||${r["Genus"] || "Unknown"}`;
-    };
-    const visibleHits = [
-      ...(PROT.per_gene_hits || []).filter((r) => !sampleHidden[r["Specimen ID"]] && _pgFdPairs.has(_pgPair(r))),
-      ...(PROT.amr_genes || [])
-        .filter((r) => !sampleHidden[r["Specimen ID"]] && _pgFdPairs.has(_pgPair(r)))
-        .map((r) => ({ ...r, Property: r["Property"] || r["Class"] })),
-    ];
+    const visibleHits = _protVisibleHits();
+    _applyProtHiddenDefaults(visibleHits);
     visibleHits.forEach((r) => {
-      const genus = r["Genus"] || "Unknown";
-      const prop = r["Property"] || r["Class"] || "Unknown";
+      const genus = _protRowGenus(r);
+      const prop = _protRowProp(r);
       propSet.add(prop);
       if (!agg[genus]) agg[genus] = {};
       agg[genus][prop] = (agg[genus][prop] || 0) + 1;
@@ -86,10 +334,21 @@ function drawProtGenus() {
       if (!agg[genus]) agg[genus] = {};
       agg[genus][prop] = (agg[genus][prop] || 0) + (parseInt(r["# Hits"]) || 0);
     });
+    _applyProtHiddenDefaults([]);
   }
 
   if (!Object.keys(agg).length) {
-    wrap.innerHTML = '<p style="color:#999">No genus annotation data.</p>';
+    // Distinguish "nothing was ever loaded" from "the current filters hid it all"
+    // — the old message said the former in both cases, which is what made this
+    // failure impossible to diagnose from the report itself.
+    const total = _protTotalHits();
+    wrap.innerHTML = total
+      ? `<p style="color:#999">No genus annotation data for the current filters ` +
+        `— all ${total.toLocaleString()} VF/AMR hit${total === 1 ? "" : "s"} are filtered out. ` +
+        `Check the sample toggles, the detections filters, and the “${
+          (document.getElementById("prot-tass-filter") || {}).value === "in" ? "In TASS report" : "Not in TASS report"
+        }” setting on the Annotation Table.</p>`
+      : '<p style="color:#999">No genus annotation data.</p>';
     return;
   }
 
@@ -263,6 +522,41 @@ function drawProtGenus() {
     .text("⟳ Reset zoom")
     .on("click", () => zoomRect.call(zoom.transform, d3.zoomIdentity));
 
+  // One-click escape from the VF/AMR-only default. Without this the only way to
+  // get Drug Target / Transporter back is to find and click each legend square.
+  const _anyHidden = props.some((p) => PROT_HIDDEN_PROPS.has(p));
+  svg
+    .append("text")
+    .attr("x", marginL + iW - 84)
+    .attr("y", marginT - 8)
+    .attr("text-anchor", "end")
+    .attr("font-size", 10)
+    .attr("fill", "#1565c0")
+    .style("cursor", "pointer")
+    .text(_anyHidden ? "▣ Show all categories" : "▢ VF/AMR only")
+    .on("mouseover", (ev) =>
+      showTip(
+        _anyHidden
+          ? "Show every annotation category<br><small>Drug Target, Transporter and unclassified hits are hidden by default</small>"
+          : "Show only Virulence Factor and AMR categories",
+        ev,
+      ),
+    )
+    .on("mousemove", moveTip)
+    .on("mouseout", hideTip)
+    .on("click", () => {
+      hideTip();
+      if (_anyHidden) PROT_HIDDEN_PROPS.clear();
+      else
+        props.forEach((p) => {
+          if (!protPropVisibleByDefault(p, _protPropRow[p])) PROT_HIDDEN_PROPS.add(p);
+        });
+      drawProtGenus();
+      drawProtProperty();
+      if (window._renderProtCatLegend) window._renderProtCatLegend();
+      if (window._filterProtExternal) window._filterProtExternal();
+    });
+
   // Legend — above bars (toggleable)
   const legendG = svg.append("g").attr("class", "pg-legend");
   props.forEach((p, i) => {
@@ -276,11 +570,19 @@ function drawProtGenus() {
         if (PROT_HIDDEN_PROPS.has(p)) PROT_HIDDEN_PROPS.delete(p);
         else PROT_HIDDEN_PROPS.add(p);
         drawProtGenus();
+        drawProtProperty();
+        // Keep the table's category chips in step with this legend.
+        if (window._renderProtCatLegend) window._renderProtCatLegend();
         if (window._filterProtExternal) window._filterProtExternal();
       })
       .on("mouseover", (ev) => {
         const action = PROT_HIDDEN_PROPS.has(p) ? "Enable" : "Disable";
-        showTip(`${action} ${p}<br><small>Click to ${action.toLowerCase()} in chart and table</small>`, ev);
+        const cat = protPropCategory(p, (_protPropRow && _protPropRow[p]) || null);
+        const why =
+          PROT_HIDDEN_PROPS.has(p) && !PROT_DEFAULT_VISIBLE_CATEGORIES.has(cat)
+            ? "<br><small>Hidden by default — only Virulence Factor and AMR categories are shown on load.</small>"
+            : "";
+        showTip(`${action} ${p}<br><small>Click to ${action.toLowerCase()} in chart and table</small>${why}`, ev);
       })
       .on("mousemove", moveTip)
       .on("mouseout", hideTip);
@@ -308,34 +610,24 @@ function drawProtProperty() {
   const wrap = document.getElementById("prot-prop-svg");
   wrap.innerHTML = "";
 
-  const _ppFdPairs = new Set(filteredData().map((r) => `${r["Specimen ID"]}||${r["Genus"] || "Unknown"}`));
-  const _ppPair = (r) => {
-    const raw = r["Specimen ID"] || "";
-    const sample = typeof specimenKey === "function" ? specimenKey(raw) : raw;
-    return `${sample}||${r["Genus"] || "Unknown"}`;
-  };
-  const _allHits = [
-    ...(PROT.per_gene_hits || []).filter((r) => !sampleHidden[r["Specimen ID"]] && _ppFdPairs.has(_ppPair(r))),
-    ...(PROT.amr_genes || [])
-      .filter((r) => !sampleHidden[r["Specimen ID"]] && _ppFdPairs.has(_ppPair(r)))
-      .map((r) => ({ ...r, _source: "AMR" })),
-  ];
+  // Same shared gate as drawProtGenus — see _protHitFilter() above.
+  const _allHits = _protVisibleHits();
   const _propGenus = {};
   _allHits.forEach((r) => {
-    const prop = r["Property"] || r["Class"] || r["_source"] || "Other";
-    const gen = r["Genus"] || "Unknown";
+    const prop = _protRowProp(r);
+    const gen = _protRowGenus(r);
     if (!_propGenus[prop]) _propGenus[prop] = {};
     _propGenus[prop][gen] = (_propGenus[prop][gen] || 0) + 1;
   });
 
   // Always build from per-row hits for accurate sample-visibility filtering.
   // Only use pre-aggregated metadata_counts when no per-row data exists.
-  const hasByRow = (PROT.per_gene_hits || []).length > 0 || (PROT.amr_genes || []).length > 0;
+  const hasByRow = _protTotalHits() > 0;
   let propRows;
   if (hasByRow) {
     const agg = {};
     _allHits.forEach((r) => {
-      const prop = r["Property"] || r["Class"] || r["_source"] || "Other";
+      const prop = _protRowProp(r);
       agg[prop] = (agg[prop] || 0) + 1;
     });
     propRows = Object.entries(agg).map(([value, count]) => ({ field: "property", value, count }));
@@ -344,14 +636,25 @@ function drawProtProperty() {
     propRows = counts.filter((r) => r["field"] === "property");
   }
   if (!propRows.length) {
-    wrap.innerHTML = '<p style="color:#999">No property metadata.</p>';
+    const total = _protTotalHits();
+    wrap.innerHTML = total
+      ? `<p style="color:#999">No property metadata for the current filters — all ${total.toLocaleString()} hits are filtered out.</p>`
+      : '<p style="color:#999">No property metadata.</p>';
     return;
   }
 
+  // Respect the legend's hidden-category set so this panel, the genus chart and
+  // the table all show the same categories (VF/AMR only until the user says otherwise).
   const data = propRows
+    .filter((r) => !PROT_HIDDEN_PROPS.has(r["value"]))
     .map((r) => ({ label: r["value"] || "", value: parseInt(r["count"]) || 0 }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 20);
+  if (!data.length) {
+    wrap.innerHTML =
+      '<p style="color:#999">All annotation categories are hidden — click “Show all categories” on the genus chart above.</p>';
+    return;
+  }
 
   // Dynamic row height — ensure labels never overlap
   const rowH = Math.max(24, Math.min(40, Math.floor(500 / Math.max(data.length, 1))));
@@ -492,6 +795,21 @@ function drawProtProperty() {
 // Builds the dedup key by direct string concat instead of constructing a new
 // object + JSON.stringify per row. With thousands of protein/AMR rows the old
 // approach showed up as a measurable chunk of VF/AMR tab load time.
+/* Render any cell value as text. `taxids` and `pathogen` are nested objects on
+     every hit row; they used to reach td.textContent verbatim and display as the
+     literal "[object Object]", hiding the taxids that decide a hit's
+     classification. _protExpandRow() flattens the two known ones into scalar
+     columns; this is the backstop for anything else. */
+function _protCellText(v) {
+  if (v == null) return "";
+  if (typeof v !== "object") return String(v);
+  if (Array.isArray(v)) return v.map(_protCellText).filter(Boolean).join(", ");
+  return Object.entries(v)
+    .filter(([, val]) => val !== null && val !== undefined && val !== "")
+    .map(([k, val]) => `${k}: ${_protCellText(val)}`)
+    .join(" · ");
+}
+
 function _dedupRows(rows) {
   const seen = new Set();
   const out = [];
@@ -518,6 +836,12 @@ function _dedupRows(rows) {
   let _protCols = [];
   let _protSortCol = null;
   let _protSortAsc = true;
+  // ── Pagination state ─────────────────────────────────────────────────────
+  // _protPageRows holds the full filtered+sorted result; only the current slice
+  // is ever built into the DOM. Page size 0 means "All".
+  let _protPageRows = [];
+  let _protPage = 1;
+  let _protPageSize = 100;
 
   // Category color map (Property field)
   const _catColors = {
@@ -528,8 +852,11 @@ function _dedupRows(rows) {
     Transporter: "#00897b",
   };
   function _catColor(row) {
-    const prop = row["Property"] || row["_source"] || "";
-    return _catColors[prop] || "#90a4ae";
+    // Go through _protRowProp so AMR-sheet rows (no Property column) resolve to
+    // "Antibiotic Resistance" and get the same swatch as the CARD hits they
+    // belong with, rather than falling through to the grey "Other".
+    const prop = _protRowProp(row) || row["_source"] || "";
+    return _catColors[prop] || _catColors[row["_source"]] || "#90a4ae";
   }
 
   // Keyword groups for the dropdown filter — matched against Property, Classification,
@@ -674,6 +1001,41 @@ function _dedupRows(rows) {
     "class",
   ];
 
+  /* ── Flatten the nested payloads into real columns ────────────────────────
+         make_report.py attaches two objects to every hit: `taxids`
+         ({species_taxid, taxon_id, genus_taxid}) and `pathogen`
+         ({match, name, class, status, hc, genus, taxid}). _protCols is built from
+         Object.keys(), so both became columns whose cells were rendered with
+         td.textContent = <object> — i.e. the literal string "[object Object]",
+         hiding the very taxids that decide how a hit is classified. Expand them
+         into scalar columns and drop the raw objects.
+         The originals are kept under underscore-prefixed keys, which _protCols
+         filters out, so _protPathogenClass() and friends keep working. */
+  function _protExpandRow(r) {
+    const t = r.taxids && typeof r.taxids === "object" ? r.taxids : null;
+    const p = r.pathogen && typeof r.pathogen === "object" ? r.pathogen : null;
+    if (!t && !p) return r;
+    const out = { ...r };
+    delete out.taxids;
+    delete out.pathogen;
+    if (t) {
+      out._taxids = t;
+      out["Species Taxid"] = t.species_taxid || t.taxon_id || "";
+      out["Genus Taxid"] = t.genus_taxid || "";
+    }
+    if (p) {
+      out._pathogen = p;
+      out["Pathogen"] = p.name || "";
+      out["Pathogen Class"] = _PROT_CLASS_LABEL[String(p.class || "").toLowerCase()] || p.class || "";
+      out["Pathogen Status"] = p.status || "";
+      // How the pathogen-sheet match was made (taxid > name > genus). Worth
+      // surfacing: a genus-level match is much weaker than a taxid match.
+      out["Pathogen Match"] = p.match || "";
+      if (!out["Species Taxid"] && p.taxid) out["Species Taxid"] = p.taxid;
+    }
+    return out;
+  }
+
   function _buildProtTable() {
     // Combine per_gene_hits with amr_genes, removing exact duplicates
     // Apply column rename map so field names are unified regardless of source
@@ -696,7 +1058,12 @@ function _dedupRows(rows) {
       const grouped = specimenKey(r["Specimen ID"]);
       return grouped === r["Specimen ID"] ? r : { ...r, "Specimen ID": grouped };
     };
-    _protAllRows = _dedupRows([...geneRows.map(_relabel), ...amrRows.map(_relabel)]);
+    // Expand BEFORE dedup: _dedupRows builds its key by concatenating raw values,
+    // so while `taxids` / `pathogen` were still objects they stringified to the
+    // constant "[object Object]" and two hits that differed only by taxid were
+    // silently collapsed into one row. Flattening first puts the real taxids in
+    // the key.
+    _protAllRows = _dedupRows([...geneRows.map(_relabel), ...amrRows.map(_relabel)].map(_protExpandRow));
     if (!_protAllRows.length) {
       document.getElementById("prot-table-wrap").style.display = "none";
       return;
@@ -719,17 +1086,114 @@ function _dedupRows(rows) {
     });
 
     _renderProtHeader();
-    _renderProtRows(_protAllRows);
+    _renderProtCatLegend();
+    _wireProtPager();
+    // Go through _filterProt rather than rendering _protAllRows directly, so the
+    // initial view already reflects the category / property / %id defaults.
+    _filterProt();
 
-    document.getElementById("prot-search").addEventListener("input", _filterProt);
-    colSel.addEventListener("change", _filterProt);
+    // Assign handlers rather than addEventListener: _buildProtTable re-runs on
+    // every global filter change (redraw → _drawTab → drawProteins), and stacked
+    // listeners would re-filter the table N times per keystroke.
+    const searchEl = document.getElementById("prot-search");
+    if (searchEl) searchEl.oninput = _filterProt;
+    colSel.onchange = _filterProt;
     const tassFilter = document.getElementById("prot-tass-filter");
-    if (tassFilter) tassFilter.addEventListener("change", _filterProt);
+    // The two charts honour this control as well, so redraw them alongside the
+    // table. Call the draw functions directly rather than drawProteins() — that
+    // would re-enter _buildProtTable.
+    if (tassFilter)
+      tassFilter.onchange = () => {
+        _filterProt();
+        drawProtGenus();
+        drawProtProperty();
+      };
     const pidMinEl = document.getElementById("prot-pid-min");
-    if (pidMinEl) pidMinEl.addEventListener("input", _filterProt);
+    if (pidMinEl) pidMinEl.oninput = _filterProt;
     const kwGroupEl = document.getElementById("prot-keyword-group");
-    if (kwGroupEl) kwGroupEl.addEventListener("change", _filterProt);
+    if (kwGroupEl) kwGroupEl.onchange = _filterProt;
   }
+
+  /* ── Category legend under the bar plot ──────────────────────────────────
+         Was a hardcoded row of five colour swatches that did nothing. It now
+         renders the categories actually present in the data and toggles the same
+         PROT_HIDDEN_PROPS set the chart legend uses, so clicking a chip here
+         hides that category in the table AND both charts (and vice versa). */
+  function _renderProtCatLegend() {
+    const host = document.getElementById("prot-cat-legend");
+    if (!host) return;
+    host.innerHTML = "";
+    // Count per category across all rows, before the property filter is applied,
+    // so a category you have hidden still shows how much it would bring back.
+    const counts = new Map();
+    const rowFor = new Map();
+    _protAllRows.forEach((r) => {
+      const p = _protRowProp(r);
+      if (!p) return;
+      counts.set(p, (counts.get(p) || 0) + 1);
+      if (!rowFor.has(p)) rowFor.set(p, r);
+    });
+    if (!counts.size) return;
+
+    const props = [...counts.keys()].sort();
+    props.forEach((p) => {
+      const off = PROT_HIDDEN_PROPS.has(p);
+      const chip = document.createElement("span");
+      chip.className = "prot-cat-chip" + (off ? " prot-cat-off" : "");
+      chip.dataset.prop = p;
+      chip.title = off ? `Show ${p} (${counts.get(p)} rows)` : `Hide ${p} (${counts.get(p)} rows)`;
+
+      const sw = document.createElement("span");
+      sw.className = "prot-cat-sw";
+      sw.style.background = _catColor(rowFor.get(p));
+      chip.appendChild(sw);
+
+      const lbl = document.createElement("span");
+      lbl.textContent = p;
+      chip.appendChild(lbl);
+
+      const ct = document.createElement("span");
+      ct.className = "prot-cat-ct";
+      ct.textContent = `(${counts.get(p).toLocaleString()})`;
+      chip.appendChild(ct);
+
+      chip.onclick = () => {
+        if (PROT_HIDDEN_PROPS.has(p)) PROT_HIDDEN_PROPS.delete(p);
+        else PROT_HIDDEN_PROPS.add(p);
+        _syncProtCategoryViews();
+      };
+      host.appendChild(chip);
+    });
+
+    // Reset link — mirrors the one on the genus chart.
+    const anyOff = props.some((p) => PROT_HIDDEN_PROPS.has(p));
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "prot-cat-reset";
+    reset.textContent = anyOff ? "show all" : "VF/AMR only";
+    reset.title = anyOff ? "Show every annotation category" : "Show only Virulence Factor and AMR categories";
+    reset.onclick = () => {
+      if (anyOff) PROT_HIDDEN_PROPS.clear();
+      else
+        props.forEach((p) => {
+          if (!protPropVisibleByDefault(p, rowFor.get(p))) PROT_HIDDEN_PROPS.add(p);
+        });
+      _syncProtCategoryViews();
+    };
+    host.appendChild(reset);
+  }
+
+  /* Single place that repaints everything keyed off PROT_HIDDEN_PROPS, so the
+       table legend, the chart legend, both charts and the row list can never
+       disagree about which categories are on. */
+  function _syncProtCategoryViews() {
+    _renderProtCatLegend();
+    _filterProt();
+    if (typeof drawProtGenus === "function") drawProtGenus();
+    if (typeof drawProtProperty === "function") drawProtProperty();
+  }
+  // Let the chart legends refresh the chips after they toggle a category.
+  window._renderProtCatLegend = _renderProtCatLegend;
 
   function _renderProtHeader() {
     const hr = document.getElementById("prot-header-row");
@@ -785,10 +1249,14 @@ function _dedupRows(rows) {
       if (!species) return false;
       return _tassPrefixSet.has(species.trim().toLowerCase());
     }
+    // Global Microbial Category selection — a hit inherits the category of the
+    // detection it links to, so "Primary" alone hides Commensal/Unknown hits.
+    const _catFilter = _protCategoryFilter();
 
     let rows = _protAllRows.filter((r) => {
       const rowProp = r["Property"] || r["Class"] || r["_source"] || "";
       if (rowProp && PROT_HIDDEN_PROPS.has(rowProp)) return false;
+      if (!_protRowInCategories(r, _catFilter)) return false;
       // %id threshold (both data and pidThresh are 0–100)
       if (pidThresh > 0) {
         const pid = parseFloat(r["%id"] || r["pident"] || r["%ID"] || r["identity"] || 0);
@@ -801,15 +1269,11 @@ function _dedupRows(rows) {
       }
       // Text search
       if (q) {
+        // _protCellText, not String(): object-valued fields stringify to
+        // "[object object]" and would match the letter "j" but nothing useful.
         const match = col
-          ? String(r[col] || "")
-              .toLowerCase()
-              .includes(q)
-          : _protCols.some((c) =>
-              String(r[c] || "")
-                .toLowerCase()
-                .includes(q),
-            );
+          ? _protCellText(r[col]).toLowerCase().includes(q)
+          : _protCols.some((c) => _protCellText(r[c]).toLowerCase().includes(q));
         if (!match) return false;
       }
       // TASS-presence filter (species-level)
@@ -819,7 +1283,8 @@ function _dedupRows(rows) {
         if (tassMode === "in" && !inTass) return false;
         if (tassMode === "out" && inTass) return false;
       }
-      // Bar chart click filter (sample × category)
+      // Bar chart click filter (sample × category), also used by "View VF/AMR"
+      // jumps from Summary to pin the table to one sample.
       if (window._protBarFilter) {
         const bf = window._protBarFilter;
         const rSample = r["Specimen ID"] || r["Sample"] || r["sample"] || r["specimen_id"] || "";
@@ -835,7 +1300,10 @@ function _dedupRows(rows) {
           r["Function"] ||
           r["function"] ||
           "";
-        if (bf.sample && rSample !== bf.sample) return false;
+        // `samples` carries the member sample ids of a merged specimen; fall
+        // back to the single `sample` label when it is absent.
+        const bfSamples = Array.isArray(bf.samples) && bf.samples.length ? bf.samples : bf.sample ? [bf.sample] : null;
+        if (bfSamples && bfSamples.indexOf(rSample) === -1) return false;
         if (bf.cat && rCat !== bf.cat) return false;
       }
       return true;
@@ -850,8 +1318,82 @@ function _dedupRows(rows) {
         return _protSortAsc ? cmp : -cmp;
       });
     }
-    document.getElementById("prot-table-count").textContent = `${rows.length} rows`;
-    _renderProtRows(rows);
+    // Hand the full result to the pager; it renders only the visible slice.
+    _setProtPageRows(rows, true);
+  }
+
+  /* ── Pagination ──────────────────────────────────────────────────────────
+         _setProtPageRows() is the single entry point: every filter/sort path calls
+         it with the complete result set and it takes care of clamping the current
+         page, rendering one slice and repainting the controls. */
+  function _protPageCount() {
+    if (!_protPageSize) return 1;
+    return Math.max(1, Math.ceil(_protPageRows.length / _protPageSize));
+  }
+  function _setProtPageRows(rows, resetPage) {
+    _protPageRows = rows || [];
+    if (resetPage) _protPage = 1;
+    _renderProtPage();
+  }
+  function _renderProtPage() {
+    const total = _protPageRows.length;
+    const pages = _protPageCount();
+    // Clamp — the row count shrinks as filters tighten, so the active page can
+    // fall off the end between renders.
+    if (_protPage > pages) _protPage = pages;
+    if (_protPage < 1) _protPage = 1;
+    const start = _protPageSize ? (_protPage - 1) * _protPageSize : 0;
+    const end = _protPageSize ? Math.min(start + _protPageSize, total) : total;
+    _renderProtRows(_protPageRows.slice(start, end));
+
+    const countEl = document.getElementById("prot-table-count");
+    if (countEl) {
+      countEl.textContent = total
+        ? _protPageSize
+          ? `${(start + 1).toLocaleString()}–${end.toLocaleString()} of ${total.toLocaleString()} rows`
+          : `${total.toLocaleString()} rows`
+        : "0 rows";
+    }
+    const status = document.getElementById("prot-page-status");
+    if (status) status.textContent = total ? `Page ${_protPage.toLocaleString()} of ${pages.toLocaleString()}` : "—";
+    const atFirst = _protPage <= 1;
+    const atLast = _protPage >= pages;
+    [
+      ["prot-page-first", atFirst],
+      ["prot-page-prev", atFirst],
+      ["prot-page-next", atLast],
+      ["prot-page-last", atLast],
+    ].forEach(([id, disabled]) => {
+      const b = document.getElementById(id);
+      if (b) b.disabled = disabled || !total;
+    });
+    // Jumping pages leaves the scroll position deep in the previous page.
+    const cont = document.getElementById("prot-table-container");
+    if (cont) cont.scrollTop = 0;
+  }
+  function _gotoProtPage(p) {
+    _protPage = p;
+    _renderProtPage();
+  }
+  function _wireProtPager() {
+    const on = (id, fn) => {
+      const el = document.getElementById(id);
+      // Replace rather than add: _buildProtTable can run more than once and
+      // stacked listeners would advance the page several times per click.
+      if (el) el.onclick = fn;
+    };
+    on("prot-page-first", () => _gotoProtPage(1));
+    on("prot-page-prev", () => _gotoProtPage(_protPage - 1));
+    on("prot-page-next", () => _gotoProtPage(_protPage + 1));
+    on("prot-page-last", () => _gotoProtPage(_protPageCount()));
+    const sizeEl = document.getElementById("prot-page-size");
+    if (sizeEl) {
+      sizeEl.onchange = () => {
+        _protPageSize = parseInt(sizeEl.value, 10) || 0;
+        _protPage = 1;
+        _renderProtPage();
+      };
+    }
   }
 
   // Columns whose cells trigger gene-distribution mode on click
@@ -920,7 +1462,7 @@ function _dedupRows(rows) {
 
       _protCols.forEach((c) => {
         const td = document.createElement("td");
-        const val = r[c] !== undefined ? r[c] : "";
+        const val = _protCellText(r[c]);
         td.textContent = val;
 
         if (_GENE_CLICK_COLS.has(c) && val) {
@@ -944,7 +1486,8 @@ function _dedupRows(rows) {
     });
     // Single DOM write — much faster than N append calls on the live tbody.
     tbody.appendChild(frag);
-    document.getElementById("prot-table-count").textContent = `${rows.length} rows`;
+    // NOTE: the row count is written by _renderProtPage(), which knows the full
+    // result size — `rows` here is only the current page.
   }
 
   // Expose so drawProteins can call it
@@ -955,6 +1498,7 @@ function _dedupRows(rows) {
   };
   window._clearProtBarFilter = function () {
     window._protBarFilter = null;
+    window._protJumpSample = null;
     const badge = document.getElementById("prot-bar-filter-badge");
     if (badge) badge.style.display = "none";
     _filterProt();
@@ -1060,9 +1604,9 @@ function _showProtDetail(genus, organism, clickedRow) {
       html += `<tr>${geneCols
         .map(
           (c) =>
-            `<td style="padding:.22em .4em;border:1px solid #eee;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">${
-              r[c] !== undefined ? r[c] : ""
-            }</td>`,
+            `<td style="padding:.22em .4em;border:1px solid #eee;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">${_protCellText(
+              r[c],
+            )}</td>`,
         )
         .join("")}</tr>`;
     });
@@ -1098,10 +1642,7 @@ function _showProtDetail(genus, organism, clickedRow) {
     dataMatches.forEach((r) => {
       html += `<tr>${statCols
         .map(
-          (c) =>
-            `<td style="padding:.22em .4em;border:1px solid #eee;white-space:nowrap">${
-              r[c] !== undefined ? r[c] : ""
-            }</td>`,
+          (c) => `<td style="padding:.22em .4em;border:1px solid #eee;white-space:nowrap">${_protCellText(r[c])}</td>`,
         )
         .join("")}</tr>`;
     });
