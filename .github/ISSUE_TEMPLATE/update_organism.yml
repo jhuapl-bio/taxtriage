@@ -1,0 +1,112 @@
+name: Update an organism already in the pathogen sheet
+description: Correct or extend an existing row in assets/pathogen_sheet.csv
+title: "Update organism: "
+labels: ["pathogen-sheet"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this to change an organism the sheet **already** carries — a wrong
+        classification, a missing body site, a stale assembly accession, a
+        synonym that never made it in. To request an organism that is not there
+        at all, use
+        [Add an organism](https://github.com/jhuapl-bio/taxtriage/issues/new?template=add_organism.yml)
+        instead.
+
+        Only describe what should change. Anything you leave blank is taken to
+        mean "leave it as it is" — a maintainer will not clear a field you did
+        not mention.
+
+        Taxonomic lineage (kingdom through genus) is **not** requested; it is
+        derived from the tax ID.
+
+        **Changing several organisms?** This form covers one. Use
+        **Request changes → Update existing entries** on the
+        [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/)
+        to queue any number and open a single issue with a current-vs-proposed
+        table for each.
+
+  - type: input
+    id: organism
+    attributes:
+      label: Organism name (as it appears in the sheet today)
+      description: >-
+        Find it in the
+        [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/)
+        and copy the name exactly, so the right row is matched.
+      placeholder: Streptococcus pneumoniae
+    validations:
+      required: true
+
+  - type: input
+    id: taxid
+    attributes:
+      label: NCBI Taxonomy ID of that row
+      description: Identifies the row unambiguously when a name appears more than once.
+      placeholder: "1313"
+    validations:
+      required: true
+
+  - type: textarea
+    id: changes
+    attributes:
+      label: What should change
+      description: >-
+        One line per field, as `column: current -> proposed`. Column names are
+        listed in the
+        [Pathogen Sheet column reference](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/#column-reference).
+      placeholder: |
+        general_classification: opportunistic -> primary
+        pathogenic_sites: blood, lung -> blood, lung, csf
+        assembly_accession: (empty) -> GCF_000006885.1
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why
+      description: >-
+        What is wrong today and what makes the proposed value right. This is the
+        part a reviewer actually weighs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reference
+    attributes:
+      label: Supporting reference
+      description: >-
+        Citation, DOI or PMID backing the change. Peer reviewed sources
+        preferred. Not required for a plain typo or formatting fix.
+      placeholder: |
+        Weiser JN, et al. "Streptococcus pneumoniae: transmission, colonization
+        and invasion." Nat Rev Microbiol 16.6 (2018): 355-367. doi:10.1038/s41579-018-0001-8
+    validations:
+      required: false
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Does this change how a sample would be scored?
+      description: >-
+        Classification, high consequence and body site changes move the
+        [TASS score](https://jhuapl-bio.github.io/taxtriage/latest/tass-scoring/);
+        synonyms, pathology text and references do not.
+      options:
+        - "yes — scoring or flagging changes"
+        - "no — annotation or metadata only"
+        - not sure
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I copied the organism name and tax ID from the current sheet
+          required: true
+        - label: I listed only the fields that should change
+          required: true

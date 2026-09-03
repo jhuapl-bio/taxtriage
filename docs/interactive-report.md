@@ -182,7 +182,6 @@ Picking a new color updates the box, its member rows, the heatmap/legend, and an
 | **Novelty**           | Reference-free / open-set detection on the de novo contigs via the chosen backend (kaiju / bracken / mmseqs2): per-sample novelty score & flag, candidate genus+ taxa, a **method-coverage** breakdown (alignment/TASS vs backend rescue vs dark matter), and a **genus TASS-vs-backend** comparison. Column labels track the active backend. Hidden unless `--novelty` produced data. See [Novelty Detection](novelty-detection.md). |
 | **Map**               | Geographic view; sample collection map plotted from `latitude` / `longitude`. Hidden unless run metadata supplies coordinates.                                                                                                                                                                                                                                                                                                        |
 | **Run Metadata**      | Editable per-sample metadata table plus four analysis sub-tabs (Longitudinal, Geographic Comparison, Host & Disease, Cross-Entry Comparison) driven by recognized metadata columns; see [Run Metadata tab and metadata-driven views](#run-metadata-tab-and-metadata-driven-views). Hidden unless samples or metadata are present.                                                                                                     |
-| **In-Silico**         | Spike-in / dilution-series subsampling suite: the parameters used, a per-dataset **expected-vs-reality** table (target vs observed reads, TP/FP/FN, precision/recall/F1), and a per-organism **dilution-series limit-of-detection** view. Hidden unless `--sim_subsample` produced subsample datasets; see [In-Silico suite tab](#in-silico-suite-tab) and [In-Silico](in-silico.md).                                                 |
 
 ### Summary tab details
 
@@ -200,20 +199,6 @@ When the run used `--microbert`, two columns are available in the **Table** tab 
 - **MicrobeRT Model**: the model directory name used for prediction.
 
 The value is linked to each organism by **reference accession** (parsed from the clustered-read IDs), not by the model's predicted taxonomy, so it populates even when the model classifies into a different taxonomic namespace than the detected organism. The value reflects what the chosen model was trained on; see [CLI Parameters → MicroBERT](cli-parameters.md#microbert-and-aiml-predictions) for the model-domain caveat. The same value appears as `mmbert%` in the Organism Discovery Report PDF.
-
----
-
-## In-Silico suite tab
-
-The **In-Silico** tab appears when the run enabled `--sim_subsample` (see [In-Silico → Subsampling](in-silico.md#subsampling-spike-in--dilution-series-datasets)). Each subsample dataset flows through the pipeline as its own sample, so the report already holds the _observed_ result at every dilution; the tab aggregates those into an expected-vs-reality view. It has three parts:
-
-**Parameters used.** A provenance panel listing the subsampling mode (`consistent` / `randomized`), the read-count series, replicates, seed, master read count, ISS/NanoSim settings, and abundance source. These come from an `insilico_params.json` emitted at report time (with any gaps inferred from the subsample sample names).
-
-**Per-dataset expected vs reality.** For each `(parent sample × platform)` group, one row per subsample dataset (count × replicate) shows the target vs actual read count, the observed aligned reads, and TP/FP/FN plus precision / recall / F1. "Expected" organisms are those recovered at full depth; a dataset that drops a low-abundance organism at shallow depth records it as a false negative. Authoritative target/actual/master counts come from the `*_subsample_manifest.tsv` files; when those are absent the target count is parsed from the dataset name.
-
-**Per-organism dilution series (limit of detection).** For every simulated organism, a compact chart plots expected vs observed reads across the read-count series, with a per-count detection dot and a **LoD** badge marking the lowest read count at which the organism is still recovered (detection rate ≥ 50 % across replicates). This is the at-a-glance answer to "how deep do I need to sequence to still catch this organism?"
-
-> Expected per-organism composition is modeled from the full-depth (deepest) dataset's observed proportions scaled to each target read count. This is a practical proxy for the simulated ground truth; if you need the exact simulated abundances instead, they are available in `simulation/<sample>/` (the accession-level `abundance.tsv`).
 
 ---
 
@@ -323,6 +308,12 @@ Rules can ship with the run: the `--report_flag_*` parameters are baked into the
 ## Export to PDF
 
 An **Export Report** button (📥, in the Filters sidebar header) renders the current report, with whatever filters, view level and tab state are active, to a static PDF for sharing or archiving.
+
+### Exporting a single plot, table or the map
+
+Hovering a plot shows a small download button in its corner (tables get one permanently, next to the column/font settings button). It opens an **Export** dialog: plots offer PNG / JPEG / SVG / PDF / HTML at any width and height, tables offer XLSX / CSV / TSV with a choice of delimiter.
+
+The **Precise (lat/long)** map in Mapping & Geography carries the same button, in the top-right control stack next to the cluster-mode box. The map is not an SVG like the other plots — it is a stack of raster basemap tiles plus HTML marker icons — so it is composed into an equivalent SVG first (tiles embedded as base64 images, markers redrawn as vectors, OpenStreetMap/CARTO attribution stamped in) and then goes through the same formats and size fields as every other plot. The export captures the map exactly as framed on screen: current zoom, pan, marker colours/shapes, cluster bubbles and filter dimming. Embedding the basemap needs the tile server to allow a cross-origin read; if it refuses (or the report is offline), the export still writes the markers, on a plain background.
 
 ---
 

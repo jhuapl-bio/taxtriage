@@ -65,6 +65,10 @@ process ALIGNMENT_PER_SAMPLE {
     def depth_concentration_power = params.depth_concentration_power != null ? " --depth_concentration_power ${params.depth_concentration_power} " : " "
     def mapq_breadth_power = params.mapq_breadth_power != null ? " --mapq_breadth_power ${params.mapq_breadth_power} " : " "
     def mapq_gini_power = params.mapq_gini_power != null ? " --mapq_gini_power ${params.mapq_gini_power} " : " "
+    // Conflict read-removal controls. taxid_removal_stats defaults to true, which
+    // preserves the previous behaviour of always emitting the per-taxid report.
+    def no_read_removal = params.no_read_removal ? " --no_read_removal " : " "
+    def taxid_removal_stats = params.taxid_removal_stats ? " --taxid_removal_stats " : " "
     def output = "${meta.id}.paths.json"
     def id = meta.id
     def minmapq_arg = minmapq ? " --minmapq ${minmapq} " :  ""
@@ -123,7 +127,7 @@ process ALIGNMENT_PER_SAMPLE {
         $alpha \\
         --min_threshold 0.002 \\
         -p $pathogens_list  $mapping_arg $k2 $gap_allowance $jump_threshold \\
-        --min_similarity_comparable 0.8 --taxid_removal_stats \\
+        --min_similarity_comparable 0.8 $taxid_removal_stats $no_read_removal \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         $auto_score_power $score_power $depth_concentration_power \\
         --fast \\

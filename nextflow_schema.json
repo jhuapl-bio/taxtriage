@@ -162,6 +162,26 @@
                     "description": "Sequencing platform.  If left blank it retrieves the platform from the samplesheet",
                     "fa_icon": "fas fa-file-signature",
                     "enum": ["ILLUMINA", "OXFORD", "PACBIO"]
+                },
+                "meta": {
+                    "type": ["string", "null"],
+                    "format": "file-path",
+                    "default": null,
+                    "description": "Run-level metadata CSV/XLSX joined to samples by sample or run_id.",
+                    "help_text": "Recognised columns (latitude, longitude, collection_time, location, depth, salinity, host, disease, ...) unlock the Map tab and the metadata-driven views in the interactive report. Any extra column is carried through as-is.",
+                    "fa_icon": "fas fa-file-csv"
+                },
+                "positive": {
+                    "type": ["string", "null"],
+                    "default": null,
+                    "description": "Sample name (from the samplesheet) to force as the positive control for all non-control samples.",
+                    "fa_icon": "fas fa-plus-circle"
+                },
+                "negative": {
+                    "type": ["string", "null"],
+                    "default": null,
+                    "description": "Sample name (from the samplesheet) to force as the negative control for all non-control samples.",
+                    "fa_icon": "fas fa-minus-circle"
                 }
             },
             "required": ["outdir"],
@@ -198,6 +218,30 @@
                     "type": "boolean",
                     "description": "Downsample your fastq file(s) using khmer",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "clip_r1": {
+                    "type": ["integer", "null"],
+                    "default": null,
+                    "description": "Trim this many bases from the 5' end of read 1 before analysis.",
+                    "fa_icon": "fas fa-cut"
+                },
+                "clip_r2": {
+                    "type": ["integer", "null"],
+                    "default": null,
+                    "description": "Trim this many bases from the 5' end of read 2 (paired-end only).",
+                    "fa_icon": "fas fa-cut"
+                },
+                "three_prime_clip_r1": {
+                    "type": ["integer", "null"],
+                    "default": null,
+                    "description": "Trim this many bases from the 3' end of read 1 after adapter/quality trimming.",
+                    "fa_icon": "fas fa-cut"
+                },
+                "three_prime_clip_r2": {
+                    "type": ["integer", "null"],
+                    "default": null,
+                    "description": "Trim this many bases from the 3' end of read 2 after adapter/quality trimming (paired-end only).",
+                    "fa_icon": "fas fa-cut"
                 }
             }
         },
@@ -312,6 +356,13 @@
                     "description": "Path to a kraken2 database. Typically, this would be the human reads database for human-derived samples. Deprecated! Choose --remove_taxids insteads",
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
+                },
+                "classifier": {
+                    "type": "string",
+                    "default": "kraken2",
+                    "enum": ["kraken2", "centrifuge", "metaphlan"],
+                    "description": "Primary taxonomic classifier used for the top-hits report.",
+                    "fa_icon": "fas fa-sitemap"
                 }
             }
         },
@@ -528,7 +579,7 @@
                 },
                 "mapq_breadth_power": {
                     "type": ["number", "null"],
-                    "description": "Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. Higher values penalize low-MAPQ organisms more aggressively. Default: 1.0 (e.g. 10% high-MAPQ reads \u2192 breadth scaled by 0.1).",
+                    "description": "Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. Higher values penalize low-MAPQ organisms more aggressively. Default: 1.0 (e.g. 10% high-MAPQ reads → breadth scaled by 0.1).",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "auto_score_power": {
@@ -718,6 +769,28 @@
                     "help_text": "",
                     "default": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/assets/taxid_abundance_stats.hmp.tsv.gz",
                     "fa_icon": "fas fa-file-csv"
+                },
+                "custom_accession_map": {
+                    "type": ["string", "null"],
+                    "format": "file-path",
+                    "default": null,
+                    "description": "TSV with 'accession' and 'taxid' columns for accessions absent from the NCBI assembly summaries.",
+                    "help_text": "Applied after the RefSeq/GenBank assembly-summary lookup and before the NCBI E-utilities fallback. The accession column must match the nuccore accession in the FASTA header, not the GCF/GCA assembly ID.",
+                    "fa_icon": "fas fa-map-signs"
+                },
+                "no_read_removal": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Disable conflict read removal for scoring. Conflict regions and removal stats are still computed and written.",
+                    "help_text": "Coverage, Gini, numreads and the resulting TASS scores are derived from the complete original alignment set. Intended for an on/off TASS comparison when post-removal coverage is very low.",
+                    "fa_icon": "fas fa-toggle-off"
+                },
+                "taxid_removal_stats": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Write the taxid-aggregated removal_stats_by_taxid.xlsx alongside the standard removal_stats.xlsx.",
+                    "help_text": "Accessions are grouped by their taxid. Enabled by default; set to false to skip the extra report.",
+                    "fa_icon": "fas fa-file-excel"
                 }
             }
         },
@@ -1035,6 +1108,27 @@
                     "format": "file-path",
                     "description": "Config file for multiqc",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "genomes": {
+                    "type": ["object", "null"],
+                    "default": null,
+                    "hidden": true,
+                    "description": "iGenomes reference map. Populated from the shipped igenomes config; not intended to be set by hand.",
+                    "fa_icon": "fas fa-cogs"
+                },
+                "schema_ignore_params": {
+                    "type": "string",
+                    "default": "genomes",
+                    "hidden": true,
+                    "description": "Comma-separated list of params excluded from schema validation.",
+                    "fa_icon": "fas fa-cogs"
+                },
+                "load_remote_configs": {
+                    "type": "boolean",
+                    "default": false,
+                    "hidden": true,
+                    "description": "Fetch the nf-core institutional config profiles at runtime. Leave false for offline or air-gapped runs.",
+                    "fa_icon": "fas fa-cloud-download-alt"
                 }
             }
         },
@@ -1123,6 +1217,108 @@
                     "type": "string",
                     "description": "Bracken backend: taxonomic rank level (-l), e.g. S (species), G (genus).",
                     "default": "S"
+                }
+            }
+        },
+        "in_silico_simulation": {
+            "title": "In-Silico Simulation",
+            "type": "object",
+            "fa_icon": "fas fa-flask",
+            "description": "Generate synthetic reads from each sample's classification and run them through the pipeline as extra samples, then compare them against the real result. See the In-Silico Simulation docs.",
+            "properties": {
+                "generate_iss": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Generate InSilicoSeq (Illumina) simulated reads for benchmarking.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "generate_nanosim": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Generate NanoSim (ONT) simulated reads for benchmarking. Requires --nanosim_training.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "iss_model": {
+                    "type": "string",
+                    "default": "miseq",
+                    "enum": ["miseq", "hiseq", "novaseq"],
+                    "description": "InSilicoSeq error profile.",
+                    "fa_icon": "fas fa-microscope"
+                },
+                "iss_mode": {
+                    "type": "string",
+                    "default": "kde",
+                    "enum": ["kde", "basic", "perfect"],
+                    "description": "InSilicoSeq generation mode.",
+                    "fa_icon": "fas fa-microscope"
+                },
+                "sim_nreads": {
+                    "type": "integer",
+                    "default": 100000,
+                    "description": "Total Illumina reads to simulate per sample.",
+                    "fa_icon": "fas fa-hashtag"
+                },
+                "sim_nsamples": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "Number of simulated sample variants generated per real sample.",
+                    "fa_icon": "fas fa-copy"
+                },
+                "sim_ranks": {
+                    "type": "string",
+                    "default": "S S1 S2 S3",
+                    "description": "Space-separated Kraken2 rank codes to pull organisms from in the top report.",
+                    "fa_icon": "fas fa-sitemap"
+                },
+                "sim_minreads": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "Minimum clade_fragments_covered for an organism to be included in the simulation.",
+                    "fa_icon": "fas fa-filter"
+                },
+                "sim_exclude_taxids": {
+                    "type": ["string", "null"],
+                    "default": "9606",
+                    "description": "Space-separated taxids to exclude from simulation. Defaults to human (9606).",
+                    "fa_icon": "fas fa-ban"
+                },
+                "sim_include_taxids": {
+                    "type": ["string", "null"],
+                    "default": null,
+                    "description": "Space-separated taxids to always include, regardless of the other filters.",
+                    "fa_icon": "fas fa-check"
+                },
+                "sim_random_abundance": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Draw abundances from a random Dirichlet distribution instead of the observed report proportions.",
+                    "fa_icon": "fas fa-random"
+                },
+                "sim_abundance": {
+                    "type": ["string", "null"],
+                    "format": "file-path",
+                    "default": null,
+                    "description": "Custom abundance file (taxid<TAB>abundance). Bypasses Kraken2 report parsing.",
+                    "fa_icon": "fas fa-file-alt"
+                },
+                "nanosim_training": {
+                    "type": ["string", "null"],
+                    "format": "directory-path",
+                    "default": null,
+                    "description": "Path to the NanoSim training model directory. Required when --generate_nanosim is set.",
+                    "fa_icon": "fas fa-folder-open"
+                },
+                "nanosim_base": {
+                    "type": "string",
+                    "default": "training",
+                    "description": "Base filename of the NanoSim model files inside the training directory (e.g. training_aligned_region.pkl).",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "sim_ont_divisor": {
+                    "type": "integer",
+                    "default": 40,
+                    "description": "ONT read count divisor: ont_nreads = sim_nreads / sim_ont_divisor.",
+                    "fa_icon": "fas fa-divide"
                 }
             }
         },

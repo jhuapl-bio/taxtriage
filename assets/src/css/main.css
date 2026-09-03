@@ -6626,6 +6626,14 @@ body.report-pdf-printing .longi-legend-pager {
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
 }
 
+/* The export dialog, while it is parked inside the maximised map: it has to
+   clear the floating region panels (z-index 1400) it now shares a stacking
+   context with. */
+.export-modal-overlay.in-map-fullscreen {
+  position: absolute;
+  z-index: 5000;
+}
+
 /* ══ Map full screen ═══════════════════════════════════════════════════
    Two paths to the same look: the real Fullscreen API, and a fixed overlay
    for the (common) case of a report viewed inside something that forbids it.

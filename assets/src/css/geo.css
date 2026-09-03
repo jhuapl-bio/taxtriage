@@ -332,3 +332,42 @@
   color: #1f2d3d;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Map export button (Precise lat/long map) ─────────────────────────────
+   Mirrors .plot-export-btn on the SVG plots: a small download button in the
+   corner of the plot that fades in on hover and stays out of the printed
+   report PDF (via the shared .export-control class). Lives inside a Leaflet
+   control container, so it is laid out by Leaflet rather than positioned
+   absolutely. */
+.tt-map-export {
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+.tt-map-export button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  font-size: 13px;
+  border: 1px solid #c5d5e8;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1565c0;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+#map-container:hover .tt-map-export button,
+.tt-map-export button:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tt-map-export button:hover {
+  background: #eaf3ff;
+  border-color: #1565c0;
+}
