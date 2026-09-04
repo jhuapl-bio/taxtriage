@@ -1104,7 +1104,28 @@ function _plotExportHost(svg) {
 }
 
 function _tableExportHost(table) {
-  return table.parentElement;
+  const parent = table.parentElement;
+  if (!parent) return null;
+  // The export/settings buttons are absolutely positioned at their host's
+  // top-right and only fade in while the host is hovered. When the parent holds
+  // more than just this table (a panel with a heading, a modal body, a pane),
+  // that host is far bigger than the table: the buttons land somewhere unrelated
+  // — in the in-silico comparison modal, straight on top of the Close button —
+  // and appear whenever the pointer is anywhere in the container. Give such a
+  // table its own tight wrapper so the buttons sit on the table and only show
+  // when the table itself is hovered.
+  if (parent.classList.contains("table-export-wrap")) return parent;
+  const others = Array.from(parent.children).filter((c) => c !== table);
+  if (!others.length) return parent;
+  const wrap = document.createElement("div");
+  wrap.className = "table-export-wrap";
+  // Tables commonly need to scroll horizontally inside their own box; inherit
+  // that rather than letting the wrapper clip a wide table.
+  wrap.style.position = "relative";
+  wrap.style.overflowX = "auto";
+  parent.insertBefore(wrap, table);
+  wrap.appendChild(table);
+  return wrap;
 }
 
 function _keepButtonInScrollport(host, btn) {

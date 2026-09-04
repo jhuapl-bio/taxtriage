@@ -1736,6 +1736,11 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
             "tass": tass,
             "passes": tass >= thr,   # detection vs the report's recommended TASS cutoff
             "category": r.get("Microbial Category", "Unknown"),
+            # Lineage labels so the report can roll the suite up to Species or
+            # Genus, and so a Strain-level detection can still be matched to a
+            # series that was collapsed to Species.
+            "species": str(r.get("Species Name", "") or ""),
+            "genus": str(r.get("Genus Name", "") or ""),
         }
 
     # ── Group datasets by (parent, platform) ──────────────────────────────────
@@ -1759,7 +1764,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
         deepest_count = max(d["count"] for _, d in items)
         deepest_snames = [sn for sn, d in items if d["count"] == deepest_count]
         exp_reads_by_tid = defaultdict(float)
-        name_by_tid, cat_by_tid = {}, {}
+        name_by_tid, cat_by_tid, sp_by_tid, gen_by_tid = {}, {}, {}, {}
         for sn in deepest_snames:
             for tid, ov in obs.get(sn, {}).items():
                 if not ov["passes"]:
@@ -1767,6 +1772,8 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                 exp_reads_by_tid[tid] += ov["reads"]
                 name_by_tid[tid] = ov["name"]
                 cat_by_tid[tid] = ov["category"]
+                sp_by_tid[tid] = ov["species"]
+                gen_by_tid[tid] = ov["genus"]
         # Fallback: if the cutoff excluded everything at full depth, use all organisms
         # present at full depth so the tab still shows the pool rather than nothing.
         if not exp_reads_by_tid:
@@ -1775,6 +1782,8 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                     exp_reads_by_tid[tid] += ov["reads"]
                     name_by_tid[tid] = ov["name"]
                     cat_by_tid[tid] = ov["category"]
+                    sp_by_tid[tid] = ov["species"]
+                    gen_by_tid[tid] = ov["genus"]
         total_deep = sum(exp_reads_by_tid.values()) or 1.0
         expected_fraction = {tid: v / total_deep for tid, v in exp_reads_by_tid.items()}
         expected_set = set(expected_fraction)
@@ -1845,6 +1854,10 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                 "taxid": tid,
                 "name": name_by_tid.get(tid, "Unknown"),
                 "category": cat_by_tid.get(tid, "Unknown"),
+                # Lineage for the report's Species/Genus rollups and for matching
+                # a Strain-level detection against a Species-level series.
+                "species": sp_by_tid.get(tid, ""),
+                "genus": gen_by_tid.get(tid, ""),
                 "expected_fraction": round(frac, 6),
                 "lod_count": lod,
                 "series": series,
@@ -1855,6 +1868,10 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
         suite_groups.append({
             "parent": parent,
             "platform": plat,
+            # The single level the series rows were collapsed to (Species when
+            # available, else Strain). The report labels its plots with this and
+            # uses it to explain Strain->Species matches.
+            "level": level_pick or "Strain",
             "source": "background" if plat == "background" else "insilico",
             "mode": mode,
             "n_datasets": len(items),

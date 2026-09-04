@@ -1139,7 +1139,9 @@ function _renderSummaryTable(fd) {
         r,
       )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${_belowCutoffBadgeHTML(
         r,
-      )}${_subThresholdBadgeHTML(r)}</span>` +
+      )}${_subThresholdBadgeHTML(r)}${
+        typeof insilicoBadgeHTML === "function" ? insilicoBadgeHTML(r) : ""
+      }</span>` +
       // Star sits inline, right after the organism text.
       `${_watchStarHTML(r, true, null, true)}` +
       // Right-anchored group: level badge (flush right), then the pin hint
@@ -1237,6 +1239,7 @@ function _renderSummaryTable(fd) {
         e.target.closest("[data-spark]") ||
         e.target.closest("a") ||
         e.target.closest(".watch-star") ||
+        e.target.closest(".insilico-badge") ||
         e.target.closest(".vfamr-cell")
       )
         return;
@@ -1257,6 +1260,13 @@ function _renderSummaryTable(fd) {
   slice.forEach(function (r) {
     _sumSliceMap.set(_sumRowKey(r), r);
   });
+  // In-silico dilution-series badges: hover for the depth-matched comparison
+  // card, click for the full modal. No-op when the run had no --sim_subsample.
+  if (typeof wireInsilicoBadges === "function") {
+    wireInsilicoBadges(wrap, function (k) {
+      return _sumSliceMap.get(k);
+    });
+  }
   // Wire spark hover preview + click-to-open in Histogram tab. data-spark is the
   // row key, so we resolve back to the actual row and reuse _histResolveCombined
   // — the hover/preview then reflects the SAME combined-union coverage shown in
