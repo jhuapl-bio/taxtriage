@@ -2473,9 +2473,6 @@ def build_organism_signatures_from_fastas_ani(
     org_siglist.sort(key=lambda x: x[0])
     return org_siglist, dict(stats)
 
-def _safe_ani(mh1, mh2):
-    res = mh1.containment_ani(mh2)
-    return float(res.ani) if res and res.ani is not None else 0.0
 def organism_ani_matrix_from_sigs(
     org_siglist: List[Tuple[str, SourmashSignature]],
     *,
@@ -2495,25 +2492,23 @@ def organism_ani_matrix_from_sigs(
 
     mat = pd.DataFrame(0.0, index=taxids, columns=taxids, dtype=float)
 
-    for i, t1 in enumerate(taxids):
+    for t1 in taxids:
         mh1 = mhs[t1]
-        for j, t2 in enumerate(taxids):
+        for t2 in taxids:
             if t1 == t2:
                 mat.at[t1, t2] = diagonal
                 continue
             mh2 = mhs[t2]
-            a12 = _safe_ani(mh1, mh2)
-            a21 = _safe_ani(mh2, mh1)
+            if (res := mh1.containment_ani(mh2)) and res.ani is not None:
+                mat.at[t1, t2] = float(res.ani)
+            # otherwise leave mat.at[t1, t2] as default value
 
-            if symmetrize == "min":
-                v = min(a12, a21)
-            elif symmetrize == "max":
-                v = max(a12, a21)
-            else:
-                v = 0.5 * (a12 + a21)
-
-            mat.at[t1, t2] = v
-
+    if symmetrize == "min":
+        return pd.DataFrame(np.minimum(mat.to_numpy(), mat.T.to_numpy()), index=mat.index, columns=mat.columns)
+    if symmetrize == "max":
+        return pd.DataFrame(np.maximum(mat.to_numpy(), mat.T.to_numpy()), index=mat.index, columns=mat.columns)
+    if symmetrize == "mean":
+        return (mat + mat.T) / 2
     return mat
 
 def finalize_proportional_removal(conflict_groups, bam_fs, fetch_reads_in_region, remove_mode='random', random_seed=None, dominance_protect_ratio: float = 3.0):
