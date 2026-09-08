@@ -309,6 +309,12 @@ Rules can ship with the run: the `--report_flag_*` parameters are baked into the
 
 An **Export Report** button (📥, in the Filters sidebar header) renders the current report, with whatever filters, view level and tab state are active, to a static PDF for sharing or archiving.
 
+### Exporting a single plot, table or the map
+
+Hovering a plot shows a small download button in its corner (tables get one permanently, next to the column/font settings button). It opens an **Export** dialog: plots offer PNG / JPEG / SVG / PDF / HTML at any width and height, tables offer XLSX / CSV / TSV with a choice of delimiter.
+
+The **Precise (lat/long)** map in Mapping & Geography carries the same button, in the top-right control stack next to the cluster-mode box. The map is not an SVG like the other plots — it is a stack of raster basemap tiles plus HTML marker icons — so it is composed into an equivalent SVG first (tiles embedded as base64 images, markers redrawn as vectors, OpenStreetMap/CARTO attribution stamped in) and then goes through the same formats and size fields as every other plot. The export captures the map exactly as framed on screen: current zoom, pan, marker colours/shapes, cluster bubbles and filter dimming. Embedding the basemap needs the tile server to allow a cross-origin read; if it refuses (or the report is offline), the export still writes the markers, on a plain background.
+
 ---
 
 ## Tooltips and Annotations

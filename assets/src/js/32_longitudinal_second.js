@@ -105,33 +105,15 @@ function _buildLongitudinalSection() {
     const scaleSel = document.getElementById("longi-scale-sel");
     if (ySel) ySel.addEventListener("change", _drawLongitudinalPlot);
     if (scaleSel) scaleSel.addEventListener("change", _drawLongitudinalPlot);
-    // Show All / Hide All (None) buttons in the sample panel header
+    const fillTgl = document.getElementById("longi-fill-toggle");
+    if (fillTgl) fillTgl.addEventListener("change", _drawLongitudinalPlot);
+    // Show All / Hide All (None). They act on whatever the sample search
+    // currently matches — with an empty search that is every sample, which is
+    // the old behaviour.
     const showAllBtn = document.getElementById("longi-show-all");
     const hideAllBtn = document.getElementById("longi-hide-all");
-    if (showAllBtn) {
-      showAllBtn.addEventListener("click", () => {
-        Object.keys(_longiHidden).forEach((id) => {
-          _longiHidden[id] = false;
-        });
-        // Sync checkboxes
-        document.querySelectorAll("#longi-sample-list input[type=checkbox]").forEach((cb) => {
-          cb.checked = true;
-        });
-        _drawLongitudinalPlot();
-      });
-    }
-    if (hideAllBtn) {
-      hideAllBtn.addEventListener("click", () => {
-        Object.keys(_longiHidden).forEach((id) => {
-          _longiHidden[id] = true;
-        });
-        // Sync checkboxes
-        document.querySelectorAll("#longi-sample-list input[type=checkbox]").forEach((cb) => {
-          cb.checked = false;
-        });
-        _drawLongitudinalPlot();
-      });
-    }
+    if (showAllBtn) showAllBtn.addEventListener("click", () => _longiSetSamplesHidden(false));
+    if (hideAllBtn) hideAllBtn.addEventListener("click", () => _longiSetSamplesHidden(true));
   }
 
   _drawLongitudinalPlot();
@@ -204,44 +186,300 @@ function _populateLongiOrgs() {
   if (counter) counter.textContent = "";
 }
 
+/* Right-hand "Show / Hide" list of samples.
+
+   Fixed height with its own search and pager, for the same reason the legend
+   has them: a run with sixty timed samples turned this into a 60-row column
+   next to a 290px chart. The search uses the same matcher as the legend and
+   the sidebar (substring, or a regular expression when the text parses as
+   one), and — this is the part that makes it more than cosmetic — All / None
+   apply to WHAT THE SEARCH MATCHES, so "Site1" + None hides one site's
+   samples in two clicks instead of six. */
+let _longiSampleNames = []; // every timed sample, in display order
+let _longiSampleQuery = "";
+let _longiSamplePage = 1;
+const _LONGI_SAMPLE_PAGE_SIZE = 8;
+
+/* The samples the list is currently showing — i.e. what All / None act on. */
+function _longiMatchedSamples() {
+  const match = _longiLegendMatcher(_longiSampleQuery);
+  return match ? _longiSampleNames.filter((id) => match(id)) : _longiSampleNames.slice();
+}
+
+function _longiSetSamplesHidden(hidden) {
+  const targets = _longiMatchedSamples();
+  // Fall back to every known sample when nothing matches, so the buttons can
+  // never be a no-op the user has to guess at.
+  (targets.length ? targets : _longiSampleNames).forEach((id) => {
+    _longiHidden[id] = hidden;
+  });
+  _renderLongiSampleList();
+  _drawLongitudinalPlot();
+}
+
 function _buildLongiSamplePanel(sampleNames) {
+  _longiSampleNames = (sampleNames || []).slice().sort();
+  _longiSampleNames.forEach((id) => {
+    if (_longiHidden[id] === undefined) _longiHidden[id] = false;
+  });
+
+  const search = document.getElementById("longi-sample-search");
+  if (search && !search.getAttribute("data-wired")) {
+    search.setAttribute("data-wired", "1");
+    search.addEventListener("input", () => {
+      _longiSampleQuery = search.value;
+      _longiSamplePage = 1;
+      _renderLongiSampleList();
+    });
+    search.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        search.value = "";
+        search.dispatchEvent(new Event("input"));
+      }
+    });
+  }
+  _renderLongiSampleList();
+}
+
+function _renderLongiSampleList() {
   const list = document.getElementById("longi-sample-list");
   if (!list) return;
   list.innerHTML = "";
-  sampleNames
-    .slice()
-    .sort()
-    .forEach((id) => {
-      if (_longiHidden[id] === undefined) _longiHidden[id] = false;
-      const color = sampleColors[id] || "#1565c0";
-      const div = document.createElement("div");
-      div.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:5px";
 
-      const swatch = document.createElement("span");
-      swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;
-            background:${color};flex-shrink:0;border:1.5px solid rgba(0,0,0,.15)`;
+  const shown = _longiMatchedSamples();
+  const totalPages = Math.max(1, Math.ceil(shown.length / _LONGI_SAMPLE_PAGE_SIZE));
+  if (_longiSamplePage > totalPages) _longiSamplePage = totalPages;
+  if (_longiSamplePage < 1) _longiSamplePage = 1;
+  const start = (_longiSamplePage - 1) * _LONGI_SAMPLE_PAGE_SIZE;
+  const page = shown.slice(start, start + _LONGI_SAMPLE_PAGE_SIZE);
 
-      const lbl = document.createElement("label");
-      lbl.style.cssText =
-        "font-size:0.78em;cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px";
-      lbl.title = id;
+  const countEl = document.getElementById("longi-sample-count");
+  if (countEl)
+    countEl.textContent =
+      shown.length === _longiSampleNames.length ? "" : `(${shown.length}/${_longiSampleNames.length})`;
 
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !_longiHidden[id];
-      cb.style.cssText = "flex-shrink:0;cursor:pointer";
-      cb.addEventListener("change", (e) => {
-        _longiHidden[id] = !e.target.checked;
-        _drawLongitudinalPlot();
-      });
+  if (!page.length) {
+    const empty = document.createElement("div");
+    empty.className = "longi-sample-empty";
+    empty.textContent = _longiSampleQuery.trim() ? "No sample matches." : "No timed samples.";
+    list.appendChild(empty);
+  }
 
-      const txt = document.createTextNode(id.length > 18 ? id.slice(0, 17) + "…" : id);
-      lbl.appendChild(cb);
-      lbl.appendChild(txt);
-      div.appendChild(swatch);
-      div.appendChild(lbl);
-      list.appendChild(div);
+  page.forEach((id) => {
+    const color = sampleColors[id] || "#1565c0";
+    const div = document.createElement("div");
+    div.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:5px";
+
+    const swatch = document.createElement("span");
+    swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;
+          background:${color};flex-shrink:0;border:1.5px solid rgba(0,0,0,.15)`;
+
+    const lbl = document.createElement("label");
+    lbl.style.cssText =
+      "font-size:0.78em;cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px";
+    lbl.title = id;
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !_longiHidden[id];
+    cb.style.cssText = "flex-shrink:0;cursor:pointer";
+    cb.addEventListener("change", (e) => {
+      _longiHidden[id] = !e.target.checked;
+      _drawLongitudinalPlot();
     });
+
+    const txt = document.createTextNode(id.length > 18 ? id.slice(0, 17) + "…" : id);
+    lbl.appendChild(cb);
+    lbl.appendChild(txt);
+    div.appendChild(swatch);
+    div.appendChild(lbl);
+    list.appendChild(div);
+  });
+
+  // Reserve a full page of height only once there IS more than one page —
+  // a six-sample run shouldn't carry an empty half-panel around with it.
+  list.classList.toggle("paged", totalPages > 1);
+
+  const pager = document.getElementById("longi-sample-pager");
+  if (!pager) return;
+  if (totalPages < 2) {
+    pager.innerHTML = "";
+    return;
+  }
+  pager.innerHTML =
+    `<button type="button" data-sp="prev"${
+      _longiSamplePage === 1 ? " disabled" : ""
+    } title="Previous page">&lsaquo;</button>` +
+    `<span>${_longiSamplePage} / ${totalPages}</span>` +
+    `<button type="button" data-sp="next"${
+      _longiSamplePage === totalPages ? " disabled" : ""
+    } title="Next page">&rsaquo;</button>`;
+  pager.querySelectorAll("[data-sp]").forEach((b) => {
+    b.addEventListener("click", () => {
+      _longiSamplePage += b.getAttribute("data-sp") === "next" ? 1 : -1;
+      _renderLongiSampleList();
+    });
+  });
+}
+
+/* ── Longitudinal legend ────────────────────────────────────────────────
+   Fixed height, searchable, paged — and the search drives the PLOT, not just
+   the list: typing "listeria" leaves the Listeria lines on the chart and
+   takes the rest off, so the legend doubles as the quick way to narrow a
+   busy trend plot. The organism picker above still decides which organisms
+   are in play at all; this narrows what is drawn from that set, and clearing
+   the box brings everything back.
+
+   The search accepts the same input as the sidebar filters: a plain word is
+   a substring match, anything that parses as a regular expression is used as
+   one (case-insensitive), and a half-typed pattern like "(" falls back to
+   substring instead of throwing.                                            */
+function _longiEsc(v) {
+  return String(v == null ? "" : v).replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+  );
+}
+
+let _longiLegendQuery = "";
+let _longiLegendPage = 1;
+let _longiSearchTimer = null;
+let _longiSeriesAll = []; // every selected series, before the search narrows it
+const _LONGI_LEGEND_PAGE_SIZE = 12;
+
+/* Substring, or regex when the pattern is a valid one. Mirrors the matcher
+   behind the sidebar's Sample / Organism search. */
+function _longiLegendMatcher(q) {
+  const needle = String(q || "").trim();
+  if (!needle) return null;
+  let re = null;
+  try {
+    re = new RegExp(needle, "i");
+  } catch (e) {
+    re = null;
+  }
+  const lower = needle.toLowerCase();
+  return (name) => (re ? re.test(name) : String(name).toLowerCase().includes(lower));
+}
+
+function _longiMolBadge(molType) {
+  if (molType === "dna")
+    return (
+      ' <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;' +
+      "border-radius:50%;background:#1565c0;color:#fff;font-size:8px;font-weight:700;vertical-align:middle;" +
+      'line-height:1" title="DNA pathogen">D</span>'
+    );
+  if (molType === "rna")
+    return (
+      ' <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;' +
+      "border-radius:50%;background:#6a1b9a;color:#fff;font-size:8px;font-weight:700;vertical-align:middle;" +
+      'line-height:1" title="RNA pathogen">R</span>'
+    );
+  return "";
+}
+
+function _longiLegend(series) {
+  const box = document.createElement("div");
+  box.id = "longi-legend";
+
+  // `series` here is the already-filtered set that was drawn; `_longiSeriesAll`
+  // is everything the organism picker selected, so the count reads
+  // "3 of 25" rather than "3 of 3".
+  const total = _longiSeriesAll.length || series.length;
+  const shown = series;
+  const totalPages = Math.max(1, Math.ceil(shown.length / _LONGI_LEGEND_PAGE_SIZE));
+  if (_longiLegendPage > totalPages) _longiLegendPage = totalPages;
+  if (_longiLegendPage < 1) _longiLegendPage = 1;
+  const start = (_longiLegendPage - 1) * _LONGI_LEGEND_PAGE_SIZE;
+  const end = start + _LONGI_LEGEND_PAGE_SIZE;
+
+  const bad = _longiLegendQuery.trim() && !shown.length;
+  // Every matching entry is rendered; the ones outside the current page are
+  // hidden with a class rather than left out. Printing (and the PDF export)
+  // unhides them, so a printed legend lists everything instead of whichever
+  // page happened to be open.
+  const items = shown
+    .map(
+      (s, i) =>
+        `<span class="longi-legend-item${i >= start && i < end ? "" : " off-page"}" title="${_longiEsc(s.org)}">` +
+        `<span class="longi-legend-swatch" style="background:${s.color}"></span>` +
+        `<span class="longi-legend-name">${_longiEsc(s.org)}${_longiMolBadge(s.molType)}</span></span>`,
+    )
+    .join("");
+
+  const pager =
+    totalPages > 1
+      ? `<div class="longi-legend-pager">` +
+        `<button type="button" data-lp="first"${
+          _longiLegendPage === 1 ? " disabled" : ""
+        } title="First page">&laquo;</button>` +
+        `<button type="button" data-lp="prev"${
+          _longiLegendPage === 1 ? " disabled" : ""
+        } title="Previous page">&lsaquo;</button>` +
+        `<span>Page ${_longiLegendPage} / ${totalPages}</span>` +
+        `<button type="button" data-lp="next"${
+          _longiLegendPage === totalPages ? " disabled" : ""
+        } title="Next page">&rsaquo;</button>` +
+        `<button type="button" data-lp="last"${
+          _longiLegendPage === totalPages ? " disabled" : ""
+        } title="Last page">&raquo;</button>` +
+        `</div>`
+      : "";
+
+  box.innerHTML =
+    `<div class="longi-legend-head">` +
+    `<i class="fas fa-list-ul"></i>` +
+    `<input type="search" id="longi-legend-search" placeholder="Find an organism… (regex ok)" ` +
+    `value="${_longiEsc(_longiLegendQuery)}" title="Filters this legend only — plain text or a regular ` +
+    `expression, e.g. listeria|coli or ^Escherichia" />` +
+    `<span class="longi-legend-count">${shown.length} of ${total}</span>` +
+    `</div>` +
+    `<div class="longi-legend-body">${
+      items || `<span class="longi-legend-empty">${bad ? "No series matches that search." : "No series."}</span>`
+    }</div>` +
+    pager;
+
+  const input = box.querySelector("#longi-legend-search");
+  if (input) {
+    // Redrawing the whole plot on every keystroke would be wasteful (and
+    // janky on a big run), so the redraw is debounced and the caret is put
+    // back where the user left it — _drawLongitudinalPlot rebuilds this box
+    // from scratch, input and all.
+    input.addEventListener("input", () => {
+      _longiLegendQuery = input.value;
+      _longiLegendPage = 1;
+      const caret = input.selectionStart;
+      clearTimeout(_longiSearchTimer);
+      _longiSearchTimer = setTimeout(() => {
+        _drawLongitudinalPlot();
+        const fresh = document.getElementById("longi-legend-search");
+        if (fresh) {
+          fresh.focus();
+          const pos = caret == null ? fresh.value.length : caret;
+          try {
+            fresh.setSelectionRange(pos, pos);
+          } catch (e) {}
+        }
+      }, 180);
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        input.value = "";
+        input.dispatchEvent(new Event("input"));
+      }
+    });
+  }
+  box.querySelectorAll("[data-lp]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const to = b.getAttribute("data-lp");
+      if (to === "first") _longiLegendPage = 1;
+      else if (to === "prev") _longiLegendPage -= 1;
+      else if (to === "next") _longiLegendPage += 1;
+      else _longiLegendPage = totalPages;
+      box.replaceWith(_longiLegend(series));
+    });
+  });
+  return box;
 }
 
 function _drawLongitudinalPlot() {
@@ -282,7 +520,7 @@ function _drawLongitudinalPlot() {
   });
 
   // Build one series per selected organism: [{org, pts:[{sample,date,y,run,isZero}]}]
-  const series = selectedOrgs
+  let series = selectedOrgs
     .map((org) => {
       // Real hits
       const hitPts = filteredData()
@@ -326,33 +564,46 @@ function _drawLongitudinalPlot() {
     })
     .filter((s) => s.pts.some((p) => !p.isZero)); // keep series only if it has ≥1 real hit
 
-  if (!series.length) {
+  // The legend search narrows what is DRAWN, not just what is listed. Keep the
+  // unfiltered set around so the legend can say "3 of 25" and so an empty
+  // result can explain itself instead of looking like a broken chart.
+  _longiSeriesAll = series;
+  const _searchMatch = _longiLegendMatcher(_longiLegendQuery);
+  if (_searchMatch) series = series.filter((s) => _searchMatch(s.org));
+
+  if (!_longiSeriesAll.length) {
     if (noData) noData.style.display = "block";
     return;
   }
   if (noData) noData.style.display = "none";
+
+  // Nothing matched the search: show the legend (so the box can be cleared)
+  // above an explanation, rather than an empty pair of axes.
+  if (!series.length) {
+    wrap.appendChild(_longiLegend(series));
+    const msg = document.createElement("div");
+    msg.className = "longi-search-empty";
+    msg.innerHTML =
+      "No organism matches <b>" +
+      _longiEsc(_longiLegendQuery) +
+      "</b> among the " +
+      _longiSeriesAll.length +
+      " plotted series. Clear the search to bring them back.";
+    wrap.appendChild(msg);
+    return;
+  }
 
   const allPts = series.flatMap((s) => s.pts.filter((p) => !p.isZero));
   const allPtsInc = series.flatMap((s) => s.pts); // includes zero pts for x-domain
   const mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   // ── Legend (above chart) ──
-  const legendDiv = document.createElement("div");
-  legendDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:6px;font-size:0.76em";
-  series.forEach((s) => {
-    const mtBadge =
-      s.molType === "dna"
-        ? ' <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#1565c0;color:#fff;font-size:8px;font-weight:700;vertical-align:middle;line-height:1" title="DNA pathogen">D</span>'
-        : s.molType === "rna"
-        ? ' <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#6a1b9a;color:#fff;font-size:8px;font-weight:700;vertical-align:middle;line-height:1" title="RNA pathogen">R</span>'
-        : "";
-    const item = document.createElement("span");
-    item.style.cssText = "display:inline-flex;align-items:center;gap:4px;color:#333";
-    item.innerHTML = `<span style="display:inline-block;width:18px;height:3px;background:${s.color};border-radius:2px;vertical-align:middle"></span>
-            <span style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.org}">${s.org}${mtBadge}</span>`;
-    legendDiv.appendChild(item);
-  });
-  wrap.appendChild(legendDiv);
+  // A run with a hundred organisms selected used to spill a hundred swatches
+  // across the top of the chart and push the plot itself off screen. The
+  // legend is now a fixed-height box with its own search and pager, so it
+  // costs the same vertical space whether there are three series or three
+  // hundred.
+  wrap.appendChild(_longiLegend(series));
 
   // ── SVG chart ──
   // If the container has no layout width yet (tab hidden on first render),
@@ -476,8 +727,56 @@ function _drawLongitudinalPlot() {
     .x((p) => xSc(p.date))
     .y((p) => ySc(scaleType === "log" ? Math.max(ySc.domain()[0], p.y) : p.y));
 
+  /* Optional fill under each line ("Fill area" in the controls). Baseline is
+     the bottom of the plot — on a log scale that is the domain minimum, not
+     zero, which has no place on a log axis.
+
+     Fills are drawn UNDER every line and dot (a separate pass before the
+     series loop would still interleave them, so each series appends its area
+     to its own layer below the strokes), and they are translucent so
+     overlapping organisms stay readable rather than the last one painted
+     hiding the rest. */
+  const fillOn = !!(document.getElementById("longi-fill-toggle") || {}).checked;
+  const yBase = ySc(scaleType === "log" ? ySc.domain()[0] : 0);
+  const areaGen = d3
+    .area()
+    .defined((p) => scaleType !== "log" || p.y > 0)
+    .x((p) => xSc(p.date))
+    .y0(yBase)
+    .y1((p) => ySc(scaleType === "log" ? Math.max(ySc.domain()[0], p.y) : p.y));
+  // One layer for all the fills, inserted before the lines are appended, so
+  // no fill can ever paint over a neighbouring series' line.
+  const areaLayer = g.append("g").attr("class", "longi-areas");
+
   // Draw one line + dots per organism
   series.forEach((s) => {
+    // Area fill, when the toggle is on. Segmented the same way as the line
+    // below, so a gap between runs stays a gap instead of a filled bridge.
+    if (fillOn && s.pts.length > 1) {
+      const segs = [];
+      if (hasRunInfo && s.pts.some((p) => p.run != null)) {
+        let i = 0;
+        while (i < s.pts.length) {
+          const segRun = s.pts[i].run;
+          let j = i + 1;
+          while (j < s.pts.length && s.pts[j].run === segRun) j++;
+          if (j - i > 1) segs.push(s.pts.slice(i, j));
+          i = j;
+        }
+      } else {
+        segs.push(s.pts);
+      }
+      segs.forEach((seg) => {
+        areaLayer
+          .append("path")
+          .datum(seg)
+          .attr("fill", s.color)
+          .attr("opacity", 0.16)
+          .attr("stroke", "none")
+          .attr("d", areaGen);
+      });
+    }
+
     // Lines: if run info is present, segment so points from different runs don't connect
     if (s.pts.length > 1) {
       if (hasRunInfo && s.pts.some((p) => p.run != null)) {

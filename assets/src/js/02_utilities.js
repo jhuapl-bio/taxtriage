@@ -991,6 +991,18 @@ async function _exportPlot(target, opts) {
   const width = Math.max(50, parseInt(opts.width, 10) || natural.width || 900);
   const height = Math.max(50, parseInt(opts.height, 10) || natural.height || 500);
   const svgText = _plotToSvgText(target, width, height);
+  return _renderSvgExport(svgText, { title, filename, width, height, format: opts.format });
+}
+
+/* Turn one SVG string into the requested download. Shared by the SVG plots
+   (_exportPlot) and by the Leaflet map (_exportMapView in 45_map_export.js),
+   which composes its own SVG from tiles + markers and then hands it here so
+   both take the exact same PNG/JPEG/SVG/PDF/HTML paths. */
+async function _renderSvgExport(svgText, opts) {
+  const title = opts.title || "TaxTriage export";
+  const filename = opts.filename || _slug(title);
+  const width = Math.max(50, parseInt(opts.width, 10) || 900);
+  const height = Math.max(50, parseInt(opts.height, 10) || 500);
 
   if (opts.format === "svg") {
     _downloadText(svgText, `${filename}.svg`, "image/svg+xml;charset=utf-8");
@@ -1098,7 +1110,11 @@ function _runExportFromModal() {
   };
   overlay.style.display = "none";
   if (_EXPORT_STATE.mode === "plot") _exportPlot(_EXPORT_STATE.target, opts);
-  else _exportTable(_EXPORT_STATE.target, opts);
+  // The Leaflet map is not an <svg>, so it gets its own composer (see
+  // 45_map_export.js) before joining the shared render path.
+  else if (_EXPORT_STATE.mode === "map" && typeof _exportMapView === "function")
+    _exportMapView(_EXPORT_STATE.target, opts);
+  else if (_EXPORT_STATE.mode === "table") _exportTable(_EXPORT_STATE.target, opts);
 }
 
 function _plotExportHost(svg) {
@@ -1299,6 +1315,12 @@ function _openTableSettings(table) {
 function _enhanceExports() {
   document.querySelectorAll("svg").forEach((svg) => {
     if (svg.closest("#tooltip, #embed-detail, .export-modal-overlay, .export-control, #help-overlay")) return;
+    // Leaflet draws vector layers (the drawn map regions) into an <svg> pane
+    // of its own inside the map. That is not a plot: the map has its own
+    // "Export map" button, which composes tiles + markers + regions together,
+    // so a generic plot button here would offer a bare polygon outline and sit
+    // on top of the map besides.
+    if (svg.closest("#map-container, .leaflet-container, .leaflet-pane")) return;
     const w = parseFloat(svg.getAttribute("width")) || svg.getBoundingClientRect().width;
     const h = parseFloat(svg.getAttribute("height")) || svg.getBoundingClientRect().height;
     if (w < 90 || h < 60) return;
@@ -1493,7 +1515,7 @@ function _tabLabel(tab) {
 async function _renderMetaSubTabsForPdf() {
   // "ghm" / "net" are the grouping-driven views; they only render when the
   // user has an active grouping, and _switchMetaSub skips disabled tabs below.
-  const subIds = ["longi", "geo", "host", "ghm", "net", "cmp"];
+  const subIds = ["longi", "host", "ghm", "net", "cmp"];
   const originalSub = _activeMetaSub;
   for (const id of subIds) {
     const btn = document.querySelector(`.meta-subtab[data-metasub="${id}"]`);
@@ -1563,7 +1585,9 @@ async function _renderTabsForPdf() {
       if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
       if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
       await _pdfDelay(80);
-      _setPdfProgress("Rendering metadata sub-tabs…", i, tabs.length);
+    } else if (tab === "trends") {
+      if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+      _setPdfProgress("Rendering trends sub-tabs…", i, tabs.length);
       await _renderMetaSubTabsForPdf();
       // Make all rendered sub-tab snapshots visible for print
       const snap = document.getElementById("cmp-print-snapshots");
@@ -1580,6 +1604,10 @@ async function _renderTabsForPdf() {
         }
         await _pdfDelay(900);
       }
+      // The geo view owns the choropleth + the drawn-region report.
+      if (typeof _buildGeoComparison === "function") _buildGeoComparison();
+      if (typeof _ttRegionRefresh === "function") _ttRegionRefresh();
+      await _pdfDelay(200);
     } else {
       const pane = document.getElementById(`pane-${tab}`);
       const hasRenderedContent = !!(pane && pane.querySelector("svg,table"));
@@ -1889,13 +1917,18 @@ const PDF_SECTION_INFO = {
   },
   map: {
     group: "Provenance & Geography",
-    what: "Geographic placement of samples that carry latitude/longitude metadata.",
-    how: "Each pin is a sampling site, coloured by sample. Use it to track spread across locations for surveillance.",
+    what: "Geographic placement of samples that carry latitude/longitude metadata, plus the country / state choropleth.",
+    how: "Each pin is a sampling site, coloured by sample or by the shared grouping. Draw a lasso or rectangle to summarise an area and compare regions against each other.",
   },
   runmeta: {
     group: "Provenance & Geography",
     what: "Per-sample run provenance — sample type, sequencing platform, and any uploaded metadata fields — collected in one table.",
-    how: "Use it to confirm each sample's origin and sequencing context when interpreting the detections above.",
+    how: "Use it to confirm each sample's origin and sequencing context when interpreting the detections above. The Group by bar at the bottom is shared with the Mapping and Trends tabs.",
+  },
+  trends: {
+    group: "Provenance & Geography",
+    what: "Time-series, host/site breakdowns and the group-level heatmap, network and cross-entry comparison — everything driven by the shared Group by selection.",
+    how: "Pick the metadata columns to group on, then read each sub-tab as a different cut of those groups: change over time, host/site composition, group × organism matrix, and group similarity.",
   },
 };
 
