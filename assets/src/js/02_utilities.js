@@ -875,6 +875,12 @@ function _openTableExport(table) {
 
 function _cloneSvgWithStyles(svg, width, height) {
   const clone = svg.cloneNode(true);
+  // Frozen axes (see drawHeatmap) carry a scroll-dependent transform. Restore
+  // the un-scrolled transform on the clone so an export taken mid-scroll draws
+  // the axes where they belong instead of where the viewport had pushed them.
+  clone.querySelectorAll("[data-tt-sticky-base]").forEach((el) => {
+    el.setAttribute("transform", el.getAttribute("data-tt-sticky-base"));
+  });
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("width", width);
   clone.setAttribute("height", height);
