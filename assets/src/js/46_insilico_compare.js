@@ -189,6 +189,36 @@
     return { v: hi.y, extrap: true };
   }
 
+  // Invert the series: given an observed read count, which spike level would the
+  // series have had to carry to produce it? This is what lets a REAL sample be
+  // placed on a spike-in axis — its organism reads are the observation, and the
+  // equivalent spike level is the x position.
+  function inverseAt(series, y, key) {
+    if (!series || !series.length) return null;
+    var pts = series
+      .map(function (s) { return { x: +s.count, y: +s[key] }; })
+      .filter(function (p) { return isFinite(p.x) && isFinite(p.y); })
+      .sort(function (a, b) { return a.x - b.x; });
+    if (!pts.length) return null;
+    var lo = pts[0], hi = pts[pts.length - 1];
+    if (pts.length === 1) return lo.y > 0 ? lo.x * (y / lo.y) : null;
+    if (y <= lo.y) return { v: lo.y > 0 ? lo.x * (y / lo.y) : 0, extrap: y < lo.y };
+    if (y >= hi.y) {
+      var p = pts[pts.length - 2];
+      var dy = hi.y - p.y;
+      var m = dy !== 0 ? (hi.x - p.x) / dy : 0;
+      return { v: Math.max(0, hi.x + m * (y - hi.y)), extrap: y > hi.y };
+    }
+    for (var i = 0; i < pts.length - 1; i++) {
+      var a = pts[i], b = pts[i + 1];
+      if (y >= a.y && y <= b.y) {
+        var t = b.y !== a.y ? (y - a.y) / (b.y - a.y) : 0;
+        return { v: a.x + t * (b.x - a.x), extrap: false };
+      }
+    }
+    return { v: hi.x, extrap: true };
+  }
+
   // ── build the comparison ──────────────────────────────────────────────────
   // When the series is a rung above the detection, the row's own read count is
   // only part of the picture: a strain's reads are a subset of its species'. If
@@ -241,11 +271,27 @@
     var rowTass = +row["TASS Score"] || 0;
 
     var thr = +(suite().params || {}).detection_threshold || 0;
-    var predObs = depth > 0 ? interpAt(o.series, depth, "observed_reads") : null;
-    var predTass = depth > 0 ? interpAt(o.series, depth, "tass", "clamp") : null;
-    // The "expected" model is compositional and therefore exact at any depth:
-    // this organism's share of the simulated pool times the sample's depth.
-    var expReads = depth > 0 ? o.expected_fraction * depth : null;
+
+    // ── which axis is this series on? ────────────────────────────────────────
+    // A depth series asks "given this sample's DEPTH, is the organism as strong as
+    // the series says?" — x is the sample's depth. A spike-in series holds the
+    // background fixed and varies organism load, so the question flips to "how much
+    // organism is present here, and is that above the level the series says we can
+    // detect?" — x is the equivalent spike level implied by the reads we saw.
+    var spike = (g.series_kind === "spikein");
+    var equiv = spike ? inverseAt(o.series, orgReads, "observed_reads") : null;
+    var xValue = spike ? (equiv ? equiv.v : 0) : depth;
+
+    var predObs = xValue > 0 ? interpAt(o.series, xValue, "observed_reads") : null;
+    var predTass = xValue > 0 ? interpAt(o.series, xValue, "tass", "clamp") : null;
+    // Depth series: "expected" is compositional — this organism's share of the
+    // simulated pool times the sample's depth. Spike series: the expectation IS the
+    // spike level, so at the equivalent level expected and observed coincide by
+    // construction and the informative comparison is TASS and the LoD instead.
+    var expReads = spike
+      ? (xValue > 0 ? interpAt(o.series, xValue, "expected_reads") : null)
+      : (depth > 0 ? { v: o.expected_fraction * depth } : null);
+    expReads = expReads ? expReads.v : null;
 
     var vsSeries = predObs && predObs.v > 0 ? orgReads / predObs.v : null;
     var vsExpected = expReads > 0 ? orgReads / expReads : null;
@@ -262,6 +308,9 @@
       rowShare: orgReads > 0 ? rowReads / orgReads : null,
       groupIdx: hits.indexOf(hit), nGroups: hits.length, matchedByName: hit.how === "name", ownSeries: hit.own,
       unit: g.read_unit || "reads", paired: paired, rpr: rpr, unitMismatch: unitMismatch,
+      spike: spike, xValue: xValue,
+      equivLevel: equiv ? equiv.v : null, equivExtrap: !!(equiv && equiv.extrap),
+      backgroundReads: g.background_reads || null, backgroundName: g.background_name || null,
       platform: platform, totalReads: totalReads, depth: depth,
       orgReads: orgReads, tass: tass, threshold: thr,
       expectedReads: expReads,
@@ -269,14 +318,42 @@
       predictedTass: predTass ? predTass.v : null, predictedTassExtrap: !!(predTass && predTass.extrap),
       vsSeries: vsSeries, vsExpected: vsExpected,
       lod: o.lod_count == null ? null : o.lod_count,
-      aboveLod: o.lod_count != null && depth >= o.lod_count,
-      lodMargin: o.lod_count ? depth / o.lod_count : null,
+      aboveLod: o.lod_count != null && xValue >= o.lod_count,
+      lodMargin: o.lod_count ? xValue / o.lod_count : null,
     };
   }
 
   // Verdict drives the badge colour and the hover headline.
   function verdict(c) {
-    if (!c || !c.depth) return { key: "nodepth", color: MUTED, label: "no sample depth recorded" };
+    if (!c) return { key: "nodepth", color: MUTED, label: "no comparison available" };
+    if (c.spike) {
+      if (!c.orgReads) {
+        return { key: "noreads", color: MUTED, label: "no reads for this organism in the sample" };
+      }
+      if (c.lod == null) {
+        return { key: "nolod", color: WARN, label: "never detected anywhere in the spike-in series" };
+      }
+      if (!c.aboveLod) {
+        return { key: "belowlod", color: BAD,
+                 label: "organism load is below the spike-in limit of detection (" +
+                        kfmt(c.lod) + " " + c.unit + ")" };
+      }
+      if (c.predictedTass != null && c.tass > 0) {
+        var d = c.tass - c.predictedTass;
+        if (d < -10) {
+          return { key: "under", color: WARN,
+                   label: "scores " + Math.abs(d).toFixed(0) + " TASS below the spike-in series at this load" };
+        }
+        if (d > 10) {
+          return { key: "over", color: ACCENT,
+                   label: "scores " + d.toFixed(0) + " TASS above the spike-in series at this load" };
+        }
+      }
+      return { key: "match", color: GOOD,
+               label: "load is " + (c.lodMargin ? c.lodMargin.toFixed(1) + "\u00d7 " : "above ") +
+                      "the limit of detection, scoring in line with the series" };
+    }
+    if (!c.depth) return { key: "nodepth", color: MUTED, label: "no sample depth recorded" };
     if (c.lod != null && !c.aboveLod) {
       return { key: "belowlod", color: BAD,
                label: "sequenced below this organism's limit of detection (" + kfmt(c.lod) + " " + c.unit + ")" };
@@ -353,7 +430,7 @@
     var series = (c.org.series || []).slice().sort(function (a, b) { return a.count - b.count; });
     var isReads = key === "observed_reads";
 
-    var xs = series.map(function (s) { return s.count; }).concat([c.depth]);
+    var xs = series.map(function (s) { return s.count; }).concat([c.xValue]);
     var xmin = Math.min.apply(null, xs.filter(function (v) { return v > 0; }));
     var xmax = Math.max.apply(null, xs);
     var xlog = wantLog(xmin, xmax);
@@ -408,7 +485,9 @@
            esc(kfmt(v)) + "</text>";
     });
     s += '<text x="' + ((padL + W - padR) / 2) + '" y="' + (yb + labelH + 10) +
-         '" text-anchor="middle" font-size="8.5" fill="#999">sequencing depth (' + esc(c.unit) + ")</text>";
+         '" text-anchor="middle" font-size="8.5" fill="#999">' +
+         esc(c.spike ? "spike-in load (" + c.unit + " of this organism)" : "sequencing depth (" + c.unit + ")") +
+         "</text>";
 
     // LoD rule
     if (c.lod != null) {
@@ -451,8 +530,8 @@
     });
 
     // the real sample
-    if (c.depth > 0) {
-      var rx = X.f(c.depth);
+    if (c.xValue > 0) {
+      var rx = X.f(c.xValue);
       var ry = Y.f(isReads ? c.orgReads : c.tass);
       s += '<line x1="' + rx.toFixed(1) + '" y1="' + padT + '" x2="' + rx.toFixed(1) + '" y2="' + yb +
            '" stroke="' + REAL + '" stroke-width="1" stroke-dasharray="2 2" opacity=".55"/>';
@@ -502,18 +581,30 @@
 
   function legendHTML(isReads, c) {
     var unit = (c && c.unit) || "reads";
-    var depth = c && c.depth ? icomma(c.depth) + " " + unit : "its own depth";
+    var spike = !!(c && c.spike);
+    var where = c && c.xValue
+      ? icomma(c.xValue) + " " + unit
+      : (spike ? "its organism load" : "its own depth");
     var it = [[isReads ? "series observed" : "series TASS", GOOD, "solid"]];
-    if (isReads) it.push(["expected from pool share", ACCENT, "hdash"]);
+    if (isReads) it.push([spike ? "spiked in (what was added)" : "expected from pool share", ACCENT, "hdash"]);
     else it.push(["detection cutoff", BAD, "hdash"]);
     it.push([
-      "this sample, plotted at its sequencing depth (" + depth + ")", REAL, "diamond",
+      spike
+        ? "this sample, placed at the spike level its reads correspond to (" + where + ")"
+        : "this sample, plotted at its sequencing depth (" + where + ")",
+      REAL, "diamond",
     ]);
     it.push([
-      "what the series gives at that same depth — the value the diamond is measured against",
+      spike
+        ? "what the series gives at that same spike level — the value the diamond is measured against"
+        : "what the series gives at that same depth — the value the diamond is measured against",
       GOOD, "ring",
     ]);
-    it.push(["the sample's depth (both markers sit on this rule)", REAL, "vdash"]);
+    it.push([
+      spike ? "the sample's equivalent spike level (both markers sit on this rule)"
+            : "the sample's depth (both markers sit on this rule)",
+      REAL, "vdash",
+    ]);
     if (c && c.lod != null) it.push(["limit of detection", ACCENT, "vdash"]);
     return (
       '<div style="font-size:.72em;color:' + MUTED + ';margin-top:4px;display:flex;flex-direction:column;gap:.18em">' +
@@ -527,21 +618,42 @@
   function statRows(c, dark) {
     var lab = dark ? "opacity:.72" : "color:" + MUTED;
     var v = verdict(c);
-    var rows = [
-      ["Sample depth", icomma(c.depth) + " " + c.unit + (c.rpr === 2 ? " (" + icomma(c.totalReads) + " reads)" : "")],
-      [(c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here"), icomma(c.orgReads) + " " + c.unit],
-      ["Series at this depth", c.predictedReads == null ? "—" : icomma(c.predictedReads) + " " + c.unit +
-        (c.predictedExtrap ? " (extrapolated)" : "")],
-      ["Expected from pool share", c.expectedReads == null ? "—" : icomma(c.expectedReads) + " " + c.unit +
-        " (" + pct(c.org.expected_fraction, 1) + " of pool)"],
-      ["Sample vs series", c.vsSeries == null ? "—" :
-        '<b style="color:' + v.color + '">' + (c.vsSeries).toFixed(2) + "×</b>"],
-      ["Sample vs expected", c.vsExpected == null ? "—" : c.vsExpected.toFixed(2) + "×"],
-      ["TASS here", c.tass.toFixed(1) + (c.predictedTass == null ? "" :
-        "  vs series " + c.predictedTass.toFixed(1) + (c.predictedTassExtrap ? " (clamped)" : ""))],
-      ["Limit of detection", c.lod == null ? "never detected in the series" :
-        kfmt(c.lod) + " " + c.unit + (c.lodMargin ? " · this sample is " + c.lodMargin.toFixed(1) + "× that depth" : "")],
-    ];
+    var rows;
+    if (c.spike) {
+      rows = [
+        ["Sample depth", icomma(c.depth) + " " + c.unit +
+          (c.rpr === 2 ? " (" + icomma(c.totalReads) + " reads)" : "")],
+        [(c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here"),
+          icomma(c.orgReads) + " " + c.unit],
+        ["Equivalent spike level", c.equivLevel == null ? "—" :
+          icomma(c.equivLevel) + " " + c.unit + (c.equivExtrap ? " (extrapolated)" : "")],
+        ["Limit of detection", c.lod == null ? "never detected in the series" :
+          kfmt(c.lod) + " " + c.unit + " spiked" +
+          (c.lodMargin ? " · this sample sits at " + c.lodMargin.toFixed(1) + "× that" : "")],
+        ["TASS here", c.tass.toFixed(1) + (c.predictedTass == null ? "" :
+          "  vs series " + c.predictedTass.toFixed(1) + (c.predictedTassExtrap ? " (clamped)" : ""))],
+        ["Series background", c.backgroundReads
+          ? icomma(c.backgroundReads) + " " + c.unit +
+            (c.backgroundName ? " (" + c.backgroundName + ")" : "")
+          : "—"],
+      ];
+    } else {
+      rows = [
+        ["Sample depth", icomma(c.depth) + " " + c.unit + (c.rpr === 2 ? " (" + icomma(c.totalReads) + " reads)" : "")],
+        [(c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here"), icomma(c.orgReads) + " " + c.unit],
+        ["Series at this depth", c.predictedReads == null ? "—" : icomma(c.predictedReads) + " " + c.unit +
+          (c.predictedExtrap ? " (extrapolated)" : "")],
+        ["Expected from pool share", c.expectedReads == null ? "—" : icomma(c.expectedReads) + " " + c.unit +
+          " (" + pct(c.org.expected_fraction, 1) + " of pool)"],
+        ["Sample vs series", c.vsSeries == null ? "—" :
+          '<b style="color:' + v.color + '">' + (c.vsSeries).toFixed(2) + "×</b>"],
+        ["Sample vs expected", c.vsExpected == null ? "—" : c.vsExpected.toFixed(2) + "×"],
+        ["TASS here", c.tass.toFixed(1) + (c.predictedTass == null ? "" :
+          "  vs series " + c.predictedTass.toFixed(1) + (c.predictedTassExtrap ? " (clamped)" : ""))],
+        ["Limit of detection", c.lod == null ? "never detected in the series" :
+          kfmt(c.lod) + " " + c.unit + (c.lodMargin ? " · this sample is " + c.lodMargin.toFixed(1) + "× that depth" : "")],
+      ];
+    }
     if (c.rolledUp && c.usedRollupRow) {
       // Keep the row the user actually clicked visible, and say how much of the
       // rolled-up total it accounts for.
@@ -571,7 +683,8 @@
       // Same-level comparison, but a genus series is still an assembly of its
       // simulated members — say so rather than implying one simulated taxon.
       if (c.genusSeries && c.org.n_members > 1) {
-        return "This is a genus detection. No genus was simulated directly, so the series is assembled from the " +
+        return "This is a genus detection. No genus was simulated directly, so the " + (c.spike ? "spike-in" : "dilution") +
+               " series is assembled from the " +
                c.org.n_members + " simulated members of this genus (" + (c.org.members || []).join(", ") +
                "): their reads and expected share add, and the genus counts as detected wherever any member was.";
       }
@@ -580,7 +693,7 @@
     var lvl = c.rowLevel.toLowerCase();
     var txt =
       "You are looking at a " + lvl + " detection. " +
-      "The dilution series exists at " + c.compareLevel.toLowerCase() + " level" +
+      "The " + (c.spike ? "spike-in" : "dilution") + " series exists at " + c.compareLevel.toLowerCase() + " level" +
       (c.compareName ? " (" + c.compareName + ")" : "") + ", so this plot is the " +
       c.compareLevel.toLowerCase() + "'s series" +
       (c.how === "genus" ? ", rolled up from every simulated member of the genus" : "") + ".";
@@ -623,14 +736,15 @@
     var v = verdict(c);
     return (
       '<div style="font-weight:700;margin-bottom:1px">' + esc(c.org.name) +
-      " <span style='opacity:.7;font-weight:400'>vs dilution series" +
+      " <span style='opacity:.7;font-weight:400'>vs " + (c.spike ? "spike-in" : "dilution") + " series" +
       (c.rolledUp ? " · " + esc(c.compareLevel) + " level" : "") + "</span></div>" +
       '<div style="font-size:.85em;color:' + v.color + ';font-weight:600;margin-bottom:4px">' + esc(v.label) + "</div>" +
       levelBanner(c, true) +
       '<div style="background:#fff;border-radius:5px;padding:2px 2px 0;margin-bottom:5px">' +
       panel(c, "observed_reads", { W: 360, plotH: 118 }) +
       '<div style="font-size:.72em;color:#555;padding:0 4px 4px">' +
-      swatch("diamond", REAL) + "this sample &nbsp; " + swatch("ring", GOOD) + "series at this depth</div>" +
+      swatch("diamond", REAL) + "this sample &nbsp; " + swatch("ring", GOOD) +
+      (c.spike ? "series at this load" : "series at this depth") + "</div>" +
       "</div>" +
       statRows(c, true) +
       (provenanceNote(c) ? '<div style="font-size:.78em;opacity:.6;margin-top:4px">' + esc(provenanceNote(c)) + "</div>" : "") +
@@ -672,7 +786,9 @@
     var h =
       '<table style="border-collapse:collapse;width:100%;font-size:.84em;margin-top:.3em">' +
       "<thead><tr>" +
-      ["Depth (" + c.unit + ")", "Expected", "Observed", "Recovery", "TASS", "Detected", "vs this sample"]
+      [(c.spike ? "Spiked (" + c.unit + ")" : "Depth (" + c.unit + ")"),
+       "Expected", "Observed", "Recovery", "TASS", "Detected",
+       (c.spike ? "vs this sample's load" : "vs this sample")]
         .map(function (t) {
           return '<th style="text-align:left;padding:.35em .6em;border-bottom:2px solid ' + ACCENT +
                  ';white-space:nowrap;color:#333">' + esc(t) + "</th>";
@@ -681,7 +797,7 @@
       "</tr></thead><tbody>";
     s.forEach(function (p, i) {
       var rec = p.expected_reads ? p.observed_reads / p.expected_reads : null;
-      var rel = c.depth > 0 ? p.count / c.depth : null;
+      var rel = c.xValue > 0 ? p.count / c.xValue : null;
       h +=
         '<tr style="' + (i % 2 ? "background:#faf9ff" : "") + '">' +
         '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' + icomma(p.count) + "</td>" +
@@ -692,7 +808,7 @@
         '<td style="padding:.3em .6em;border-bottom:1px solid #eee;color:' + (p.detected ? GOOD : BAD) + '">' +
           (p.detected ? "yes" : "no") + (p.detection_rate > 0 && p.detection_rate < 1 ? " (" + pct(p.detection_rate) + " of reps)" : "") + "</td>" +
         '<td style="padding:.3em .6em;border-bottom:1px solid #eee;color:' + MUTED + '">' +
-          (rel == null ? "—" : rel.toFixed(2) + "× this sample's depth") + "</td>" +
+          (rel == null ? "—" : rel.toFixed(2) + (c.spike ? "× this sample's load" : "× this sample's depth")) + "</td>" +
         "</tr>";
     });
     return h + "</tbody></table>";
@@ -718,7 +834,8 @@
       '<div style="position:relative;z-index:8;display:flex;flex-wrap:wrap;align-items:baseline;' +
       'justify-content:space-between;gap:.6em;background:#fff">' +
       '<div><span style="font-size:1.1em;font-weight:700;color:' + ACCENT + '">' + esc(c.org.name) + "</span>" +
-      '<span style="color:' + MUTED + ';font-size:.85em"> in ' + esc(c.sample) + " vs the in-silico dilution series</span></div>" +
+      '<span style="color:' + MUTED + ';font-size:.85em"> in ' + esc(c.sample) +
+      (c.spike ? " vs the in-silico spike-in series" : " vs the in-silico dilution series") + "</span></div>" +
       '<div style="display:flex;gap:.5em;align-items:center">' + sel +
       '<button type="button" id="insilico-cmp-close" style="border:1px solid #ddd;background:#fff;border-radius:6px;padding:.25em .6em;cursor:pointer">Close</button></div></div>' +
       '<div style="color:' + v.color + ';font-weight:600;margin:.3em 0 .1em">' + esc(v.label) + "</div>" +
@@ -726,15 +843,18 @@
       (provenanceNote(c) ? '<div style="font-size:.8em;color:' + MUTED + '">' + esc(provenanceNote(c)) + "</div>" : "") +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:.9em;margin-top:.8em">' +
       '<div style="border:1px solid #eee;border-radius:8px;padding:.6em .7em">' +
-      '<div style="font-size:.85em;font-weight:600;color:#333;margin-bottom:.2em">Reads vs depth</div>' +
+      '<div style="font-size:.85em;font-weight:600;color:#333;margin-bottom:.2em">' +
+      (c.spike ? "Reads vs spike-in load" : "Reads vs depth") + "</div>" +
       panel(c, "observed_reads", { W: 420, plotH: 150 }) + legendHTML(true, c) + "</div>" +
       '<div style="border:1px solid #eee;border-radius:8px;padding:.6em .7em">' +
-      '<div style="font-size:.85em;font-weight:600;color:#333;margin-bottom:.2em">TASS vs depth</div>' +
+      '<div style="font-size:.85em;font-weight:600;color:#333;margin-bottom:.2em">' +
+      (c.spike ? "TASS vs spike-in load" : "TASS vs depth") + "</div>" +
       panel(c, "tass", { W: 420, plotH: 150 }) + legendHTML(false, c) + "</div>" +
       '<div style="border:1px solid #eee;border-radius:8px;padding:.6em .7em">' +
       '<div style="font-size:.85em;font-weight:600;color:#333;margin-bottom:.35em">This sample on the series</div>' +
       '<div style="position:relative">' + statRows(c, false) + "</div></div></div>" +
-      '<div style="margin-top:1em;font-size:.9em;font-weight:600;color:#333">Dilution series datapoints</div>' +
+      '<div style="margin-top:1em;font-size:.9em;font-weight:600;color:#333">' +
+      (c.spike ? "Spike-in series datapoints" : "Dilution series datapoints") + "</div>" +
       '<div style="position:relative;overflow-x:auto">' + seriesTable(c) + "</div>";
     o.style.display = "flex";
     var btn = document.getElementById("insilico-cmp-close");

@@ -492,6 +492,25 @@
   }
 
   // ── misc UI bits ──────────────────────────────────────────────────────────
+  // A group is either a DEPTH series (c<N> = sequencing depth, the subsampling
+  // case) or a SPIKE-IN series (c<N> = organism reads mixed into a fixed
+  // background). Everything that labels an axis or a column asks here, so the two
+  // never get described in each other's terms.
+  function isSpike(group) {
+    return (group && group.series_kind) === "spikein";
+  }
+
+  function xTitleFor(group) {
+    var unit = group.read_unit || "reads";
+    return isSpike(group)
+      ? "spike-in load (" + unit + " added to the background)"
+      : "target depth (" + unit + ")";
+  }
+
+  function xNounFor(group) {
+    return isSpike(group) ? "spike-in load" : "depth";
+  }
+
   function pill(txt, color) {
     return el(
       "span",
@@ -517,10 +536,11 @@
     var t = el("table", {
       style: "border-collapse:collapse;width:100%;font-size:.85em;min-width:720px",
     });
+    var spike = isSpike(group);
     var heads = [
       "Dataset (rep)",
-      "Target " + unit,
-      "Actual " + unit,
+      (spike ? "Spiked (target) " : "Target ") + unit,
+      (spike ? "Spiked (actual) " : "Actual ") + unit,
       "Observed aligned (" + unit + ")",
       "Recovery",
       "Detected",
@@ -560,8 +580,8 @@
         "data-tt",
         encodeURIComponent(
           tipBody(d.id, group.parent + " · " + group.platform + " · " + group.mode + " · rep " + d.replicate, [
-            ["Target depth", fmt(d.target_count) + " " + unit],
-            ["Actual depth", fmt(d.actual_count) + " " + unit],
+            [(spike ? "Spike requested" : "Target depth"), fmt(d.target_count) + " " + unit],
+            [(spike ? "Spike delivered" : "Actual depth"), fmt(d.actual_count) + " " + unit],
             d.total_master_reads != null ? ["Master pool", fmt(d.total_master_reads) + " " + unit] : null,
             d.seed != null ? ["Seed", String(d.seed)] : null,
             ["Observed aligned", fmt(d.observed_total_reads) + " " + unit],
@@ -678,7 +698,7 @@
     // band hit-areas last so they sit above the marks
     agg.forEach(function (a, i) {
       var tip = tipBody(
-        kfmt(a.count) + " " + (group.read_unit || "reads"),
+        kfmt(a.count) + " " + (group.read_unit || "reads") + (isSpike(group) ? " spiked" : " deep"),
         group.parent + " · " + group.platform + " · " + a.n + " replicate" + (a.n === 1 ? "" : "s"),
         [
           ["Precision", a.precision.toFixed(3)],
@@ -692,9 +712,10 @@
       s += '<rect class="insil-band" x="' + (f.padL + f.band * i).toFixed(1) + '" y="' + f.padT +
            '" width="' + f.band.toFixed(1) + '" height="' + (f.plotH + f.extraB) + '"' + tipAttr(tip) + "/>";
     });
-    s += xLabels(f, labels, "target depth (" + (group.read_unit || "reads") + ")");
+    s += xLabels(f, labels, xTitleFor(group));
     s += "</svg>";
-    var card = chartCard("Performance vs depth", "Mean across replicates at each target depth.", s);
+    var card = chartCard(isSpike(group) ? "Performance vs spike-in load" : "Performance vs depth",
+      "Mean across replicates at each " + xNounFor(group) + ".", s);
     card.appendChild(
       legend([
         { label: "Precision", color: "#1565c0" },
@@ -747,9 +768,10 @@
       s += '<rect class="insil-band" x="' + (f.padL + f.band * i).toFixed(1) + '" y="' + f.padT +
            '" width="' + f.band.toFixed(1) + '" height="' + f.plotH + '"' + tipAttr(tip) + "/>";
     });
-    s += xLabels(f, labels, "target depth (" + (group.read_unit || "reads") + ")");
+    s += xLabels(f, labels, xTitleFor(group));
     s += "</svg>";
-    var card = chartCard("Detection composition vs depth", "Mean organism counts per depth.", s);
+    var card = chartCard(isSpike(group) ? "Detection composition vs spike-in load" : "Detection composition vs depth",
+      "Mean organism counts per " + xNounFor(group) + ".", s);
     card.appendChild(
       legend([
         { label: "True positive", color: GOOD },
@@ -799,9 +821,15 @@
       s += '<rect class="insil-band" x="' + (f.padL + f.band * i).toFixed(1) + '" y="' + f.padT +
            '" width="' + f.band.toFixed(1) + '" height="' + f.plotH + '"' + tipAttr(tip) + "/>";
     });
-    s += xLabels(f, labels, "target depth (" + unit + ")");
+    s += xLabels(f, labels, xTitleFor(group));
     s += "</svg>";
-    var card = chartCard("Read recovery vs depth", "How much of each subsample aligned to a reference.", s);
+    var card = chartCard(
+      isSpike(group) ? "Read recovery vs spike-in load" : "Read recovery vs depth",
+      isSpike(group)
+        ? "Reads in each dataset (background + spike) vs what aligned to a reference."
+        : "How much of each subsample aligned to a reference.",
+      s
+    );
     card.appendChild(
       legend([
         { label: "In dataset", color: ACCENT, outline: true },
@@ -817,7 +845,7 @@
     var wrap = el("div", { style: "margin:.2em 0 1.1em" });
     wrap.appendChild(
       el("div", { style: "font-weight:600;color:#333;margin:.2em 0 .5em;font-size:.95em" }, [
-        "Run metrics across the dilution series",
+        isSpike(group) ? "Run metrics across the spike-in series" : "Run metrics across the dilution series",
       ])
     );
     var grid = el("div", {
@@ -987,7 +1015,7 @@
            '" width="' + f.band.toFixed(1) + '" height="' + (f.plotH + f.extraB) + '"' + tipAttr(tip) + "/>";
     });
 
-    s += xLabels(f, labels, "target depth (" + unit + ")");
+    s += xLabels(f, labels, xTitleFor(group));
     s += "</svg>";
     return s;
   }
@@ -1000,7 +1028,9 @@
     });
     head.appendChild(
       el("div", { style: "font-weight:600;color:#333;font-size:.95em" }, [
-        "Per-organism dilution series — expected vs observed (limit of detection)",
+        isSpike(group)
+          ? "Per-organism spike-in series — expected vs recovered (limit of detection)"
+          : "Per-organism dilution series — expected vs observed (limit of detection)",
       ])
     );
     // Rollup control: the series is built at one level; Genus merges members.
@@ -1035,7 +1065,7 @@
           '<span style="background:' + BAD + ';color:#fff;padding:0 6px;border-radius:2px;margin-right:4px">obs</span>below threshold &nbsp;&nbsp;' +
           '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + WARN + ';margin-right:4px"></span>detected in some replicates &nbsp;&nbsp;' +
           '<span style="color:' + ACCENT + '">┆</span> limit of detection &nbsp;&nbsp;' +
-          '<span style="opacity:.8">hover any depth for full statistics</span>',
+          '<span style="opacity:.8">hover any ' + (isSpike(group) ? "spike level" : "depth") + " for full statistics</span>",
       })
     );
 
@@ -1075,7 +1105,12 @@
         (o.rolled && o.n_members > 1
           ? "Genus · " + o.n_members + " members"
           : (o.rolled ? "Genus" : nativeLevel) + " · taxid " + o.taxid) +
-        " · " + o.category + " · expected " + (o.expected_fraction * 100).toFixed(1) + "% of pool";
+        " · " + o.category +
+        (isSpike(group)
+          ? " · spiked " + kfmt(o.series && o.series.length ? o.series[0].expected_reads : 0) +
+            "–" + kfmt(o.series && o.series.length ? o.series[o.series.length - 1].expected_reads : 0) +
+            " " + (group.read_unit || "reads")
+          : " · expected " + (o.expected_fraction * 100).toFixed(1) + "% of pool");
       var subEl = el("div", { style: "font-size:.75em;color:" + MUTED + ";margin:1px 0 4px" }, [sub]);
       if (o.rolled && o.n_members > 1) {
         subEl.setAttribute("style", subEl.getAttribute("style") + ";cursor:help");
@@ -1113,15 +1148,22 @@
     head.appendChild(el("span", { style: "font-size:1.05em;font-weight:700;color:" + ACCENT }, [group.parent]));
     head.appendChild(pill(plat, isBg ? "#00695c" : "#5c6bc0"));
     head.appendChild(pill(group.mode, group.mode === "consistent" ? "#00897b" : "#8e24aa"));
+    if (isSpike(group)) {
+      head.appendChild(pill("spike-in series", "#ad1457"));
+    }
     head.appendChild(
       el("span", { style: "font-size:.8em;color:" + MUTED }, [
         group.n_datasets +
-          " datasets · counts " +
+          " datasets · " + (isSpike(group) ? "spike levels " : "counts ") +
           group.counts
             .map(function (c) { return kfmt(c); })
             .join(", ") +
           " " +
-          (group.read_unit || "reads"),
+          (group.read_unit || "reads") +
+          (isSpike(group) && group.background_reads
+            ? " · fixed background " + kfmt(group.background_reads) + " " + (group.read_unit || "reads") +
+              (group.background_name ? " (" + group.background_name + ")" : "")
+            : ""),
       ])
     );
     box.appendChild(head);

@@ -1657,6 +1657,44 @@ def _f1(precision, recall):
     return (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
 
 
+def _spike_expectations(items, manifests):
+    """
+    Map each spike-in dataset to what was actually spiked into it.
+
+    Returns {dataset_id: {"total": int, "by_name": {lower name: reads},
+                          "by_acc": {accession: reads}}}, read from the
+    spike_detail JSON the mixing step writes. Organism identity is carried as an
+    accession plus whatever name the user put in the sheet, so matching to a
+    detected organism is by name where one was given.
+    """
+    out = {}
+    for sname, _d in items:
+        man = manifests.get(sname) or {}
+        if (man.get("kind") or "") != "spikein":
+            continue
+        entry = {"total": 0, "by_name": {}, "by_acc": {}}
+        try:
+            detail = json.loads(man.get("spike_detail") or "[]")
+        except Exception:
+            detail = []
+        for d in detail:
+            got = int(d.get("spiked") or d.get("requested") or 0)
+            entry["total"] += got
+            acc = str(d.get("accession") or "")
+            if acc:
+                entry["by_acc"][acc] = entry["by_acc"].get(acc, 0) + got
+            nm = str(d.get("name") or "").strip().lower()
+            if nm:
+                entry["by_name"][nm] = entry["by_name"].get(nm, 0) + got
+        if not entry["total"]:
+            try:
+                entry["total"] = int(man.get("spiked_count") or 0)
+            except Exception:
+                entry["total"] = 0
+        out[sname] = entry
+    return out
+
+
 def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=None,
                          detect_threshold=None):
     """
@@ -1758,6 +1796,15 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
         mode = items[0][1]["mode"]
         all_modes.add(mode)
 
+        # ── Spike-in series? ─────────────────────────────────────────────────
+        # A spike-in series holds the background fixed and varies how many organism
+        # reads are mixed in, so c<N> in the dataset id is a SPIKE AMOUNT, not a
+        # sequencing depth, and the expected reads at each level are stated
+        # outright by the manifest rather than inferred from composition.
+        _kinds = {(manifests.get(sn) or {}).get("kind", "") for sn, _ in items}
+        is_spike = "spikein" in _kinds
+        spike_expect = _spike_expectations(items, manifests) if is_spike else {}
+
         # Truth set = organisms DETECTED at full depth (deepest dataset), i.e. TASS
         # clears the cutoff. Composition (expected read fraction) is taken from their
         # full-depth reads. Organisms present only as low-depth noise are excluded.
@@ -1839,9 +1886,25 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                 mean_tass = sum(tass_vals) / len(tass_vals)
                 det_rate = sum(1 for f in det_flags if f) / len(det_flags)
                 detected = det_rate >= 0.5
+                # Depth series: expected = this organism's share of the pool at that
+                # depth. Spike series: expected = what was actually spiked at that
+                # level (matched by organism name, falling back to the dataset's
+                # spike total when only one organism was spiked).
+                if is_spike:
+                    exp_vals = []
+                    for sn in reps:
+                        se = spike_expect.get(sn) or {}
+                        nm = (name_by_tid.get(tid, "") or "").strip().lower()
+                        v = se.get("by_name", {}).get(nm)
+                        if v is None and len(se.get("by_acc", {})) == 1 and len(expected_fraction) == 1:
+                            v = se.get("total", 0)
+                        exp_vals.append(v if v is not None else frac * se.get("total", c))
+                    expected_reads = sum(exp_vals) / max(1, len(exp_vals))
+                else:
+                    expected_reads = frac * c
                 series.append({
                     "count": c,
-                    "expected_reads": round(frac * c, 1),
+                    "expected_reads": round(expected_reads, 1),
                     "observed_reads": round(mean_obs, 1),
                     "tass": round(mean_tass, 2),
                     "detection_rate": round(det_rate, 3),
@@ -1879,16 +1942,33 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
             # Unit that target/observed counts are expressed in. Paired-end
             # subsamples read pairs; observed reads are normalised to pairs above.
             "read_unit": "read pairs" if _grp_paired else "reads",
+            # "depth"  -> c<N> is a sequencing depth (subsampling series)
+            # "spikein" -> c<N> is how many organism reads were mixed into a fixed
+            #              background; the x axis is organism load, not depth.
+            "series_kind": "spikein" if is_spike else "depth",
+            "background_reads": (
+                int((manifests.get(items[0][0]) or {}).get("background_reads") or 0)
+                if is_spike else None
+            ),
+            "background_name": (
+                ((manifests.get(items[0][0]) or {}).get("background_name") or parent)
+                if is_spike else None
+            ),
             "datasets": dataset_rows,
             "organisms": organisms,
         })
 
     # ── Parameters (explicit file overrides inferred) ─────────────────────────
+    _kinds_all = {g.get("series_kind") for g in suite_groups}
     inferred = {
         "mode": "/".join(sorted(all_modes)) if all_modes else None,
         "series_counts": sorted(all_counts),
         "replicates": max_rep,
         "detection_threshold": round(thr, 2),
+        # What the series varies. Mixed runs (a depth series AND a spike-in series
+        # in one report) are reported as "depth + spikein" so the panel is honest
+        # about the tab holding two different kinds of experiment.
+        "series_kind": " + ".join(sorted(k for k in _kinds_all if k)) or "depth",
     }
     params = dict(inferred)
     params.update({k: v for k, v in _load_insilico_params(params_file).items() if v is not None})

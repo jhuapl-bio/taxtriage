@@ -46,6 +46,7 @@ include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
 include { INSILICO } from '../subworkflows/local/insilico'
 include { BACKGROUND } from '../subworkflows/local/background'
+include { SPIKEIN } from '../subworkflows/local/spikein'
 include { PROTEINS } from '../subworkflows/local/proteins'
 include { NOVELTY } from '../subworkflows/local/novelty'
 // Shared MicrobeRT clustering, lifted up to the workflow level so its output can feed BOTH
@@ -497,6 +498,20 @@ workflow TAXTRIAGE {
         GET_ASSEMBLIES.out.assembly.map {  record -> record }.set { ch_assembly_txt }
     }
 
+    // One normalised VALUE channel carrying just the primary assembly_summary
+    // table, for processes that only need to look an accession up in it (spike-in
+    // reference fetch). ch_assembly_txt is a Path, a List of Paths, or a channel
+    // depending on how it was set above, so normalise all three here rather than
+    // making every consumer guess.
+    // No .first() on the channel branch: GET_ASSEMBLIES takes no input, so its
+    // outputs are already VALUE channels (broadcast to every consumer) and .first()
+    // on one is a no-op that Nextflow warns about.
+    ch_assembly_summary_file = (ch_assembly_txt instanceof List)
+        ? Channel.value(ch_assembly_txt[0])
+        : ((ch_assembly_txt instanceof java.nio.file.Path)
+            ? Channel.value(ch_assembly_txt)
+            : ch_assembly_txt.map { it instanceof List ? it[0] : it })
+
     ch_versions = Channel.empty()
     ch_mergedtsv = Channel.empty()
     // make an empty path channel
@@ -700,6 +715,24 @@ workflow TAXTRIAGE {
             : [ file(params.background_reads, checkIfExists: true), file(bg_r2, checkIfExists: true) ]
         ch_reads = ch_reads.mix( Channel.of([ bg_meta, bg_files ]) )
         log.info "BACKGROUND: added '${bg_meta.id}' (${bg_plat}, ${bg_single ? 'single-end' : 'paired-end'}) as a dilution-series source"
+    }
+
+    // A samplesheet row whose `background` column is TRUE is an alternative way to
+    // nominate the background: the sample is already in the run (often the negative
+    // control), so it is simply re-tagged rather than added again. The column is
+    // INERT unless a simulation/spike-in param is set, so a sheet carrying it still
+    // runs normally on its own.
+    def sim_active = params.spikein_sheet || params.background_reads || params.generate_iss || params.generate_nanosim
+    if (sim_active) {
+        ch_reads = ch_reads.map { meta, reads ->
+            if (meta.background && !meta.background_source) {
+                def m = meta.collectEntries { k, v -> [k, v] }
+                m.background_source = true
+                log.info "BACKGROUND: samplesheet marks '${m.id}' as a background source"
+                return [m, reads]
+            }
+            [meta, reads]
+        }
     }
     // ── Run-level metadata: --meta CSV ───────────────────────────────────────
     // Supports two formats:
@@ -1042,7 +1075,7 @@ workflow TAXTRIAGE {
     // dilution series. Datasets are tagged insilico-style (parent_id = background
     // sample id) so they reuse the injection path below and clone the background's
     // shared references.
-    if (params.background_reads) {
+    if (params.background_reads && !params.spikein_sheet) {
         ch_bg_master = ch_reads.filter { it[0].background_source }
         BACKGROUND(ch_bg_master)
         ch_versions = ch_versions.mix(BACKGROUND.out.versions)
@@ -1050,9 +1083,24 @@ workflow TAXTRIAGE {
         ch_insilico_manifests = ch_insilico_manifests.mix(BACKGROUND.out.manifests)
     }
 
+    // ── Spike-in series (fixed background, varying organism load) ────────────
+    // Mutually exclusive with the depth series above for the SAME background: both
+    // would emit datasets named <background>_background_ss_..., and the second set
+    // would collide with the first. --spikein_sheet takes precedence.
+    if (params.spikein_sheet) {
+        ch_spike_bg = ch_reads.filter { it[0].background_source }
+        // The pipeline's assembly_summary is the cheapest way to resolve a GCF/GCA
+        // accession to a download URL; FETCH_SPIKEIN_REFS falls back to the NCBI
+        // datasets CLI and Entrez when it is absent or lacks the row.
+        SPIKEIN(ch_spike_bg, ch_assembly_summary_file)
+        ch_versions = ch_versions.mix(SPIKEIN.out.versions)
+        ch_insilico_reads = ch_insilico_reads.mix(SPIKEIN.out.spikein_reads)
+        ch_insilico_manifests = ch_insilico_manifests.mix(SPIKEIN.out.manifests)
+    }
+
     // ── Inject subsample datasets (synthetic in-silico AND/OR natural background)
     //    as new samples into the pipeline channels ────────────────────────────
-    if (params.generate_iss || params.generate_nanosim || params.background_reads) {
+    if (params.generate_iss || params.generate_nanosim || params.background_reads || params.spikein_sheet) {
         // Mix the derived datasets into ch_reads so they flow through ALIGNMENT.
         ch_reads = ch_reads.mix(ch_insilico_reads)
 
@@ -1128,7 +1176,7 @@ workflow TAXTRIAGE {
         ch_fastas = REFERENCE_PREP.out.fastas
 
         // Add insilico/background dataset fastas if subsampling was run
-        if (params.generate_iss || params.generate_nanosim || params.background_reads) {
+        if (params.generate_iss || params.generate_nanosim || params.background_reads || params.spikein_sheet) {
             ch_fastas = ch_fastas.mix(ch_insilico_fastas)
         }
 
@@ -1239,7 +1287,7 @@ workflow TAXTRIAGE {
 
         // Add placeholder assembly analysis entries for insilico/background datasets
         // so they are not filtered out by the inner join in input_alignment_files
-        if (params.generate_iss || params.generate_nanosim || params.background_reads) {
+        if (params.generate_iss || params.generate_nanosim || params.background_reads || params.spikein_sheet) {
             ch_assembly_analysis = ch_assembly_analysis.mix(
                 ch_insilico_reads.map { meta, reads ->
                     [meta, file("$projectDir/assets/NO_FILE2")]

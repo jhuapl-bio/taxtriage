@@ -424,6 +424,124 @@ nextflow run jhuapl-bio/taxtriage \
 
 The custom abundance file should be a two-column TSV: `taxid<TAB>abundance`.
 
+## Spike-in series (fixed background)
+
+The dilution series varies **sequencing depth**: how deep must I sequence to still
+catch this organism? A spike-in series asks the other half of the limit-of-detection
+question — **how much organism must be present before we call it?** — by holding the
+background at full depth and mixing in a defined number of reads from each spike
+organism's own reference.
+
+Enable it with `--spikein_sheet`. It replaces the depth series for that background
+(both would emit datasets named `<background>_background_ss_...`, which would collide),
+and runs happily alongside the synthetic `--generate_iss` / `--generate_nanosim` series.
+
+### The spike-in sheet
+
+Three columns, in CSV, TSV or XLSX. Column names are matched loosely
+(`accession`/`assembly`/`nuccore`, `count`/`reads`, `replicates`/`reps`):
+
+```csv
+accession,count,replicates
+GCF_014621545.1,100,3
+GCF_014621545.1,1000,3
+GCF_000859985.2,100,3
+GCF_000859985.2,1000,3
+```
+
+Each row is one organism at one spike level, and one dataset is built per
+(level x replicate). With no `level` column the level **is** the count, which covers
+the common case of spiking every organism at the same set of amounts.
+
+An optional fourth column lets organisms in one level carry **different** amounts,
+which is how you build a realistic mixed panel:
+
+```csv
+accession,count,replicates,level
+GCF_014621545.1,500,3,low
+GCF_000859985.2,100,3,low
+GCF_014621545.1,5000,3,high
+GCF_000859985.2,1000,3,high
+```
+
+A non-numeric level label is mapped to that level's **total** spiked reads for the
+`c<N>` in the dataset id, since the id grammar carries an integer there.
+
+An accession may be a RefSeq/GenBank assembly (`GCF_`/`GCA_`), a nuccore accession,
+or a path to a local FASTA. References are resolved from the pipeline's
+`assembly_summary` first, then the NCBI `datasets` CLI, then Entrez.
+
+### Nominating the background
+
+Two ways, and they can be combined:
+
+```bash
+# 1. straight from files
+--background_reads bg_R1.fastq.gz --background_reads2 bg_R2.fastq.gz
+
+# 2. from a sample already in the run (often the negative control)
+--background_from_sheet          # + a `background` column set to TRUE on that row
+```
+
+The `background` samplesheet column is **inert unless a simulation param is set**, so a
+sheet carrying it still runs normally on its own.
+
+### Example
+
+```bash
+nextflow run . \
+  --input samplesheet.csv --outdir results \
+  --generate_iss \
+  --background_reads stool_bg_R1.fastq.gz \
+  --background_reads2 stool_bg_R2.fastq.gz \
+  --spikein_sheet spikein.csv \
+  --sim_subsample_seed 42
+```
+
+and with the background named in the sheet instead:
+
+```bash
+nextflow run . \
+  --input samplesheet.csv --outdir results \
+  --generate_iss \
+  --background_from_sheet \
+  --spikein_sheet spikein.csv \
+  --spikein_background_depth 500000
+```
+
+### How it works
+
+1. `PARSE_SPIKEIN` normalises the sheet and groups rows into levels.
+2. `FETCH_SPIKEIN_REFS` resolves one reference FASTA per accession.
+3. `SPIKEIN_POOL` simulates **one** read pool per organism (InSilicoSeq for Illumina,
+   NanoSim for ONT), sized at `--spikein_pool_factor` x the largest requested count so
+   replicates draw different reads rather than the same set.
+4. `SPIKE_INTO_BACKGROUND` draws the exact count for each (level, replicate) from those
+   pools and concatenates them onto the background. The background is byte-identical in
+   every dataset — that is what makes this a spike-in rather than a dilution — so it is
+   concatenated in the shell and never read into memory.
+
+Spiked reads are renamed `<dataset>_spike_<accession>_<i>`, so they are identifiable in
+the BAM and can never collide with background read names.
+
+Datasets are named `<background>_background_ss_<mode>_c<level>_r<rep>` — the same grammar
+the dilution series uses — so they flow through the existing injection path and appear in
+the In-Silico report tab with no extra wiring. The manifest records `kind=spikein` plus the
+per-organism `spike_detail`, which is how the report knows `c<N>` is a spike amount rather
+than a depth, and what was truly spiked at each level.
+
+### Reading the tab
+
+For a spike-in group the In-Silico tab relabels itself throughout: the x axis becomes
+**spike-in load**, the dataset table shows *Spiked (target)* / *Spiked (actual)*, and the
+group header carries a `spike-in series` chip plus the fixed background size.
+
+The Detections **⚗** cross-reference flips with it. Instead of placing the real sample at
+its sequencing depth, it inverts the series — given this organism's read count, what spike
+level would produce it? — and places the sample at that **equivalent spike level**. The
+verdict becomes whether that load clears the LoD, and whether the sample's TASS matches
+what the series scored at the same load.
+
 ## Interpreting Results
 
 ### High Precision, Low Recall

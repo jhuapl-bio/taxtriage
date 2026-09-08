@@ -32,13 +32,18 @@ process SUBSAMPLE_INSILICO {
 
     // Build the master-mate preparation snippet in Groovy so we avoid nested
     // string-escaping pitfalls in the shell heredoc below.
+    // Use the staged paths rather than globbing: a master that arrives from fastp
+    // is named background_1.fastp.fastq.gz, which matches neither *_R1*.fastq.gz
+    // nor *_1.fastq.gz, so the glob finds nothing on exactly the natural-background
+    // inputs this process is meant to handle.
+    def _rl = (reads instanceof List) ? reads : [reads]
     def mate_prep
     if (paired) {
         mate_prep = """\
-        R1=\$( (ls *_R1*.fastq.gz *_1.fastq.gz 2>/dev/null || true) | head -n1 )
-        R2=\$( (ls *_R2*.fastq.gz *_2.fastq.gz 2>/dev/null || true) | head -n1 )
-        if [ -z "\$R1" ] || [ -z "\$R2" ]; then
-            echo "ERROR: could not identify paired R1/R2 master FASTQs" >&2
+        R1=${_rl[0]}
+        R2=${_rl.size() > 1 ? _rl[1] : ''}
+        if [ ! -s "\$R1" ] || [ ! -s "\$R2" ]; then
+            echo "ERROR: paired master FASTQs missing or empty (\$R1 / \$R2)" >&2
             exit 1
         fi
         MATE_ARGS="--r1 \$R1 --r2 \$R2\""""
