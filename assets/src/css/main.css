@@ -4877,27 +4877,125 @@ body.report-pdf-printing #map-filter-scope-wrap {
 #cov-legend-details > summary:hover {
   color: #1565c0;
 }
-#cov-legend-chips {
+#cov-legend-details > summary .cov-leg-hint {
+  color: #9aa7b4;
+  font-weight: 400;
+  font-size: 0.9em;
+  font-style: italic;
+  margin-left: 0.6em;
+}
+/* Search row: legend-local only (see _renderCovLegend) — it never touches the
+   report's own filters, so it is styled as a small inline control, not as one
+   of the filter-panel inputs. */
+.cov-leg-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin: 0.45em 0 0;
+}
+#cov-leg-search {
+  flex: 0 1 22em;
+  min-width: 10em;
+  padding: 0.25em 0.5em;
+  font: inherit;
+  font-size: 0.95em;
+  color: #37474f;
+  border: 1px solid #d3dce6;
+  border-radius: 4px;
+  background: #fff;
+}
+#cov-leg-search:focus {
+  outline: none;
+  border-color: #1565c0;
+  box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.12);
+}
+#cov-leg-count {
+  color: #9aa7b4;
+  font-size: 0.9em;
+}
+#cov-leg-count.none {
+  color: #b23c3c;
+}
+/* Entries flow left-to-right and wrap. Bounded: with hundreds of samples an
+   expanded legend would run the page long, so the block scrolls instead. */
+#cov-legend-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4em 1.2em;
+  gap: 0.15em 0.5em;
   align-items: center;
-  /* Bounded: with hundreds of samples an expanded legend would still push
-     the plot off screen. Scroll the chips instead. */
-  max-height: 8.5em;
-  overflow: auto;
-  margin: 0.4em 0 0.2em;
-  padding: 0.35em 0.2em;
+  list-style: none;
+  margin: 0.35em 0 0.2em;
+  padding: 0.3em 0.2em;
   border-top: 1px solid #eceff1;
+  max-height: 9.5em;
+  overflow: auto;
 }
-/* Print the legend expanded — nothing is clickable on paper. */
+#cov-legend-list li {
+  margin: 0;
+  flex: 0 0 auto;
+}
+.cov-leg-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  max-width: 18em;
+  padding: 0.18em 0.5em;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  color: #37474f;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease;
+}
+.cov-leg-item:hover,
+.cov-leg-item.active,
+.cov-leg-item:focus-visible {
+  background: #eef4fb;
+  outline: none;
+}
+.cov-leg-item.dim {
+  opacity: 0.35;
+}
+.cov-leg-item.pinned {
+  background: #e3efff;
+  box-shadow: inset 2px 0 0 #1565c0;
+}
+.cov-leg-idx {
+  flex: 0 0 auto;
+  min-width: 1.4em;
+  color: #9aa7b4;
+  font-size: 0.85em;
+  text-align: right;
+}
+.cov-leg-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.cov-leg-name {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cov-leg-n {
+  flex: 0 0 auto;
+  color: #9aa7b4;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
 @media print {
-  #cov-legend-chips {
+  #cov-legend-list {
     max-height: none;
     overflow: visible;
   }
 }
-body.report-pdf-printing #cov-legend-chips {
+body.report-pdf-printing #cov-legend-list {
   max-height: none;
   overflow: visible;
 }
@@ -5702,6 +5800,53 @@ text.hm-flag-label {
   border-color: #1565c0;
   color: #0d47a1;
   background: #f0f7ff;
+}
+
+/* ── Heatmap: frozen axes + scroll-port furniture ──────────────────────────
+   #heatmap-svg-wrap is a two-axis scroll port (see drawHeatmap). The axis
+   groups are pinned inside the SVG by a scroll handler; these rules cover the
+   HTML furniture that rides along with it. */
+.hm-freeze-scroll {
+  position: relative;
+  scrollbar-gutter: stable;
+}
+.hm-jump-home {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  font-size: 0.75em;
+  font-weight: 600;
+  color: #14538f;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #c5d5e8;
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+.hm-jump-home.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.hm-jump-home:hover {
+  background: #eaf3ff;
+  border-color: #1565c0;
+}
+.hm-legend-bar {
+  position: sticky;
+  left: 0;
+  bottom: 0;
+  z-index: 6;
+  width: max-content;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid #e6ecf3;
 }
 
 /* ══ Mirrored "Group by" bars ═══════════════════════════════════════════

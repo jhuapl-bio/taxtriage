@@ -413,6 +413,102 @@ function drawHeatmap() {
     .attr("fill", "#666")
     .text(`Scale: ${scaleMode}`);
 
+  // ── Frozen axes (spreadsheet-style) ────────────────────────────────
+  // #heatmap-svg-wrap scrolls in BOTH directions, and on every scroll event
+  // the two axis groups are re-translated by the current scroll offset so
+  // they stay pinned: the sample header rides down the page, the organism
+  // labels ride right. That keeps you oriented in a 14k-row heatmap without
+  // scrolling back to the origin to find out which column you're reading.
+  //
+  // Each group gets an opaque backing rect (inserted first, so it sits behind
+  // the group's own ticks/labels) and is raised above the cell layer — the
+  // header last, so it owns the top-left corner where the two overlap.
+  // data-tt-sticky-base carries the un-scrolled transform: the export cloner
+  // restores it, so a plot exported mid-scroll isn't drawn with skewed axes.
+  const _yBaseTf = `translate(${marginL},0)`;
+  const _xBaseTf = `translate(0,${marginT})`;
+  yGroup
+    .insert("rect", ":first-child")
+    .attr("x", -marginL)
+    .attr("y", 0)
+    .attr("width", marginL)
+    .attr("height", H)
+    .attr("fill", "#fff");
+  yGroup
+    .append("line")
+    .attr("x1", -1)
+    .attr("y1", 0)
+    .attr("x2", -1)
+    .attr("y2", H)
+    .attr("stroke", "#e2e8f0")
+    .attr("stroke-width", 1);
+  _xAxisG
+    .insert("rect", ":first-child")
+    .attr("x", 0)
+    .attr("y", -marginT)
+    .attr("width", W)
+    .attr("height", marginT)
+    .attr("fill", "#fff");
+  _xAxisG
+    .append("line")
+    .attr("x1", 0)
+    .attr("y1", 0)
+    .attr("x2", W)
+    .attr("y2", 0)
+    .attr("stroke", "#e2e8f0")
+    .attr("stroke-width", 1);
+  yGroup.attr("data-tt-sticky-base", _yBaseTf).raise();
+  _xAxisG.attr("data-tt-sticky-base", _xBaseTf).raise();
+
+  // "Back to start" — appears once you're away from the origin, snaps both
+  // axes home in one click. Absolutely positioned children of a scroll
+  // container are laid out against its padding box, so it is re-translated
+  // by the scroll offset on each event to stay parked in the corner.
+  let _homeBtn = wrap.querySelector(":scope > .hm-jump-home");
+  if (!_homeBtn) {
+    _homeBtn = document.createElement("button");
+    _homeBtn.type = "button";
+    _homeBtn.className = "hm-jump-home";
+    _homeBtn.title = "Back to the first sample / first organism (Home)";
+    _homeBtn.innerHTML = "\u21F1 Start";
+    _homeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      wrap.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    });
+    wrap.appendChild(_homeBtn);
+  }
+
+  const _applyFreeze = () => {
+    const sx = wrap.scrollLeft || 0,
+      sy = wrap.scrollTop || 0;
+    yGroup.attr("transform", `translate(${marginL + sx},0)`);
+    _xAxisG.attr("transform", `translate(0,${marginT + sy})`);
+    _homeBtn.style.transform = `translate(${sx}px, ${sy}px)`;
+    _homeBtn.classList.toggle("show", sx > 40 || sy > 40);
+  };
+  // One listener per wrap, replaced on redraw so repeated draws don't stack.
+  if (wrap._ttFreezeHandler) wrap.removeEventListener("scroll", wrap._ttFreezeHandler);
+  wrap._ttFreezeHandler = _applyFreeze;
+  wrap.addEventListener("scroll", _applyFreeze, { passive: true });
+  if (!wrap._ttHomeKey) {
+    wrap._ttHomeKey = true;
+    wrap.setAttribute("tabindex", "0");
+    wrap.addEventListener("keydown", (ev) => {
+      if (ev.key === "Home" && !ev.target.closest("input, select, textarea")) {
+        ev.preventDefault();
+        wrap.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+      }
+    });
+  }
+  wrap.scrollTop = 0;
+  wrap.scrollLeft = 0;
+  _applyFreeze();
+
+  // Legends live in one sticky bar pinned to the bottom-left of the scroll
+  // port, so they stay readable instead of hiding below thousands of rows.
+  const _legendBar = document.createElement("div");
+  _legendBar.className = "hm-legend-bar";
+
   // Sample QC legend — same placement rationale as the rescued-strain
   // legend below: HTML under the SVG, so it can never overlap the plot.
   if (_hmAnyFlag) {
@@ -425,7 +521,7 @@ function drawHeatmap() {
       `<span style='color:#666;'>${nFlag} flagged sample${nFlag === 1 ? "" : "s"} \u2014 ` +
       "outlined column, hover the header for the reason</span>" +
       "<span style='color:#888;font-style:italic;'>edit the rules in the right panel \u2192 Sample QC / Flags</span>";
-    wrap.appendChild(fgDiv);
+    _legendBar.appendChild(fgDiv);
   }
 
   // Rescued-strain legend — rendered as HTML below the SVG so it can
@@ -448,6 +544,8 @@ function drawHeatmap() {
       "</svg>" +
       "<span style='color:#666;'>genus roll-up</span>" +
       "</span>";
-    wrap.appendChild(lgDiv);
+    _legendBar.appendChild(lgDiv);
   }
+
+  if (_legendBar.childNodes.length) wrap.appendChild(_legendBar);
 }
