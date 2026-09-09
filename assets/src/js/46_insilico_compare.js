@@ -31,7 +31,7 @@
   var MUTED = "#777";
   var GRID = "#e9e5f3";
   var AXIS = "#bdb6d4";
-  var REAL = "#0277bd";   // the real sample always reads as blue
+  var REAL = "#0277bd"; // the real sample always reads as blue
 
   function suite() {
     var s = typeof INSILICO_SUITE !== "undefined" ? INSILICO_SUITE : (window.HEATMAP_BOOT || {}).insilico_suite;
@@ -75,12 +75,14 @@
   // simulated organisms). Every hit records which rung matched so the UI can say
   // so plainly instead of implying a like-for-like comparison.
   function lc(v) {
-    return String(v == null ? "" : v).trim().toLowerCase();
+    return String(v == null ? "" : v)
+      .trim()
+      .toLowerCase();
   }
 
   function genusRollup(group) {
     if (group.__genusRollup) return group.__genusRollup;
-    if (typeof window.insilicoRollupOrganisms !== "function") return [];  // 45 not loaded; don't cache
+    if (typeof window.insilicoRollupOrganisms !== "function") return []; // 45 not loaded; don't cache
     var out = window.insilicoRollupOrganisms(group, "Genus");
     group.__genusRollup = out;
     return out;
@@ -113,8 +115,12 @@
         else if (canSpecies && spName && (lc(o.species) === spName || lc(o.name) === spName)) how = "species";
         if (how) {
           hits.push({
-            group: g, org: o, own: g.parent === sample,
-            how: how, seriesLevel: seriesLevel, rowLevel: rowLevel,
+            group: g,
+            org: o,
+            own: g.parent === sample,
+            how: how,
+            seriesLevel: seriesLevel,
+            rowLevel: rowLevel,
             matchLabel: how === "species" ? "Species" : seriesLevel,
           });
         }
@@ -126,11 +132,15 @@
         genusRollup(g).forEach(function (o) {
           if (lc(o.name) !== genName) return;
           hits.push({
-            group: g, org: o, own: g.parent === sample,
+            group: g,
+            org: o,
+            own: g.parent === sample,
             // For a Genus-level detection this IS its own level — the series is
             // merely assembled from the members, not climbed to.
             how: rowLevel === "Genus" ? "genus_native" : "genus",
-            seriesLevel: seriesLevel, rowLevel: rowLevel, matchLabel: "Genus",
+            seriesLevel: seriesLevel,
+            rowLevel: rowLevel,
+            matchLabel: "Genus",
           });
         });
       }
@@ -138,8 +148,8 @@
 
     var rank = { exact: 0, genus_native: 0, name: 1, species: 2, genus: 3 };
     hits.sort(function (a, b) {
-      if (a.own !== b.own) return a.own ? -1 : 1;                 // this sample's own series first
-      if (rank[a.how] !== rank[b.how]) return rank[a.how] - rank[b.how];  // closest rung wins
+      if (a.own !== b.own) return a.own ? -1 : 1; // this sample's own series first
+      if (rank[a.how] !== rank[b.how]) return rank[a.how] - rank[b.how]; // closest rung wins
       return (b.org.series || []).length - (a.org.series || []).length;
     });
     // Keep at most one hit per (group, rung) so the selector is not flooded.
@@ -160,11 +170,18 @@
   function interpAt(series, x, key, kind) {
     if (!series || !series.length) return null;
     var pts = series
-      .map(function (s) { return { x: +s.count, y: +s[key] }; })
-      .filter(function (p) { return isFinite(p.x) && isFinite(p.y); })
-      .sort(function (a, b) { return a.x - b.x; });
+      .map(function (s) {
+        return { x: +s.count, y: +s[key] };
+      })
+      .filter(function (p) {
+        return isFinite(p.x) && isFinite(p.y);
+      })
+      .sort(function (a, b) {
+        return a.x - b.x;
+      });
     if (!pts.length) return null;
-    var lo = pts[0], hi = pts[pts.length - 1];
+    var lo = pts[0],
+      hi = pts[pts.length - 1];
     if (pts.length === 1) {
       if (kind === "clamp") return { v: lo.y, extrap: x !== lo.x };
       return { v: lo.x > 0 ? lo.y * (x / lo.x) : lo.y, extrap: x !== lo.x };
@@ -176,13 +193,14 @@
     if (x >= hi.x) {
       if (kind === "clamp") return { v: hi.y, extrap: x > hi.x };
       var p = pts[pts.length - 2];
-      var m = (hi.y - p.y) / ((hi.x - p.x) || 1);
+      var m = (hi.y - p.y) / (hi.x - p.x || 1);
       return { v: Math.max(0, hi.y + m * (x - hi.x)), extrap: x > hi.x };
     }
     for (var i = 0; i < pts.length - 1; i++) {
-      var a = pts[i], b = pts[i + 1];
+      var a = pts[i],
+        b = pts[i + 1];
       if (x >= a.x && x <= b.x) {
-        var t = (x - a.x) / ((b.x - a.x) || 1);
+        var t = (x - a.x) / (b.x - a.x || 1);
         return { v: a.y + t * (b.y - a.y), extrap: false };
       }
     }
@@ -196,11 +214,18 @@
   function inverseAt(series, y, key) {
     if (!series || !series.length) return null;
     var pts = series
-      .map(function (s) { return { x: +s.count, y: +s[key] }; })
-      .filter(function (p) { return isFinite(p.x) && isFinite(p.y); })
-      .sort(function (a, b) { return a.x - b.x; });
+      .map(function (s) {
+        return { x: +s.count, y: +s[key] };
+      })
+      .filter(function (p) {
+        return isFinite(p.x) && isFinite(p.y);
+      })
+      .sort(function (a, b) {
+        return a.x - b.x;
+      });
     if (!pts.length) return null;
-    var lo = pts[0], hi = pts[pts.length - 1];
+    var lo = pts[0],
+      hi = pts[pts.length - 1];
     if (pts.length === 1) return lo.y > 0 ? lo.x * (y / lo.y) : null;
     if (y <= lo.y) return { v: lo.y > 0 ? lo.x * (y / lo.y) : 0, extrap: y < lo.y };
     if (y >= hi.y) {
@@ -210,7 +235,8 @@
       return { v: Math.max(0, hi.x + m * (y - hi.y)), extrap: y > hi.y };
     }
     for (var i = 0; i < pts.length - 1; i++) {
-      var a = pts[i], b = pts[i + 1];
+      var a = pts[i],
+        b = pts[i + 1];
       if (y >= a.y && y <= b.y) {
         var t = b.y !== a.y ? (y - a.y) / (b.y - a.y) : 0;
         return { v: a.x + t * (b.x - a.x), extrap: false };
@@ -248,7 +274,8 @@
     var hits = matchOrganism(sample, row);
     if (!hits.length) return null;
     var hit = hits[Math.min(groupIdx || 0, hits.length - 1)];
-    var g = hit.group, o = hit.org;
+    var g = hit.group,
+      o = hit.org;
     var rolledUp = hit.how === "species" || hit.how === "genus";
     var cmpLevel = hit.how === "genus" || hit.how === "genus_native" ? "Genus" : "Species";
     var cmpRow = rolledUp ? rollupRowFor(row, cmpLevel) : null;
@@ -278,7 +305,7 @@
     // background fixed and varies organism load, so the question flips to "how much
     // organism is present here, and is that above the level the series says we can
     // detect?" — x is the equivalent spike level implied by the reads we saw.
-    var spike = (g.series_kind === "spikein");
+    var spike = g.series_kind === "spikein";
     var equiv = spike ? inverseAt(o.series, orgReads, "observed_reads") : null;
     var xValue = spike ? (equiv ? equiv.v : 0) : depth;
 
@@ -289,34 +316,66 @@
     // spike level, so at the equivalent level expected and observed coincide by
     // construction and the informative comparison is TASS and the LoD instead.
     var expReads = spike
-      ? (xValue > 0 ? interpAt(o.series, xValue, "expected_reads") : null)
-      : (depth > 0 ? { v: o.expected_fraction * depth } : null);
+      ? xValue > 0
+        ? interpAt(o.series, xValue, "expected_reads")
+        : null
+      : depth > 0
+      ? { v: o.expected_fraction * depth }
+      : null;
     expReads = expReads ? expReads.v : null;
 
     var vsSeries = predObs && predObs.v > 0 ? orgReads / predObs.v : null;
     var vsExpected = expReads > 0 ? orgReads / expReads : null;
 
     return {
-      row: row, sample: sample, group: g, org: o,
+      row: row,
+      sample: sample,
+      group: g,
+      org: o,
       // How the row was matched to the series, and at what level the comparison
       // is therefore being made.
-      how: hit.how, rolledUp: rolledUp, genusSeries: hit.how === "genus" || hit.how === "genus_native",
+      how: hit.how,
+      rolledUp: rolledUp,
+      genusSeries: hit.how === "genus" || hit.how === "genus_native",
       rowLevel: row["Level"] || "Strain",
-      seriesLevel: hit.seriesLevel, compareLevel: rolledUp ? cmpLevel : (row["Level"] || "Strain"),
-      compareName: rolledUp ? (cmpLevel === "Genus" ? row["Genus Name"] : row["Species Name"]) : row["Detected Organism"],
-      usedRollupRow: !!cmpRow, rowReads: rowReads, rowTass: rowTass,
+      seriesLevel: hit.seriesLevel,
+      compareLevel: rolledUp ? cmpLevel : row["Level"] || "Strain",
+      compareName: rolledUp
+        ? cmpLevel === "Genus"
+          ? row["Genus Name"]
+          : row["Species Name"]
+        : row["Detected Organism"],
+      usedRollupRow: !!cmpRow,
+      rowReads: rowReads,
+      rowTass: rowTass,
       rowShare: orgReads > 0 ? rowReads / orgReads : null,
-      groupIdx: hits.indexOf(hit), nGroups: hits.length, matchedByName: hit.how === "name", ownSeries: hit.own,
-      unit: g.read_unit || "reads", paired: paired, rpr: rpr, unitMismatch: unitMismatch,
-      spike: spike, xValue: xValue,
-      equivLevel: equiv ? equiv.v : null, equivExtrap: !!(equiv && equiv.extrap),
-      backgroundReads: g.background_reads || null, backgroundName: g.background_name || null,
-      platform: platform, totalReads: totalReads, depth: depth,
-      orgReads: orgReads, tass: tass, threshold: thr,
+      groupIdx: hits.indexOf(hit),
+      nGroups: hits.length,
+      matchedByName: hit.how === "name",
+      ownSeries: hit.own,
+      unit: g.read_unit || "reads",
+      paired: paired,
+      rpr: rpr,
+      unitMismatch: unitMismatch,
+      spike: spike,
+      xValue: xValue,
+      equivLevel: equiv ? equiv.v : null,
+      equivExtrap: !!(equiv && equiv.extrap),
+      backgroundReads: g.background_reads || null,
+      backgroundName: g.background_name || null,
+      platform: platform,
+      totalReads: totalReads,
+      depth: depth,
+      orgReads: orgReads,
+      tass: tass,
+      threshold: thr,
       expectedReads: expReads,
-      predictedReads: predObs ? predObs.v : null, predictedExtrap: !!(predObs && predObs.extrap),
-      predictedTass: predTass ? predTass.v : null, predictedTassExtrap: !!(predTass && predTass.extrap),
-      vsSeries: vsSeries, vsExpected: vsExpected,
+      predictedReads: predObs ? predObs.v : null,
+      predictedExtrap: !!(predObs && predObs.extrap),
+      predictedTass: predTass ? predTass.v : null,
+      predictedTassExtrap: !!(predTass && predTass.extrap),
+      vsSeries: vsSeries,
+      vsExpected: vsExpected,
       lod: o.lod_count == null ? null : o.lod_count,
       aboveLod: o.lod_count != null && xValue >= o.lod_count,
       lodMargin: o.lod_count ? xValue / o.lod_count : null,
@@ -334,29 +393,45 @@
         return { key: "nolod", color: WARN, label: "never detected anywhere in the spike-in series" };
       }
       if (!c.aboveLod) {
-        return { key: "belowlod", color: BAD,
-                 label: "organism load is below the spike-in limit of detection (" +
-                        kfmt(c.lod) + " " + c.unit + ")" };
+        return {
+          key: "belowlod",
+          color: BAD,
+          label: "organism load is below the spike-in limit of detection (" + kfmt(c.lod) + " " + c.unit + ")",
+        };
       }
       if (c.predictedTass != null && c.tass > 0) {
         var d = c.tass - c.predictedTass;
         if (d < -10) {
-          return { key: "under", color: WARN,
-                   label: "scores " + Math.abs(d).toFixed(0) + " TASS below the spike-in series at this load" };
+          return {
+            key: "under",
+            color: WARN,
+            label: "scores " + Math.abs(d).toFixed(0) + " TASS below the spike-in series at this load",
+          };
         }
         if (d > 10) {
-          return { key: "over", color: ACCENT,
-                   label: "scores " + d.toFixed(0) + " TASS above the spike-in series at this load" };
+          return {
+            key: "over",
+            color: ACCENT,
+            label: "scores " + d.toFixed(0) + " TASS above the spike-in series at this load",
+          };
         }
       }
-      return { key: "match", color: GOOD,
-               label: "load is " + (c.lodMargin ? c.lodMargin.toFixed(1) + "\u00d7 " : "above ") +
-                      "the limit of detection, scoring in line with the series" };
+      return {
+        key: "match",
+        color: GOOD,
+        label:
+          "load is " +
+          (c.lodMargin ? c.lodMargin.toFixed(1) + "\u00d7 " : "above ") +
+          "the limit of detection, scoring in line with the series",
+      };
     }
     if (!c.depth) return { key: "nodepth", color: MUTED, label: "no sample depth recorded" };
     if (c.lod != null && !c.aboveLod) {
-      return { key: "belowlod", color: BAD,
-               label: "sequenced below this organism's limit of detection (" + kfmt(c.lod) + " " + c.unit + ")" };
+      return {
+        key: "belowlod",
+        color: BAD,
+        label: "sequenced below this organism's limit of detection (" + kfmt(c.lod) + " " + c.unit + ")",
+      };
     }
     if (c.lod == null) {
       return { key: "nolod", color: WARN, label: "never detected anywhere in the dilution series" };
@@ -365,9 +440,12 @@
     if (c.rolledUp && !c.usedRollupRow && c.vsSeries < 0.5) {
       // Comparing a subset against its parent level — being below the series is
       // the expected arithmetic, not a finding.
-      return { key: "subset", color: MUTED,
-               label: "below the " + c.compareLevel.toLowerCase() + " series, as expected for a single " +
-                      c.rowLevel.toLowerCase() };
+      return {
+        key: "subset",
+        color: MUTED,
+        label:
+          "below the " + c.compareLevel.toLowerCase() + " series, as expected for a single " + c.rowLevel.toLowerCase(),
+      };
     }
     if (c.vsSeries >= 0.5 && c.vsSeries <= 2) {
       return { key: "match", color: GOOD, label: "in line with the dilution series at this depth" };
@@ -381,12 +459,19 @@
   // ── scales ────────────────────────────────────────────────────────────────
   function makeScale(min, max, log, p0, p1) {
     var t = log
-      ? function (v) { return Math.log10(Math.max(0, v) + 1); }
-      : function (v) { return v; };
-    var a = t(min), b = t(max);
+      ? function (v) {
+          return Math.log10(Math.max(0, v) + 1);
+        }
+      : function (v) {
+          return v;
+        };
+    var a = t(min),
+      b = t(max);
     if (!(b > a)) b = a + 1;
     return {
-      log: log, min: min, max: max,
+      log: log,
+      min: min,
+      max: max,
       f: function (v) {
         var p = (t(v) - a) / (b - a);
         return p0 + Math.max(-0.05, Math.min(1.05, p)) * (p1 - p0);
@@ -423,15 +508,31 @@
   // comparison is read off the x position, not off a bar order.
   function panel(c, key, opts) {
     opts = opts || {};
-    var W = opts.W || 380, plotH = opts.plotH || 132;
-    var padL = opts.padL || 52, padR = 14, padT = 12, labelH = 16, titleH = 13;
+    var W = opts.W || 380,
+      plotH = opts.plotH || 132;
+    var padL = opts.padL || 52,
+      padR = 14,
+      padT = 12,
+      labelH = 16,
+      titleH = 13;
     var H = padT + plotH + labelH + titleH + 6;
     var yb = padT + plotH;
-    var series = (c.org.series || []).slice().sort(function (a, b) { return a.count - b.count; });
+    var series = (c.org.series || []).slice().sort(function (a, b) {
+      return a.count - b.count;
+    });
     var isReads = key === "observed_reads";
 
-    var xs = series.map(function (s) { return s.count; }).concat([c.xValue]);
-    var xmin = Math.min.apply(null, xs.filter(function (v) { return v > 0; }));
+    var xs = series
+      .map(function (s) {
+        return s.count;
+      })
+      .concat([c.xValue]);
+    var xmin = Math.min.apply(
+      null,
+      xs.filter(function (v) {
+        return v > 0;
+      }),
+    );
     var xmax = Math.max.apply(null, xs);
     var xlog = wantLog(xmin, xmax);
     var X = makeScale(xlog ? xmin / 1.6 : 0, xmax * 1.12, xlog, padL, W - padR);
@@ -441,8 +542,15 @@
     // incomparable and exaggerated small differences.
     var ymax, ylog, Y, yTicks;
     if (isReads) {
-      var yvals = series.map(function (s) { return +s[key] || 0; })
-        .concat(series.map(function (s) { return +s.expected_reads || 0; }));
+      var yvals = series
+        .map(function (s) {
+          return +s[key] || 0;
+        })
+        .concat(
+          series.map(function (s) {
+            return +s.expected_reads || 0;
+          }),
+        );
       yvals.push(c.orgReads);
       if (c.expectedReads != null) yvals.push(c.expectedReads);
       ymax = Math.max.apply(null, yvals.concat([1]));
@@ -456,49 +564,125 @@
       yTicks = [0, 25, 50, 75, 100];
     }
 
-    var s = '<svg viewBox="0 0 ' + W + " " + H + '" width="' + W + '" height="' + H +
-            '" role="img" style="display:block">';
+    var s =
+      '<svg viewBox="0 0 ' + W + " " + H + '" width="' + W + '" height="' + H + '" role="img" style="display:block">';
 
     // grid + y labels
     yTicks.forEach(function (v) {
       var y = Y.f(v);
       if (y < padT - 2 || y > yb + 2) return;
-      s += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) +
-           '" stroke="' + GRID + '" stroke-width="1"/>' +
-           '<text x="' + (padL - 6) + '" y="' + (y + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="' +
-           MUTED + '">' + esc(isReads ? kfmt(v) : String(Math.round(v))) + "</text>";
+      s +=
+        '<line x1="' +
+        padL +
+        '" y1="' +
+        y.toFixed(1) +
+        '" x2="' +
+        (W - padR) +
+        '" y2="' +
+        y.toFixed(1) +
+        '" stroke="' +
+        GRID +
+        '" stroke-width="1"/>' +
+        '<text x="' +
+        (padL - 6) +
+        '" y="' +
+        (y + 3).toFixed(1) +
+        '" text-anchor="end" font-size="9" fill="' +
+        MUTED +
+        '">' +
+        esc(isReads ? kfmt(v) : String(Math.round(v))) +
+        "</text>";
     });
-    s += '<line x1="' + padL + '" y1="' + yb + '" x2="' + (W - padR) + '" y2="' + yb +
-         '" stroke="' + AXIS + '" stroke-width="1.2"/>' +
-         '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + yb +
-         '" stroke="' + AXIS + '" stroke-width="1.2"/>' +
-         '<text transform="translate(11,' + (padT + plotH / 2) + ') rotate(-90)" text-anchor="middle" font-size="9" fill="' +
-         MUTED + '">' + esc(isReads ? c.unit + (ylog ? " (log)" : "") : "TASS") + "</text>";
+    s +=
+      '<line x1="' +
+      padL +
+      '" y1="' +
+      yb +
+      '" x2="' +
+      (W - padR) +
+      '" y2="' +
+      yb +
+      '" stroke="' +
+      AXIS +
+      '" stroke-width="1.2"/>' +
+      '<line x1="' +
+      padL +
+      '" y1="' +
+      padT +
+      '" x2="' +
+      padL +
+      '" y2="' +
+      yb +
+      '" stroke="' +
+      AXIS +
+      '" stroke-width="1.2"/>' +
+      '<text transform="translate(11,' +
+      (padT + plotH / 2) +
+      ') rotate(-90)" text-anchor="middle" font-size="9" fill="' +
+      MUTED +
+      '">' +
+      esc(isReads ? c.unit + (ylog ? " (log)" : "") : "TASS") +
+      "</text>";
 
     // x ticks
     ticksFor(X.min, X.max, xlog, 4).forEach(function (v) {
       var x = X.f(v);
       if (x < padL - 2 || x > W - padR + 2) return;
-      s += '<line x1="' + x.toFixed(1) + '" y1="' + yb + '" x2="' + x.toFixed(1) + '" y2="' + (yb + 3) +
-           '" stroke="' + AXIS + '" stroke-width="1"/>' +
-           '<text x="' + x.toFixed(1) + '" y="' + (yb + 13) + '" text-anchor="middle" font-size="9" fill="#666">' +
-           esc(kfmt(v)) + "</text>";
+      s +=
+        '<line x1="' +
+        x.toFixed(1) +
+        '" y1="' +
+        yb +
+        '" x2="' +
+        x.toFixed(1) +
+        '" y2="' +
+        (yb + 3) +
+        '" stroke="' +
+        AXIS +
+        '" stroke-width="1"/>' +
+        '<text x="' +
+        x.toFixed(1) +
+        '" y="' +
+        (yb + 13) +
+        '" text-anchor="middle" font-size="9" fill="#666">' +
+        esc(kfmt(v)) +
+        "</text>";
     });
-    s += '<text x="' + ((padL + W - padR) / 2) + '" y="' + (yb + labelH + 10) +
-         '" text-anchor="middle" font-size="8.5" fill="#999">' +
-         esc(c.spike ? "spike-in load (" + c.unit + " of this organism)" : "sequencing depth (" + c.unit + ")") +
-         "</text>";
+    s +=
+      '<text x="' +
+      (padL + W - padR) / 2 +
+      '" y="' +
+      (yb + labelH + 10) +
+      '" text-anchor="middle" font-size="8.5" fill="#999">' +
+      esc(c.spike ? "spike-in load (" + c.unit + " of this organism)" : "sequencing depth (" + c.unit + ")") +
+      "</text>";
 
     // LoD rule
     if (c.lod != null) {
       var xl = X.f(c.lod);
-      s += '<line x1="' + xl.toFixed(1) + '" y1="' + padT + '" x2="' + xl.toFixed(1) + '" y2="' + yb +
-           '" stroke="' + ACCENT + '" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/>' +
-           // flip the label to the left of the rule when the rule sits near the
-           // right edge, so it never lands on the last series marker
-           '<text x="' + (xl + (xl > W - padR - 40 ? -3 : 3)).toFixed(1) + '" y="' + (padT + 8) +
-           '" text-anchor="' + (xl > W - padR - 40 ? "end" : "start") + '" font-size="8" fill="' + ACCENT +
-           '" opacity=".85">LoD</text>';
+      s +=
+        '<line x1="' +
+        xl.toFixed(1) +
+        '" y1="' +
+        padT +
+        '" x2="' +
+        xl.toFixed(1) +
+        '" y2="' +
+        yb +
+        '" stroke="' +
+        ACCENT +
+        '" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/>' +
+        // flip the label to the left of the rule when the rule sits near the
+        // right edge, so it never lands on the last series marker
+        '<text x="' +
+        (xl + (xl > W - padR - 40 ? -3 : 3)).toFixed(1) +
+        '" y="' +
+        (padT + 8) +
+        '" text-anchor="' +
+        (xl > W - padR - 40 ? "end" : "start") +
+        '" font-size="8" fill="' +
+        ACCENT +
+        '" opacity=".85">LoD</text>';
     }
 
     // expected (compositional) line — reads panel only
@@ -506,50 +690,104 @@
       var ep = series.map(function (p) {
         return X.f(p.count).toFixed(1) + "," + Y.f(c.org.expected_fraction * p.count).toFixed(1);
       });
-      s += '<polyline fill="none" stroke="' + ACCENT + '" stroke-width="1.2" stroke-dasharray="4 3" opacity=".75" points="' +
-           ep.join(" ") + '"/>';
+      s +=
+        '<polyline fill="none" stroke="' +
+        ACCENT +
+        '" stroke-width="1.2" stroke-dasharray="4 3" opacity=".75" points="' +
+        ep.join(" ") +
+        '"/>';
     }
     // detection threshold — TASS panel only
     if (!isReads && c.threshold) {
       var yt = Y.f(c.threshold);
-      s += '<line x1="' + padL + '" y1="' + yt.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + yt.toFixed(1) +
-           '" stroke="' + BAD + '" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>' +
-           '<text x="' + (W - padR - 2) + '" y="' + (yt - 3).toFixed(1) + '" text-anchor="end" font-size="8" fill="' +
-           BAD + '">cutoff ' + esc(String(c.threshold)) + "</text>";
+      s +=
+        '<line x1="' +
+        padL +
+        '" y1="' +
+        yt.toFixed(1) +
+        '" x2="' +
+        (W - padR) +
+        '" y2="' +
+        yt.toFixed(1) +
+        '" stroke="' +
+        BAD +
+        '" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>' +
+        '<text x="' +
+        (W - padR - 2) +
+        '" y="' +
+        (yt - 3).toFixed(1) +
+        '" text-anchor="end" font-size="8" fill="' +
+        BAD +
+        '">cutoff ' +
+        esc(String(c.threshold)) +
+        "</text>";
     }
 
     // observed series
     var op = series.map(function (p) {
       return X.f(p.count).toFixed(1) + "," + Y.f(+p[key] || 0).toFixed(1);
     });
-    s += '<polyline fill="none" stroke="' + GOOD + '" stroke-width="1.8" stroke-linejoin="round" points="' +
-         op.join(" ") + '"/>';
+    s +=
+      '<polyline fill="none" stroke="' +
+      GOOD +
+      '" stroke-width="1.8" stroke-linejoin="round" points="' +
+      op.join(" ") +
+      '"/>';
     series.forEach(function (p) {
-      s += '<circle cx="' + X.f(p.count).toFixed(1) + '" cy="' + Y.f(+p[key] || 0).toFixed(1) +
-           '" r="3" fill="' + (p.detected ? GOOD : "#bbb") + '" stroke="' + GOOD + '" stroke-width="1"/>';
+      s +=
+        '<circle cx="' +
+        X.f(p.count).toFixed(1) +
+        '" cy="' +
+        Y.f(+p[key] || 0).toFixed(1) +
+        '" r="3" fill="' +
+        (p.detected ? GOOD : "#bbb") +
+        '" stroke="' +
+        GOOD +
+        '" stroke-width="1"/>';
     });
 
     // the real sample
     if (c.xValue > 0) {
       var rx = X.f(c.xValue);
       var ry = Y.f(isReads ? c.orgReads : c.tass);
-      s += '<line x1="' + rx.toFixed(1) + '" y1="' + padT + '" x2="' + rx.toFixed(1) + '" y2="' + yb +
-           '" stroke="' + REAL + '" stroke-width="1" stroke-dasharray="2 2" opacity=".55"/>';
+      s +=
+        '<line x1="' +
+        rx.toFixed(1) +
+        '" y1="' +
+        padT +
+        '" x2="' +
+        rx.toFixed(1) +
+        '" y2="' +
+        yb +
+        '" stroke="' +
+        REAL +
+        '" stroke-width="1" stroke-dasharray="2 2" opacity=".55"/>';
       // predicted value at the sample's depth, as a hollow marker on the series
       var pv = isReads ? c.predictedReads : c.predictedTass;
       if (pv != null) {
         // Sized to clear the diamond so the two stay distinguishable when the
         // sample lands right on the series value (the "in line" case).
-        s += '<circle cx="' + rx.toFixed(1) + '" cy="' + Y.f(pv).toFixed(1) +
-             '" r="7" fill="none" stroke="' + GOOD + '" stroke-width="1.8"/>';
+        s +=
+          '<circle cx="' +
+          rx.toFixed(1) +
+          '" cy="' +
+          Y.f(pv).toFixed(1) +
+          '" r="7" fill="none" stroke="' +
+          GOOD +
+          '" stroke-width="1.8"/>';
       }
       var d = 5;
-      s += '<polygon points="' + [
-             rx.toFixed(1) + "," + (ry - d).toFixed(1),
-             (rx + d).toFixed(1) + "," + ry.toFixed(1),
-             rx.toFixed(1) + "," + (ry + d).toFixed(1),
-             (rx - d).toFixed(1) + "," + ry.toFixed(1),
-           ].join(" ") + '" fill="' + REAL + '" stroke="#fff" stroke-width="1"/>';
+      s +=
+        '<polygon points="' +
+        [
+          rx.toFixed(1) + "," + (ry - d).toFixed(1),
+          (rx + d).toFixed(1) + "," + ry.toFixed(1),
+          rx.toFixed(1) + "," + (ry + d).toFixed(1),
+          (rx - d).toFixed(1) + "," + ry.toFixed(1),
+        ].join(" ") +
+        '" fill="' +
+        REAL +
+        '" stroke="#fff" stroke-width="1"/>';
     }
     s += "</svg>";
     return s;
@@ -560,31 +798,44 @@
   // vertical dashed rule the diamond and ring sit on.
   function swatch(kind, color) {
     if (kind === "hdash") {
-      return '<span style="display:inline-block;width:13px;border-top:1.6px dashed ' + color +
-             ';vertical-align:3px;margin-right:4px"></span>';
+      return (
+        '<span style="display:inline-block;width:13px;border-top:1.6px dashed ' +
+        color +
+        ';vertical-align:3px;margin-right:4px"></span>'
+      );
     }
     if (kind === "ring") {
-      return '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;border:1.8px solid ' +
-             color + ';background:#fff;margin-right:4px;vertical-align:-1px"></span>';
+      return (
+        '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;border:1.8px solid ' +
+        color +
+        ';background:#fff;margin-right:4px;vertical-align:-1px"></span>'
+      );
     }
     if (kind === "diamond") {
-      return '<span style="display:inline-block;width:9px;height:9px;background:' + color +
-             ';transform:rotate(45deg);margin-right:5px;vertical-align:-1px"></span>';
+      return (
+        '<span style="display:inline-block;width:9px;height:9px;background:' +
+        color +
+        ';transform:rotate(45deg);margin-right:5px;vertical-align:-1px"></span>'
+      );
     }
     if (kind === "vdash") {
-      return '<span style="display:inline-block;width:0;height:11px;border-left:1.6px dashed ' + color +
-             ';margin:0 8px 0 4px;vertical-align:-2px"></span>';
+      return (
+        '<span style="display:inline-block;width:0;height:11px;border-left:1.6px dashed ' +
+        color +
+        ';margin:0 8px 0 4px;vertical-align:-2px"></span>'
+      );
     }
-    return '<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:' + color +
-           ';margin-right:4px;vertical-align:-1px"></span>';
+    return (
+      '<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:' +
+      color +
+      ';margin-right:4px;vertical-align:-1px"></span>'
+    );
   }
 
   function legendHTML(isReads, c) {
     var unit = (c && c.unit) || "reads";
     var spike = !!(c && c.spike);
-    var where = c && c.xValue
-      ? icomma(c.xValue) + " " + unit
-      : (spike ? "its organism load" : "its own depth");
+    var where = c && c.xValue ? icomma(c.xValue) + " " + unit : spike ? "its organism load" : "its own depth";
     var it = [[isReads ? "series observed" : "series TASS", GOOD, "solid"]];
     if (isReads) it.push([spike ? "spiked in (what was added)" : "expected from pool share", ACCENT, "hdash"]);
     else it.push(["detection cutoff", BAD, "hdash"]);
@@ -592,25 +843,34 @@
       spike
         ? "this sample, placed at the spike level its reads correspond to (" + where + ")"
         : "this sample, plotted at its sequencing depth (" + where + ")",
-      REAL, "diamond",
+      REAL,
+      "diamond",
     ]);
     it.push([
       spike
         ? "what the series gives at that same spike level — the value the diamond is measured against"
         : "what the series gives at that same depth — the value the diamond is measured against",
-      GOOD, "ring",
+      GOOD,
+      "ring",
     ]);
     it.push([
-      spike ? "the sample's equivalent spike level (both markers sit on this rule)"
-            : "the sample's depth (both markers sit on this rule)",
-      REAL, "vdash",
+      spike
+        ? "the sample's equivalent spike level (both markers sit on this rule)"
+        : "the sample's depth (both markers sit on this rule)",
+      REAL,
+      "vdash",
     ]);
     if (c && c.lod != null) it.push(["limit of detection", ACCENT, "vdash"]);
     return (
-      '<div style="font-size:.72em;color:' + MUTED + ';margin-top:4px;display:flex;flex-direction:column;gap:.18em">' +
-      it.map(function (o) {
-        return '<span style="padding-left:17px;text-indent:-17px">' + swatch(o[2], o[1]) + esc(o[0]) + "</span>";
-      }).join("") + "</div>"
+      '<div style="font-size:.72em;color:' +
+      MUTED +
+      ';margin-top:4px;display:flex;flex-direction:column;gap:.18em">' +
+      it
+        .map(function (o) {
+          return '<span style="padding-left:17px;text-indent:-17px">' + swatch(o[2], o[1]) + esc(o[0]) + "</span>";
+        })
+        .join("") +
+      "</div>"
     );
   }
 
@@ -621,37 +881,73 @@
     var rows;
     if (c.spike) {
       rows = [
-        ["Sample depth", icomma(c.depth) + " " + c.unit +
-          (c.rpr === 2 ? " (" + icomma(c.totalReads) + " reads)" : "")],
-        [(c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here"),
-          icomma(c.orgReads) + " " + c.unit],
-        ["Equivalent spike level", c.equivLevel == null ? "—" :
-          icomma(c.equivLevel) + " " + c.unit + (c.equivExtrap ? " (extrapolated)" : "")],
-        ["Limit of detection", c.lod == null ? "never detected in the series" :
-          kfmt(c.lod) + " " + c.unit + " spiked" +
-          (c.lodMargin ? " · this sample sits at " + c.lodMargin.toFixed(1) + "× that" : "")],
-        ["TASS here", c.tass.toFixed(1) + (c.predictedTass == null ? "" :
-          "  vs series " + c.predictedTass.toFixed(1) + (c.predictedTassExtrap ? " (clamped)" : ""))],
-        ["Series background", c.backgroundReads
-          ? icomma(c.backgroundReads) + " " + c.unit +
-            (c.backgroundName ? " (" + c.backgroundName + ")" : "")
-          : "—"],
+        ["Sample depth", icomma(c.depth) + " " + c.unit + (c.rpr === 2 ? " (" + icomma(c.totalReads) + " reads)" : "")],
+        [c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here", icomma(c.orgReads) + " " + c.unit],
+        [
+          "Equivalent spike level",
+          c.equivLevel == null ? "—" : icomma(c.equivLevel) + " " + c.unit + (c.equivExtrap ? " (extrapolated)" : ""),
+        ],
+        [
+          "Limit of detection",
+          c.lod == null
+            ? "never detected in the series"
+            : kfmt(c.lod) +
+              " " +
+              c.unit +
+              " spiked" +
+              (c.lodMargin ? " · this sample sits at " + c.lodMargin.toFixed(1) + "× that" : ""),
+        ],
+        [
+          "TASS here",
+          c.tass.toFixed(1) +
+            (c.predictedTass == null
+              ? ""
+              : "  vs series " + c.predictedTass.toFixed(1) + (c.predictedTassExtrap ? " (clamped)" : "")),
+        ],
+        [
+          "Series background",
+          c.backgroundReads
+            ? icomma(c.backgroundReads) + " " + c.unit + (c.backgroundName ? " (" + c.backgroundName + ")" : "")
+            : "—",
+        ],
       ];
     } else {
       rows = [
         ["Sample depth", icomma(c.depth) + " " + c.unit + (c.rpr === 2 ? " (" + icomma(c.totalReads) + " reads)" : "")],
-        [(c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here"), icomma(c.orgReads) + " " + c.unit],
-        ["Series at this depth", c.predictedReads == null ? "—" : icomma(c.predictedReads) + " " + c.unit +
-          (c.predictedExtrap ? " (extrapolated)" : "")],
-        ["Expected from pool share", c.expectedReads == null ? "—" : icomma(c.expectedReads) + " " + c.unit +
-          " (" + pct(c.org.expected_fraction, 1) + " of pool)"],
-        ["Sample vs series", c.vsSeries == null ? "—" :
-          '<b style="color:' + v.color + '">' + (c.vsSeries).toFixed(2) + "×</b>"],
+        [c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here", icomma(c.orgReads) + " " + c.unit],
+        [
+          "Series at this depth",
+          c.predictedReads == null
+            ? "—"
+            : icomma(c.predictedReads) + " " + c.unit + (c.predictedExtrap ? " (extrapolated)" : ""),
+        ],
+        [
+          "Expected from pool share",
+          c.expectedReads == null
+            ? "—"
+            : icomma(c.expectedReads) + " " + c.unit + " (" + pct(c.org.expected_fraction, 1) + " of pool)",
+        ],
+        [
+          "Sample vs series",
+          c.vsSeries == null ? "—" : '<b style="color:' + v.color + '">' + c.vsSeries.toFixed(2) + "×</b>",
+        ],
         ["Sample vs expected", c.vsExpected == null ? "—" : c.vsExpected.toFixed(2) + "×"],
-        ["TASS here", c.tass.toFixed(1) + (c.predictedTass == null ? "" :
-          "  vs series " + c.predictedTass.toFixed(1) + (c.predictedTassExtrap ? " (clamped)" : ""))],
-        ["Limit of detection", c.lod == null ? "never detected in the series" :
-          kfmt(c.lod) + " " + c.unit + (c.lodMargin ? " · this sample is " + c.lodMargin.toFixed(1) + "× that depth" : "")],
+        [
+          "TASS here",
+          c.tass.toFixed(1) +
+            (c.predictedTass == null
+              ? ""
+              : "  vs series " + c.predictedTass.toFixed(1) + (c.predictedTassExtrap ? " (clamped)" : "")),
+        ],
+        [
+          "Limit of detection",
+          c.lod == null
+            ? "never detected in the series"
+            : kfmt(c.lod) +
+              " " +
+              c.unit +
+              (c.lodMargin ? " · this sample is " + c.lodMargin.toFixed(1) + "× that depth" : ""),
+        ],
       ];
     }
     if (c.rolledUp && c.usedRollupRow) {
@@ -659,9 +955,12 @@
       // rolled-up total it accounts for.
       rows.splice(2, 0, [
         "This " + c.rowLevel.toLowerCase() + "'s reads",
-        icomma(c.rowReads) + " " + c.unit +
+        icomma(c.rowReads) +
+          " " +
+          c.unit +
           (c.rowShare != null ? " (" + pct(c.rowShare) + " of the " + c.compareLevel.toLowerCase() + ")" : "") +
-          " · TASS " + c.rowTass.toFixed(1),
+          " · TASS " +
+          c.rowTass.toFixed(1),
       ]);
     }
     if (c.rolledUp && c.org.n_members > 1 && c.org.members) {
@@ -669,10 +968,20 @@
     }
     return (
       '<table style="border-collapse:collapse;font-size:.9em">' +
-      rows.map(function (r) {
-        return '<tr><td style="padding:1px 9px 1px 0;' + lab + ';white-space:nowrap">' + esc(r[0]) +
-               '</td><td style="padding:1px 0;font-weight:600;white-space:nowrap">' + r[1] + "</td></tr>";
-      }).join("") + "</table>"
+      rows
+        .map(function (r) {
+          return (
+            '<tr><td style="padding:1px 9px 1px 0;' +
+            lab +
+            ';white-space:nowrap">' +
+            esc(r[0]) +
+            '</td><td style="padding:1px 0;font-weight:600;white-space:nowrap">' +
+            r[1] +
+            "</td></tr>"
+          );
+        })
+        .join("") +
+      "</table>"
     );
   }
 
@@ -683,25 +992,46 @@
       // Same-level comparison, but a genus series is still an assembly of its
       // simulated members — say so rather than implying one simulated taxon.
       if (c.genusSeries && c.org.n_members > 1) {
-        return "This is a genus detection. No genus was simulated directly, so the " + (c.spike ? "spike-in" : "dilution") +
-               " series is assembled from the " +
-               c.org.n_members + " simulated members of this genus (" + (c.org.members || []).join(", ") +
-               "): their reads and expected share add, and the genus counts as detected wherever any member was.";
+        return (
+          "This is a genus detection. No genus was simulated directly, so the " +
+          (c.spike ? "spike-in" : "dilution") +
+          " series is assembled from the " +
+          c.org.n_members +
+          " simulated members of this genus (" +
+          (c.org.members || []).join(", ") +
+          "): their reads and expected share add, and the genus counts as detected wherever any member was."
+        );
       }
       return null;
     }
     var lvl = c.rowLevel.toLowerCase();
     var txt =
-      "You are looking at a " + lvl + " detection. " +
-      "The " + (c.spike ? "spike-in" : "dilution") + " series exists at " + c.compareLevel.toLowerCase() + " level" +
-      (c.compareName ? " (" + c.compareName + ")" : "") + ", so this plot is the " +
-      c.compareLevel.toLowerCase() + "'s series" +
-      (c.how === "genus" ? ", rolled up from every simulated member of the genus" : "") + ".";
+      "You are looking at a " +
+      lvl +
+      " detection. " +
+      "The " +
+      (c.spike ? "spike-in" : "dilution") +
+      " series exists at " +
+      c.compareLevel.toLowerCase() +
+      " level" +
+      (c.compareName ? " (" + c.compareName + ")" : "") +
+      ", so this plot is the " +
+      c.compareLevel.toLowerCase() +
+      "'s series" +
+      (c.how === "genus" ? ", rolled up from every simulated member of the genus" : "") +
+      ".";
     txt += c.usedRollupRow
-      ? " The sample side uses this sample's " + c.compareLevel.toLowerCase() +
+      ? " The sample side uses this sample's " +
+        c.compareLevel.toLowerCase() +
         "-level row, so both sides are at the same level."
-      : " No " + c.compareLevel.toLowerCase() + "-level row exists for this sample, so the " + lvl +
-        "'s own reads are plotted — a " + lvl + " is a subset of its " + c.compareLevel.toLowerCase() +
+      : " No " +
+        c.compareLevel.toLowerCase() +
+        "-level row exists for this sample, so the " +
+        lvl +
+        "'s own reads are plotted — a " +
+        lvl +
+        " is a subset of its " +
+        c.compareLevel.toLowerCase() +
         ", so expect it to sit below the series.";
     return txt;
   }
@@ -715,8 +1045,14 @@
     return (
       '<div style="margin:4px 0;padding:5px 8px;border-radius:5px;font-size:.85em;line-height:1.35;' +
       (dark ? "background:rgba(255,255,255,.09);color:#e8e2ff" : "background:#f3efff;color:#3b2a72") +
-      ';border-left:3px solid ' + ACCENT + '">' +
-      "<b>" + esc(head) + "</b><br>" + esc(t) + "</div>"
+      ";border-left:3px solid " +
+      ACCENT +
+      '">' +
+      "<b>" +
+      esc(head) +
+      "</b><br>" +
+      esc(t) +
+      "</div>"
     );
   }
 
@@ -724,7 +1060,8 @@
     var bits = [];
     if (!c.ownSeries) bits.push("series simulated from " + c.group.parent);
     if (c.matchedByName) bits.push("matched by organism name, not taxid");
-    if (c.unitMismatch) bits.push("sample is " + c.platform + " but the series is paired — depths are not directly comparable");
+    if (c.unitMismatch)
+      bits.push("sample is " + c.platform + " but the series is paired — depths are not directly comparable");
     if (c.nGroups > 1) bits.push(c.nGroups + " series available for this organism");
     return bits.length ? bits.join(" · ") : "";
   }
@@ -735,19 +1072,32 @@
     if (!c) return "";
     var v = verdict(c);
     return (
-      '<div style="font-weight:700;margin-bottom:1px">' + esc(c.org.name) +
-      " <span style='opacity:.7;font-weight:400'>vs " + (c.spike ? "spike-in" : "dilution") + " series" +
-      (c.rolledUp ? " · " + esc(c.compareLevel) + " level" : "") + "</span></div>" +
-      '<div style="font-size:.85em;color:' + v.color + ';font-weight:600;margin-bottom:4px">' + esc(v.label) + "</div>" +
+      '<div style="font-weight:700;margin-bottom:1px">' +
+      esc(c.org.name) +
+      " <span style='opacity:.7;font-weight:400'>vs " +
+      (c.spike ? "spike-in" : "dilution") +
+      " series" +
+      (c.rolledUp ? " · " + esc(c.compareLevel) + " level" : "") +
+      "</span></div>" +
+      '<div style="font-size:.85em;color:' +
+      v.color +
+      ';font-weight:600;margin-bottom:4px">' +
+      esc(v.label) +
+      "</div>" +
       levelBanner(c, true) +
       '<div style="background:#fff;border-radius:5px;padding:2px 2px 0;margin-bottom:5px">' +
       panel(c, "observed_reads", { W: 360, plotH: 118 }) +
       '<div style="font-size:.72em;color:#555;padding:0 4px 4px">' +
-      swatch("diamond", REAL) + "this sample &nbsp; " + swatch("ring", GOOD) +
-      (c.spike ? "series at this load" : "series at this depth") + "</div>" +
+      swatch("diamond", REAL) +
+      "this sample &nbsp; " +
+      swatch("ring", GOOD) +
+      (c.spike ? "series at this load" : "series at this depth") +
+      "</div>" +
       "</div>" +
       statRows(c, true) +
-      (provenanceNote(c) ? '<div style="font-size:.78em;opacity:.6;margin-top:4px">' + esc(provenanceNote(c)) + "</div>" : "") +
+      (provenanceNote(c)
+        ? '<div style="font-size:.78em;opacity:.6;margin-top:4px">' + esc(provenanceNote(c)) + "</div>"
+        : "") +
       '<div style="font-size:.78em;opacity:.6;margin-top:3px">click for the full comparison</div>'
     );
   }
@@ -760,7 +1110,7 @@
     o.id = "insilico-cmp-overlay";
     o.setAttribute(
       "style",
-      "display:none;position:fixed;inset:0;background:rgba(20,16,40,.45);z-index:9500;align-items:center;justify-content:center;padding:2vh 2vw"
+      "display:none;position:fixed;inset:0;background:rgba(20,16,40,.45);z-index:9500;align-items:center;justify-content:center;padding:2vh 2vw",
     );
     o.innerHTML =
       '<div id="insilico-cmp-box" role="dialog" aria-modal="true" style="background:#fff;border-radius:10px;' +
@@ -782,16 +1132,29 @@
   }
 
   function seriesTable(c) {
-    var s = (c.org.series || []).slice().sort(function (a, b) { return a.count - b.count; });
+    var s = (c.org.series || []).slice().sort(function (a, b) {
+      return a.count - b.count;
+    });
     var h =
       '<table style="border-collapse:collapse;width:100%;font-size:.84em;margin-top:.3em">' +
       "<thead><tr>" +
-      [(c.spike ? "Spiked (" + c.unit + ")" : "Depth (" + c.unit + ")"),
-       "Expected", "Observed", "Recovery", "TASS", "Detected",
-       (c.spike ? "vs this sample's load" : "vs this sample")]
+      [
+        c.spike ? "Spiked (" + c.unit + ")" : "Depth (" + c.unit + ")",
+        "Expected",
+        "Observed",
+        "Recovery",
+        "TASS",
+        "Detected",
+        c.spike ? "vs this sample's load" : "vs this sample",
+      ]
         .map(function (t) {
-          return '<th style="text-align:left;padding:.35em .6em;border-bottom:2px solid ' + ACCENT +
-                 ';white-space:nowrap;color:#333">' + esc(t) + "</th>";
+          return (
+            '<th style="text-align:left;padding:.35em .6em;border-bottom:2px solid ' +
+            ACCENT +
+            ';white-space:nowrap;color:#333">' +
+            esc(t) +
+            "</th>"
+          );
         })
         .join("") +
       "</tr></thead><tbody>";
@@ -799,16 +1162,35 @@
       var rec = p.expected_reads ? p.observed_reads / p.expected_reads : null;
       var rel = c.xValue > 0 ? p.count / c.xValue : null;
       h +=
-        '<tr style="' + (i % 2 ? "background:#faf9ff" : "") + '">' +
-        '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' + icomma(p.count) + "</td>" +
-        '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' + icomma(p.expected_reads) + "</td>" +
-        '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' + icomma(p.observed_reads) + "</td>" +
-        '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' + pct(rec) + "</td>" +
-        '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' + p.tass + "</td>" +
-        '<td style="padding:.3em .6em;border-bottom:1px solid #eee;color:' + (p.detected ? GOOD : BAD) + '">' +
-          (p.detected ? "yes" : "no") + (p.detection_rate > 0 && p.detection_rate < 1 ? " (" + pct(p.detection_rate) + " of reps)" : "") + "</td>" +
-        '<td style="padding:.3em .6em;border-bottom:1px solid #eee;color:' + MUTED + '">' +
-          (rel == null ? "—" : rel.toFixed(2) + (c.spike ? "× this sample's load" : "× this sample's depth")) + "</td>" +
+        '<tr style="' +
+        (i % 2 ? "background:#faf9ff" : "") +
+        '">' +
+        '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' +
+        icomma(p.count) +
+        "</td>" +
+        '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' +
+        icomma(p.expected_reads) +
+        "</td>" +
+        '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' +
+        icomma(p.observed_reads) +
+        "</td>" +
+        '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' +
+        pct(rec) +
+        "</td>" +
+        '<td style="padding:.3em .6em;border-bottom:1px solid #eee">' +
+        p.tass +
+        "</td>" +
+        '<td style="padding:.3em .6em;border-bottom:1px solid #eee;color:' +
+        (p.detected ? GOOD : BAD) +
+        '">' +
+        (p.detected ? "yes" : "no") +
+        (p.detection_rate > 0 && p.detection_rate < 1 ? " (" + pct(p.detection_rate) + " of reps)" : "") +
+        "</td>" +
+        '<td style="padding:.3em .6em;border-bottom:1px solid #eee;color:' +
+        MUTED +
+        '">' +
+        (rel == null ? "—" : rel.toFixed(2) + (c.spike ? "× this sample's load" : "× this sample's depth")) +
+        "</td>" +
         "</tr>";
     });
     return h + "</tbody></table>";
@@ -825,42 +1207,81 @@
     if (hits.length > 1) {
       sel =
         '<select id="insilico-cmp-group" style="font-size:.85em;padding:.2em .4em;border:1px solid #ddd;border-radius:5px">' +
-        hits.map(function (h, i) {
-          return '<option value="' + i + '"' + (i === c.groupIdx ? " selected" : "") + ">" +
-                 esc(h.matchLabel + " · " + h.group.parent + " · " + h.group.platform) + "</option>";
-        }).join("") + "</select>";
+        hits
+          .map(function (h, i) {
+            return (
+              '<option value="' +
+              i +
+              '"' +
+              (i === c.groupIdx ? " selected" : "") +
+              ">" +
+              esc(h.matchLabel + " · " + h.group.parent + " · " + h.group.platform) +
+              "</option>"
+            );
+          })
+          .join("") +
+        "</select>";
     }
     body.innerHTML =
       '<div style="position:relative;z-index:8;display:flex;flex-wrap:wrap;align-items:baseline;' +
       'justify-content:space-between;gap:.6em;background:#fff">' +
-      '<div><span style="font-size:1.1em;font-weight:700;color:' + ACCENT + '">' + esc(c.org.name) + "</span>" +
-      '<span style="color:' + MUTED + ';font-size:.85em"> in ' + esc(c.sample) +
-      (c.spike ? " vs the in-silico spike-in series" : " vs the in-silico dilution series") + "</span></div>" +
-      '<div style="display:flex;gap:.5em;align-items:center">' + sel +
+      '<div><span style="font-size:1.1em;font-weight:700;color:' +
+      ACCENT +
+      '">' +
+      esc(c.org.name) +
+      "</span>" +
+      '<span style="color:' +
+      MUTED +
+      ';font-size:.85em"> in ' +
+      esc(c.sample) +
+      (c.spike ? " vs the in-silico spike-in series" : " vs the in-silico dilution series") +
+      "</span></div>" +
+      '<div style="display:flex;gap:.5em;align-items:center">' +
+      sel +
       '<button type="button" id="insilico-cmp-close" style="border:1px solid #ddd;background:#fff;border-radius:6px;padding:.25em .6em;cursor:pointer">Close</button></div></div>' +
-      '<div style="color:' + v.color + ';font-weight:600;margin:.3em 0 .1em">' + esc(v.label) + "</div>" +
+      '<div style="color:' +
+      v.color +
+      ';font-weight:600;margin:.3em 0 .1em">' +
+      esc(v.label) +
+      "</div>" +
       levelBanner(c, false) +
-      (provenanceNote(c) ? '<div style="font-size:.8em;color:' + MUTED + '">' + esc(provenanceNote(c)) + "</div>" : "") +
+      (provenanceNote(c)
+        ? '<div style="font-size:.8em;color:' + MUTED + '">' + esc(provenanceNote(c)) + "</div>"
+        : "") +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:.9em;margin-top:.8em">' +
       '<div style="border:1px solid #eee;border-radius:8px;padding:.6em .7em">' +
       '<div style="font-size:.85em;font-weight:600;color:#333;margin-bottom:.2em">' +
-      (c.spike ? "Reads vs spike-in load" : "Reads vs depth") + "</div>" +
-      panel(c, "observed_reads", { W: 420, plotH: 150 }) + legendHTML(true, c) + "</div>" +
+      (c.spike ? "Reads vs spike-in load" : "Reads vs depth") +
+      "</div>" +
+      panel(c, "observed_reads", { W: 420, plotH: 150 }) +
+      legendHTML(true, c) +
+      "</div>" +
       '<div style="border:1px solid #eee;border-radius:8px;padding:.6em .7em">' +
       '<div style="font-size:.85em;font-weight:600;color:#333;margin-bottom:.2em">' +
-      (c.spike ? "TASS vs spike-in load" : "TASS vs depth") + "</div>" +
-      panel(c, "tass", { W: 420, plotH: 150 }) + legendHTML(false, c) + "</div>" +
+      (c.spike ? "TASS vs spike-in load" : "TASS vs depth") +
+      "</div>" +
+      panel(c, "tass", { W: 420, plotH: 150 }) +
+      legendHTML(false, c) +
+      "</div>" +
       '<div style="border:1px solid #eee;border-radius:8px;padding:.6em .7em">' +
       '<div style="font-size:.85em;font-weight:600;color:#333;margin-bottom:.35em">This sample on the series</div>' +
-      '<div style="position:relative">' + statRows(c, false) + "</div></div></div>" +
+      '<div style="position:relative">' +
+      statRows(c, false) +
+      "</div></div></div>" +
       '<div style="margin-top:1em;font-size:.9em;font-weight:600;color:#333">' +
-      (c.spike ? "Spike-in series datapoints" : "Dilution series datapoints") + "</div>" +
-      '<div style="position:relative;overflow-x:auto">' + seriesTable(c) + "</div>";
+      (c.spike ? "Spike-in series datapoints" : "Dilution series datapoints") +
+      "</div>" +
+      '<div style="position:relative;overflow-x:auto">' +
+      seriesTable(c) +
+      "</div>";
     o.style.display = "flex";
     var btn = document.getElementById("insilico-cmp-close");
     if (btn) btn.addEventListener("click", closeModal);
     var gs = document.getElementById("insilico-cmp-group");
-    if (gs) gs.addEventListener("change", function () { openInsilicoCompare(row, +gs.value); });
+    if (gs)
+      gs.addEventListener("change", function () {
+        openInsilicoCompare(row, +gs.value);
+      });
   }
 
   // ── badge ─────────────────────────────────────────────────────────────────
@@ -873,14 +1294,29 @@
     // level shift is visible before the user even hovers.
     var rung = c.how === "genus" ? " gen" : c.how === "species" ? " sp" : "";
     var tip = c.rolledUp
-      ? "In-silico dilution series available at " + c.compareLevel + " level (this row is " +
-        c.rowLevel + ") — hover to compare, click for detail"
+      ? "In-silico dilution series available at " +
+        c.compareLevel +
+        " level (this row is " +
+        c.rowLevel +
+        ") — hover to compare, click for detail"
       : "In-silico dilution series available — hover to compare, click for detail";
     return (
       '<span class="insilico-badge" style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;' +
       "padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;cursor:pointer;" +
-      "background:" + v.color + "1a;color:" + v.color + ";border:1px solid " + v.color + '55" ' +
-      'title="' + esc(tip) + '">&#x2697;' + esc(rung) + " " + arrow + "</span>"
+      "background:" +
+      v.color +
+      "1a;color:" +
+      v.color +
+      ";border:1px solid " +
+      v.color +
+      '55" ' +
+      'title="' +
+      esc(tip) +
+      '">&#x2697;' +
+      esc(rung) +
+      " " +
+      arrow +
+      "</span>"
     );
   }
 

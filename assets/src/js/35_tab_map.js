@@ -743,6 +743,10 @@ function _syncMapFullscreenBtn() {
   try {
     if (typeof window._ttRegionOnFullscreen === "function") window._ttRegionOnFullscreen(on);
   } catch (e) {}
+  // The export dialog lives on <body>; full screen hides it unless it moves in.
+  try {
+    if (typeof window._ttMapExportOnFullscreen === "function") window._ttMapExportOnFullscreen(on);
+  } catch (e) {}
   // Leaflet measures on layout, so it has to be told after the box changes.
   if (_leafletMap) {
     setTimeout(() => _leafletMap.invalidateSize(), 60);
@@ -843,6 +847,10 @@ function _doInitMap() {
   _applyBasemap(_savedBasemapId() || _BASEMAPS[0].id);
   _addBasemapControl();
   _addMapFullscreenControl();
+
+  // Download button for the map (see 45_map_export.js). Added before the
+  // cluster control so it sits at the top of the top-right control stack.
+  if (typeof _ensureMapExportControl === "function") _ensureMapExportControl();
 
   _markerLayer = _makeMarkerLayer();
   _markerLayer.addTo(_leafletMap);

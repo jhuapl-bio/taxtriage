@@ -74,7 +74,11 @@ process SPIKE_INTO_BACKGROUND {
     # <accession>[_R1|_R2].fastq.gz by SPIKEIN_POOL.
     POOL_ARGS=""
     for acc in \$(cut -f3 ${spikein_tsv} | tail -n +2 | sort -u); do
-        safe=\$(echo "\$acc" | tr -c 'A-Za-z0-9._-' '_')
+        # printf, NOT echo: echo appends a newline, tr -c maps it (it is outside the
+        # allowed set) to '_', and the name gains a trailing underscore — so
+        # GCF_000859985.2 became GCF_000859985.2_ and never matched the pool file
+        # SPIKEIN_POOL wrote from the Groovy-side sanitisation.
+        safe=\$(printf '%s' "\$acc" | tr -c 'A-Za-z0-9._-' '_')
         if [ "${paired}" = "true" ]; then
             p1=pools/\${safe}_R1.fastq.gz
             p2=pools/\${safe}_R2.fastq.gz

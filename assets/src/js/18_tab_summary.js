@@ -1139,9 +1139,7 @@ function _renderSummaryTable(fd) {
         r,
       )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${_belowCutoffBadgeHTML(
         r,
-      )}${_subThresholdBadgeHTML(r)}${
-        typeof insilicoBadgeHTML === "function" ? insilicoBadgeHTML(r) : ""
-      }</span>` +
+      )}${_subThresholdBadgeHTML(r)}${typeof insilicoBadgeHTML === "function" ? insilicoBadgeHTML(r) : ""}</span>` +
       // Star sits inline, right after the organism text.
       `${_watchStarHTML(r, true, null, true)}` +
       // Right-anchored group: level badge (flush right), then the pin hint

@@ -694,7 +694,11 @@
                 <input type="color" id="hm-cell-color" value="#ffffff" /> Label colour
               </label>
             </div>
-            <div id="heatmap-svg-wrap" style="overflow-x: auto; overflow-y: visible"></div>
+            <div
+              id="heatmap-svg-wrap"
+              class="hm-freeze-scroll"
+              style="overflow: auto; max-height: calc(100vh - 250px); min-height: 340px; overscroll-behavior: contain"
+            ></div>
           </div>
         </div>
 
@@ -807,10 +811,11 @@
                 <option value="sqrt">Sqrt</option>
               </select>
             </div>
-            <!-- Legend is a collapsed count by default (see drawCoverage); the
-                 chips inside it are what needs the flex row, not this wrapper. -->
-            <div id="coverage-legend-wrap" style="margin: 0.5em 0 0.2em; font-size: 0.82em"></div>
             <div id="coverage-svg-wrap"></div>
+            <!-- Colour legend sits BELOW the plot and is a collapsed count by
+                 default (see _renderCovLegend); the one-row-per-sample list
+                 inside it carries its own layout, not this wrapper. -->
+            <div id="coverage-legend-wrap" style="margin: 0.4em 0 0.2em; font-size: 0.82em"></div>
           </div>
         </div>
 
@@ -3110,7 +3115,7 @@
         <div class="pane" id="pane-insilico">
           <div id="insilico-params-panel" class="chart-card"></div>
           <div id="insilico-groups"></div>
-          <div id="insilico-empty" style="display:none; padding:2em; color:#777">
+          <div id="insilico-empty" style="display: none; padding: 2em; color: #777">
             No in-silico subsampling datasets were found in this run. Enable
             <code>--sim_subsample</code> to generate spike-in / dilution-series datasets.
           </div>
@@ -4221,6 +4226,7 @@
     <script src="src/js/42_sample_flags_ui.js"></script>
     <script src="src/js/43_multiselect.js"></script>
     <script src="src/js/44_map_regions.js"></script>
+    <script src="src/js/45_map_export.js"></script>
     <script src="src/js/45_tab_insilico.js"></script>
     <script src="src/js/46_insilico_compare.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->

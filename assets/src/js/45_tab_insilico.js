@@ -155,14 +155,19 @@
     var s = document.createElement("style");
     s.id = "insilico-tab-style";
     s.textContent =
-      ".insil-band{fill:" + ACCENT + ";opacity:0;cursor:crosshair}" +
+      ".insil-band{fill:" +
+      ACCENT +
+      ";opacity:0;cursor:crosshair}" +
       ".insil-band:hover{opacity:.07}" +
       ".insil-pt{cursor:crosshair}" +
       ".insil-pt:hover{stroke:#000;stroke-width:1.4}" +
       ".insil-row{cursor:crosshair}" +
       ".insil-row:hover{background:#f1ecff !important}" +
       ".insil-scroll{overflow-x:auto;overflow-y:hidden}" +
-      ".insil-exp-btn{border:1px solid " + ACCENT_L + ";background:#fff;color:" + ACCENT +
+      ".insil-exp-btn{border:1px solid " +
+      ACCENT_L +
+      ";background:#fff;color:" +
+      ACCENT +
       ";border-radius:6px;padding:.3em .7em;font-size:.8em;font-weight:600;cursor:pointer}" +
       ".insil-exp-btn:hover{background:#f3efff}";
     document.head.appendChild(s);
@@ -222,21 +227,61 @@
     ticks.forEach(function (t) {
       var y = f.yb - t.p * f.plotH;
       s +=
-        '<line x1="' + f.padL + '" y1="' + y.toFixed(1) + '" x2="' + (f.W - f.padR) +
-        '" y2="' + y.toFixed(1) + '" stroke="' + GRID + '" stroke-width="1"/>' +
-        '<text x="' + (f.padL - 6) + '" y="' + (y + 3).toFixed(1) +
-        '" text-anchor="end" font-size="9" fill="' + MUTED + '">' + esc(labelFn(t.v)) + "</text>";
+        '<line x1="' +
+        f.padL +
+        '" y1="' +
+        y.toFixed(1) +
+        '" x2="' +
+        (f.W - f.padR) +
+        '" y2="' +
+        y.toFixed(1) +
+        '" stroke="' +
+        GRID +
+        '" stroke-width="1"/>' +
+        '<text x="' +
+        (f.padL - 6) +
+        '" y="' +
+        (y + 3).toFixed(1) +
+        '" text-anchor="end" font-size="9" fill="' +
+        MUTED +
+        '">' +
+        esc(labelFn(t.v)) +
+        "</text>";
     });
     // baseline
     s +=
-      '<line x1="' + f.padL + '" y1="' + f.yb + '" x2="' + (f.W - f.padR) +
-      '" y2="' + f.yb + '" stroke="' + AXIS + '" stroke-width="1.2"/>' +
-      '<line x1="' + f.padL + '" y1="' + f.padT + '" x2="' + f.padL +
-      '" y2="' + f.yb + '" stroke="' + AXIS + '" stroke-width="1.2"/>';
+      '<line x1="' +
+      f.padL +
+      '" y1="' +
+      f.yb +
+      '" x2="' +
+      (f.W - f.padR) +
+      '" y2="' +
+      f.yb +
+      '" stroke="' +
+      AXIS +
+      '" stroke-width="1.2"/>' +
+      '<line x1="' +
+      f.padL +
+      '" y1="' +
+      f.padT +
+      '" x2="' +
+      f.padL +
+      '" y2="' +
+      f.yb +
+      '" stroke="' +
+      AXIS +
+      '" stroke-width="1.2"/>';
     if (title) {
       s +=
-        '<text transform="translate(11,' + (f.padT + f.plotH / 2) + ') rotate(-90)" text-anchor="middle" ' +
-        'font-size="9" fill="' + MUTED + '">' + esc(title) + "</text>";
+        '<text transform="translate(11,' +
+        (f.padT + f.plotH / 2) +
+        ') rotate(-90)" text-anchor="middle" ' +
+        'font-size="9" fill="' +
+        MUTED +
+        '">' +
+        esc(title) +
+        "</text>";
     }
     return s;
   }
@@ -247,20 +292,37 @@
     var s = "";
     labels.forEach(function (lab, i) {
       s +=
-        '<text x="' + cx(f, i).toFixed(1) + '" y="' + y +
-        '" text-anchor="middle" font-size="9" fill="#666">' + esc(lab) + "</text>";
+        '<text x="' +
+        cx(f, i).toFixed(1) +
+        '" y="' +
+        y +
+        '" text-anchor="middle" font-size="9" fill="#666">' +
+        esc(lab) +
+        "</text>";
     });
     if (title) {
       s +=
-        '<text x="' + (f.padL + f.innerW / 2) + '" y="' + (y + 12) +
-        '" text-anchor="middle" font-size="8.5" fill="#999">' + esc(title) + "</text>";
+        '<text x="' +
+        (f.padL + f.innerW / 2) +
+        '" y="' +
+        (y + 12) +
+        '" text-anchor="middle" font-size="8.5" fill="#999">' +
+        esc(title) +
+        "</text>";
     }
     return s;
   }
 
   function svgOpen(f) {
     return (
-      '<svg viewBox="0 0 ' + f.W + " " + f.H + '" width="' + f.W + '" height="' + f.H +
+      '<svg viewBox="0 0 ' +
+      f.W +
+      " " +
+      f.H +
+      '" width="' +
+      f.W +
+      '" height="' +
+      f.H +
       '" role="img" style="display:block">'
     );
   }
@@ -271,7 +333,9 @@
       style: "position:relative;border:1px solid #eee;border-radius:8px;padding:.55em .65em;background:#fff",
     });
     wrap.appendChild(
-      el("div", { class: "chart-title", style: "font-size:.85em;font-weight:600;color:#333;margin-bottom:.15em" }, [title])
+      el("div", { class: "chart-title", style: "font-size:.85em;font-weight:600;color:#333;margin-bottom:.15em" }, [
+        title,
+      ]),
     );
     if (hint) wrap.appendChild(el("div", { style: "font-size:.72em;color:" + MUTED + ";margin-bottom:.3em" }, [hint]));
     wrap.appendChild(el("div", { class: "insil-scroll", html: svgHtml }));
@@ -287,9 +351,10 @@
           html:
             '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px;' +
             (it.outline ? "border:1.4px solid " + it.color : "background:" + it.color) +
-            '"></span>' + esc(it.label),
+            '"></span>' +
+            esc(it.label),
         });
-      })
+      }),
     );
   }
 
@@ -301,7 +366,7 @@
     host.innerHTML = "";
     host.setAttribute(
       "style",
-      "background:#faf9ff;border:1px solid #e6e1f5;border-radius:8px;padding:1em 1.2em;margin-bottom:1.1em"
+      "background:#faf9ff;border:1px solid #e6e1f5;border-radius:8px;padding:1em 1.2em;margin-bottom:1.1em",
     );
     var head = el("div", {
       style: "display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.6em",
@@ -310,14 +375,13 @@
       el("div", {
         class: "chart-title",
         html: '<i class="fas fa-flask"></i> In-Silico Subsampling — parameters used',
-      })
+      }),
     );
     head.appendChild(exportBar(suite));
     host.appendChild(head);
 
     var grid = el("div", {
-      style:
-        "display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.5em .9em;margin-top:.6em",
+      style: "display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.5em .9em;margin-top:.6em",
     });
     var keys = Object.keys(params);
     var ordered = Object.keys(PARAM_LABELS).filter(function (k) {
@@ -340,12 +404,12 @@
       cell.appendChild(
         el("span", { style: "font-size:.72em;color:" + MUTED + ";text-transform:uppercase;letter-spacing:.03em" }, [
           PARAM_LABELS[k] || k,
-        ])
+        ]),
       );
       cell.appendChild(
         el("span", { style: "font-size:.95em;font-weight:600;color:#222;margin-top:2px" }, [
           v == null || v === "" ? "—" : String(v),
-        ])
+        ]),
       );
       grid.appendChild(cell);
     });
@@ -400,19 +464,51 @@
 
   function datasetRows(suite) {
     var rows = [
-      ["Parent", "Platform", "Mode", "Read unit", "Dataset", "Replicate", "Target", "Actual",
-       "Master total", "Seed", "Observed aligned", "Recovery", "Detected", "TP", "FP", "FN",
-       "Precision", "Recall", "F1"],
+      [
+        "Parent",
+        "Platform",
+        "Mode",
+        "Read unit",
+        "Dataset",
+        "Replicate",
+        "Target",
+        "Actual",
+        "Master total",
+        "Seed",
+        "Observed aligned",
+        "Recovery",
+        "Detected",
+        "TP",
+        "FP",
+        "FN",
+        "Precision",
+        "Recall",
+        "F1",
+      ],
     ];
     (suite.groups || []).forEach(function (g) {
       (g.datasets || []).forEach(function (d) {
         var rec = ratio(d.observed_total_reads, d.actual_count);
         rows.push([
-          g.parent, g.platform, g.mode, g.read_unit || "reads", d.id, d.replicate,
-          d.target_count, d.actual_count, d.total_master_reads == null ? "" : d.total_master_reads,
-          d.seed == null ? "" : d.seed, d.observed_total_reads,
-          rec == null ? "" : rec.toFixed(4), d.n_detected, d.tp, d.fp, d.fn,
-          d.precision, d.recall, d.f1,
+          g.parent,
+          g.platform,
+          g.mode,
+          g.read_unit || "reads",
+          d.id,
+          d.replicate,
+          d.target_count,
+          d.actual_count,
+          d.total_master_reads == null ? "" : d.total_master_reads,
+          d.seed == null ? "" : d.seed,
+          d.observed_total_reads,
+          rec == null ? "" : rec.toFixed(4),
+          d.n_detected,
+          d.tp,
+          d.fp,
+          d.fn,
+          d.precision,
+          d.recall,
+          d.f1,
         ]);
       });
     });
@@ -421,9 +517,26 @@
 
   function organismRows(suite) {
     var rows = [
-      ["Parent", "Platform", "Level", "Taxid", "Organism", "Members", "Category", "Expected fraction",
-       "LoD count", "Target count", "Expected reads", "Observed reads", "Recovery", "log2 FC", "TASS",
-       "Detection rate", "Detected", "Replicates"],
+      [
+        "Parent",
+        "Platform",
+        "Level",
+        "Taxid",
+        "Organism",
+        "Members",
+        "Category",
+        "Expected fraction",
+        "LoD count",
+        "Target count",
+        "Expected reads",
+        "Observed reads",
+        "Recovery",
+        "log2 FC",
+        "TASS",
+        "Detection rate",
+        "Detected",
+        "Replicates",
+      ],
     ];
     (suite.groups || []).forEach(function (g) {
       // Export what is on screen: the rollup the user is looking at.
@@ -432,11 +545,24 @@
           var rec = ratio(s.observed_reads, s.expected_reads);
           var lfc = log2fc(s.observed_reads, s.expected_reads);
           rows.push([
-            g.parent, g.platform, o.rolled ? "Genus" : (g.level || "Strain"), o.taxid, o.name,
-            o.members ? o.members.join("; ") : o.name, o.category, o.expected_fraction,
-            o.lod_count == null ? "" : o.lod_count, s.count, s.expected_reads, s.observed_reads,
-            rec == null ? "" : rec.toFixed(4), lfc == null ? "" : lfc.toFixed(3),
-            s.tass, s.detection_rate, s.detected ? "yes" : "no", s.n_reps,
+            g.parent,
+            g.platform,
+            o.rolled ? "Genus" : g.level || "Strain",
+            o.taxid,
+            o.name,
+            o.members ? o.members.join("; ") : o.name,
+            o.category,
+            o.expected_fraction,
+            o.lod_count == null ? "" : o.lod_count,
+            s.count,
+            s.expected_reads,
+            s.observed_reads,
+            rec == null ? "" : rec.toFixed(4),
+            lfc == null ? "" : lfc.toFixed(3),
+            s.tass,
+            s.detection_rate,
+            s.detected ? "yes" : "no",
+            s.n_reps,
           ]);
         });
       });
@@ -502,9 +628,7 @@
 
   function xTitleFor(group) {
     var unit = group.read_unit || "reads";
-    return isSpike(group)
-      ? "spike-in load (" + unit + " added to the background)"
-      : "target depth (" + unit + ")";
+    return isSpike(group) ? "spike-in load (" + unit + " added to the background)" : "target depth (" + unit + ")";
   }
 
   function xNounFor(group) {
@@ -519,7 +643,7 @@
           "display:inline-block;padding:1px 7px;border-radius:10px;font-size:.78em;font-weight:600;color:#fff;background:" +
           color,
       },
-      [txt]
+      [txt],
     );
   }
 
@@ -563,8 +687,8 @@
               ACCENT +
               ";white-space:nowrap;font-size:.92em;color:#333",
           },
-          [h]
-        )
+          [h],
+        ),
       );
     });
     thead.appendChild(hr);
@@ -580,8 +704,8 @@
         "data-tt",
         encodeURIComponent(
           tipBody(d.id, group.parent + " · " + group.platform + " · " + group.mode + " · rep " + d.replicate, [
-            [(spike ? "Spike requested" : "Target depth"), fmt(d.target_count) + " " + unit],
-            [(spike ? "Spike delivered" : "Actual depth"), fmt(d.actual_count) + " " + unit],
+            [spike ? "Spike requested" : "Target depth", fmt(d.target_count) + " " + unit],
+            [spike ? "Spike delivered" : "Actual depth", fmt(d.actual_count) + " " + unit],
             d.total_master_reads != null ? ["Master pool", fmt(d.total_master_reads) + " " + unit] : null,
             d.seed != null ? ["Seed", String(d.seed)] : null,
             ["Observed aligned", fmt(d.observed_total_reads) + " " + unit],
@@ -592,13 +716,9 @@
             ["False negatives", String(d.fn)],
             ["Precision", d.precision.toFixed(3)],
             ["Recall", d.recall.toFixed(3)],
-            [
-              "F1",
-              '<span style="color:' + f1Color(d.f1) + '">' + d.f1.toFixed(3) + "</span>",
-              true,
-            ],
-          ])
-        )
+            ["F1", '<span style="color:' + f1Color(d.f1) + '">' + d.f1.toFixed(3) + "</span>", true],
+          ]),
+        ),
       );
       var shortId = "c" + d.target_count + " · r" + d.replicate;
       var cells = [
@@ -619,7 +739,7 @@
         tr.appendChild(
           el("td", { style: "padding:.35em .6em;border-bottom:1px solid #eee;white-space:nowrap" }, [
             typeof c === "string" ? document.createTextNode(c) : c,
-          ])
+          ]),
         );
       });
       tb.appendChild(tr);
@@ -635,44 +755,85 @@
     (group.datasets || []).forEach(function (d) {
       var c = d.target_count;
       if (!m[c]) {
-        m[c] = { count: c, n: 0, tp: 0, fp: 0, fn: 0, precision: 0, recall: 0, f1: 0,
-                 observed: 0, actual: 0, detected: 0, f1s: [] };
+        m[c] = {
+          count: c,
+          n: 0,
+          tp: 0,
+          fp: 0,
+          fn: 0,
+          precision: 0,
+          recall: 0,
+          f1: 0,
+          observed: 0,
+          actual: 0,
+          detected: 0,
+          f1s: [],
+        };
       }
       var a = m[c];
       a.n++;
-      a.tp += d.tp; a.fp += d.fp; a.fn += d.fn;
-      a.precision += d.precision; a.recall += d.recall; a.f1 += d.f1;
+      a.tp += d.tp;
+      a.fp += d.fp;
+      a.fn += d.fn;
+      a.precision += d.precision;
+      a.recall += d.recall;
+      a.f1 += d.f1;
       a.f1s.push(d.f1);
       a.observed += d.observed_total_reads;
       a.actual += d.actual_count;
       a.detected += d.n_detected;
     });
     return Object.keys(m)
-      .map(function (k) { return m[k]; })
-      .sort(function (a, b) { return a.count - b.count; })
+      .map(function (k) {
+        return m[k];
+      })
+      .sort(function (a, b) {
+        return a.count - b.count;
+      })
       .map(function (a) {
         var sd = 0;
         if (a.f1s.length > 1) {
           var mu = a.f1 / a.n;
-          sd = Math.sqrt(a.f1s.reduce(function (s, v) { return s + (v - mu) * (v - mu); }, 0) / (a.f1s.length - 1));
+          sd = Math.sqrt(
+            a.f1s.reduce(function (s, v) {
+              return s + (v - mu) * (v - mu);
+            }, 0) /
+              (a.f1s.length - 1),
+          );
         }
         return {
-          count: a.count, n: a.n,
-          tp: a.tp / a.n, fp: a.fp / a.n, fn: a.fn / a.n,
-          precision: a.precision / a.n, recall: a.recall / a.n, f1: a.f1 / a.n, f1_sd: sd,
-          observed: a.observed / a.n, actual: a.actual / a.n, detected: a.detected / a.n,
+          count: a.count,
+          n: a.n,
+          tp: a.tp / a.n,
+          fp: a.fp / a.n,
+          fn: a.fn / a.n,
+          precision: a.precision / a.n,
+          recall: a.recall / a.n,
+          f1: a.f1 / a.n,
+          f1_sd: sd,
+          observed: a.observed / a.n,
+          actual: a.actual / a.n,
+          detected: a.detected / a.n,
         };
       });
   }
 
   // Chart 1 — precision / recall / F1 vs sequencing depth.
   function metricChart(agg, group) {
-    var labels = agg.map(function (a) { return kfmt(a.count); });
-    var ticks = [0, 0.25, 0.5, 0.75, 1].map(function (v) { return { v: v, p: v }; });
-    var yLab = function (v) { return (v * 100).toFixed(0) + "%"; };
+    var labels = agg.map(function (a) {
+      return kfmt(a.count);
+    });
+    var ticks = [0, 0.25, 0.5, 0.75, 1].map(function (v) {
+      return { v: v, p: v };
+    });
+    var yLab = function (v) {
+      return (v * 100).toFixed(0) + "%";
+    };
     var f = axisFrame(agg.length, labels, {
       plotH: 132,
-      yLabels: ticks.map(function (t) { return yLab(t.v); }),
+      yLabels: ticks.map(function (t) {
+        return yLab(t.v);
+      }),
       yTitle: true,
       xTitle: true,
     });
@@ -688,11 +849,24 @@
         return [cx(f, i), f.yb - Math.max(0, Math.min(1, a[sd.key])) * f.plotH];
       });
       s +=
-        '<polyline fill="none" stroke="' + sd.color + '" stroke-width="1.8" stroke-linejoin="round" points="' +
-        pts.map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" ") + '"/>';
+        '<polyline fill="none" stroke="' +
+        sd.color +
+        '" stroke-width="1.8" stroke-linejoin="round" points="' +
+        pts
+          .map(function (p) {
+            return p[0].toFixed(1) + "," + p[1].toFixed(1);
+          })
+          .join(" ") +
+        '"/>';
       pts.forEach(function (p) {
-        s += '<circle class="insil-pt" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) +
-             '" r="3.2" fill="' + sd.color + '"/>';
+        s +=
+          '<circle class="insil-pt" cx="' +
+          p[0].toFixed(1) +
+          '" cy="' +
+          p[1].toFixed(1) +
+          '" r="3.2" fill="' +
+          sd.color +
+          '"/>';
       });
     });
     // band hit-areas last so they sit above the marks
@@ -707,77 +881,130 @@
           a.n > 1 ? ["F1 SD", a.f1_sd.toFixed(3)] : null,
           ["TP / FP / FN", a.tp.toFixed(1) + " / " + a.fp.toFixed(1) + " / " + a.fn.toFixed(1)],
           ["Organisms detected", a.detected.toFixed(1)],
-        ]
+        ],
       );
-      s += '<rect class="insil-band" x="' + (f.padL + f.band * i).toFixed(1) + '" y="' + f.padT +
-           '" width="' + f.band.toFixed(1) + '" height="' + (f.plotH + f.extraB) + '"' + tipAttr(tip) + "/>";
+      s +=
+        '<rect class="insil-band" x="' +
+        (f.padL + f.band * i).toFixed(1) +
+        '" y="' +
+        f.padT +
+        '" width="' +
+        f.band.toFixed(1) +
+        '" height="' +
+        (f.plotH + f.extraB) +
+        '"' +
+        tipAttr(tip) +
+        "/>";
     });
     s += xLabels(f, labels, xTitleFor(group));
     s += "</svg>";
-    var card = chartCard(isSpike(group) ? "Performance vs spike-in load" : "Performance vs depth",
-      "Mean across replicates at each " + xNounFor(group) + ".", s);
+    var card = chartCard(
+      isSpike(group) ? "Performance vs spike-in load" : "Performance vs depth",
+      "Mean across replicates at each " + xNounFor(group) + ".",
+      s,
+    );
     card.appendChild(
       legend([
         { label: "Precision", color: "#1565c0" },
         { label: "Recall", color: "#ef6c00" },
         { label: "F1", color: ACCENT },
-      ])
+      ]),
     );
     return card;
   }
 
   // Chart 2 — detection composition (TP / FP / FN) vs depth, stacked.
   function compositionChart(agg, group) {
-    var labels = agg.map(function (a) { return kfmt(a.count); });
+    var labels = agg.map(function (a) {
+      return kfmt(a.count);
+    });
     var maxV = 1;
-    agg.forEach(function (a) { maxV = Math.max(maxV, a.tp + a.fp + a.fn); });
-    var ticks = [0, 0.5, 1].map(function (p) { return { v: maxV * p, p: p }; });
+    agg.forEach(function (a) {
+      maxV = Math.max(maxV, a.tp + a.fp + a.fn);
+    });
+    var ticks = [0, 0.5, 1].map(function (p) {
+      return { v: maxV * p, p: p };
+    });
     var f = axisFrame(agg.length, labels, {
       plotH: 132,
-      yLabels: ticks.map(function (t) { return kfmt(t.v); }),
+      yLabels: ticks.map(function (t) {
+        return kfmt(t.v);
+      }),
       yTitle: true,
       xTitle: true,
     });
-    var sc = function (v) { return (v / maxV) * f.plotH; };
+    var sc = function (v) {
+      return (v / maxV) * f.plotH;
+    };
     var s = svgOpen(f);
-    s += yAxis(f, ticks, function (v) { return kfmt(v); }, "organisms");
+    s += yAxis(
+      f,
+      ticks,
+      function (v) {
+        return kfmt(v);
+      },
+      "organisms",
+    );
     var bw = Math.min(26, f.band * 0.5);
     agg.forEach(function (a, i) {
       var x = cx(f, i) - bw / 2;
       var y = f.yb;
-      [["tp", GOOD], ["fp", BAD], ["fn", "#9e9e9e"]].forEach(function (p) {
+      [
+        ["tp", GOOD],
+        ["fp", BAD],
+        ["fn", "#9e9e9e"],
+      ].forEach(function (p) {
         var h = sc(a[p[0]]);
         if (h <= 0) return;
         y -= h;
-        s += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) +
-             '" height="' + h.toFixed(1) + '" fill="' + p[1] + '" opacity=".85"/>';
+        s +=
+          '<rect x="' +
+          x.toFixed(1) +
+          '" y="' +
+          y.toFixed(1) +
+          '" width="' +
+          bw.toFixed(1) +
+          '" height="' +
+          h.toFixed(1) +
+          '" fill="' +
+          p[1] +
+          '" opacity=".85"/>';
       });
-      var tip = tipBody(
-        kfmt(a.count) + " " + (group.read_unit || "reads"),
-        group.parent + " · " + group.platform,
-        [
-          ["True positives", a.tp.toFixed(1)],
-          ["False positives", a.fp.toFixed(1)],
-          ["False negatives", a.fn.toFixed(1)],
-          ["Total detected", a.detected.toFixed(1)],
-          ["Precision", a.precision.toFixed(3)],
-          ["Recall", a.recall.toFixed(3)],
-          ["Replicates", String(a.n)],
-        ]
-      );
-      s += '<rect class="insil-band" x="' + (f.padL + f.band * i).toFixed(1) + '" y="' + f.padT +
-           '" width="' + f.band.toFixed(1) + '" height="' + f.plotH + '"' + tipAttr(tip) + "/>";
+      var tip = tipBody(kfmt(a.count) + " " + (group.read_unit || "reads"), group.parent + " · " + group.platform, [
+        ["True positives", a.tp.toFixed(1)],
+        ["False positives", a.fp.toFixed(1)],
+        ["False negatives", a.fn.toFixed(1)],
+        ["Total detected", a.detected.toFixed(1)],
+        ["Precision", a.precision.toFixed(3)],
+        ["Recall", a.recall.toFixed(3)],
+        ["Replicates", String(a.n)],
+      ]);
+      s +=
+        '<rect class="insil-band" x="' +
+        (f.padL + f.band * i).toFixed(1) +
+        '" y="' +
+        f.padT +
+        '" width="' +
+        f.band.toFixed(1) +
+        '" height="' +
+        f.plotH +
+        '"' +
+        tipAttr(tip) +
+        "/>";
     });
     s += xLabels(f, labels, xTitleFor(group));
     s += "</svg>";
-    var card = chartCard(isSpike(group) ? "Detection composition vs spike-in load" : "Detection composition vs depth",
-      "Mean organism counts per " + xNounFor(group) + ".", s);
+    var card = chartCard(
+      isSpike(group) ? "Detection composition vs spike-in load" : "Detection composition vs depth",
+      "Mean organism counts per " + xNounFor(group) + ".",
+      s,
+    );
     card.appendChild(
       legend([
         { label: "True positive", color: GOOD },
         { label: "False positive", color: BAD },
         { label: "False negative (missed)", color: "#9e9e9e" },
-      ])
+      ]),
     );
     return card;
   }
@@ -785,41 +1012,85 @@
   // Chart 3 — how much of each subsample actually aligned.
   function recoveryChart(agg, group) {
     var unit = group.read_unit || "reads";
-    var labels = agg.map(function (a) { return kfmt(a.count); });
+    var labels = agg.map(function (a) {
+      return kfmt(a.count);
+    });
     var maxV = 1;
-    agg.forEach(function (a) { maxV = Math.max(maxV, a.actual, a.observed); });
-    var ticks = [0, 0.25, 1].map(function (p) { return { v: maxV * p, p: Math.sqrt(p) }; });
+    agg.forEach(function (a) {
+      maxV = Math.max(maxV, a.actual, a.observed);
+    });
+    var ticks = [0, 0.25, 1].map(function (p) {
+      return { v: maxV * p, p: Math.sqrt(p) };
+    });
     var f = axisFrame(agg.length, labels, {
       plotH: 132,
-      yLabels: ticks.map(function (t) { return kfmt(t.v); }),
+      yLabels: ticks.map(function (t) {
+        return kfmt(t.v);
+      }),
       yTitle: true,
       xTitle: true,
     });
-    var sc = function (v) { return (Math.sqrt(Math.max(0, v)) / Math.sqrt(maxV)) * f.plotH; };
+    var sc = function (v) {
+      return (Math.sqrt(Math.max(0, v)) / Math.sqrt(maxV)) * f.plotH;
+    };
     var s = svgOpen(f);
-    s += yAxis(f, ticks, function (v) { return kfmt(v); }, unit + " (√ scale)");
+    s += yAxis(
+      f,
+      ticks,
+      function (v) {
+        return kfmt(v);
+      },
+      unit + " (√ scale)",
+    );
     var bw = Math.min(16, f.band * 0.3);
     agg.forEach(function (a, i) {
       var c = cx(f, i);
-      var ah = sc(a.actual), oh = sc(a.observed);
-      s += '<rect x="' + (c - bw - 1).toFixed(1) + '" y="' + (f.yb - ah).toFixed(1) + '" width="' + bw.toFixed(1) +
-           '" height="' + ah.toFixed(1) + '" fill="none" stroke="' + ACCENT + '" stroke-width="1.2" rx="1"/>';
-      s += '<rect x="' + (c + 1).toFixed(1) + '" y="' + (f.yb - oh).toFixed(1) + '" width="' + bw.toFixed(1) +
-           '" height="' + oh.toFixed(1) + '" fill="' + ACCENT + '" opacity=".8" rx="1"/>';
+      var ah = sc(a.actual),
+        oh = sc(a.observed);
+      s +=
+        '<rect x="' +
+        (c - bw - 1).toFixed(1) +
+        '" y="' +
+        (f.yb - ah).toFixed(1) +
+        '" width="' +
+        bw.toFixed(1) +
+        '" height="' +
+        ah.toFixed(1) +
+        '" fill="none" stroke="' +
+        ACCENT +
+        '" stroke-width="1.2" rx="1"/>';
+      s +=
+        '<rect x="' +
+        (c + 1).toFixed(1) +
+        '" y="' +
+        (f.yb - oh).toFixed(1) +
+        '" width="' +
+        bw.toFixed(1) +
+        '" height="' +
+        oh.toFixed(1) +
+        '" fill="' +
+        ACCENT +
+        '" opacity=".8" rx="1"/>';
       var rec = ratio(a.observed, a.actual);
-      var tip = tipBody(
-        kfmt(a.count) + " " + unit,
-        group.parent + " · " + group.platform,
-        [
-          ["Actual in dataset", fmt(Math.round(a.actual)) + " " + unit],
-          ["Observed aligned", fmt(Math.round(a.observed)) + " " + unit],
-          ["Recovery", rec == null ? "—" : pct(rec)],
-          ["Unaligned", fmt(Math.max(0, Math.round(a.actual - a.observed))) + " " + unit],
-          ["Replicates", String(a.n)],
-        ]
-      );
-      s += '<rect class="insil-band" x="' + (f.padL + f.band * i).toFixed(1) + '" y="' + f.padT +
-           '" width="' + f.band.toFixed(1) + '" height="' + f.plotH + '"' + tipAttr(tip) + "/>";
+      var tip = tipBody(kfmt(a.count) + " " + unit, group.parent + " · " + group.platform, [
+        ["Actual in dataset", fmt(Math.round(a.actual)) + " " + unit],
+        ["Observed aligned", fmt(Math.round(a.observed)) + " " + unit],
+        ["Recovery", rec == null ? "—" : pct(rec)],
+        ["Unaligned", fmt(Math.max(0, Math.round(a.actual - a.observed))) + " " + unit],
+        ["Replicates", String(a.n)],
+      ]);
+      s +=
+        '<rect class="insil-band" x="' +
+        (f.padL + f.band * i).toFixed(1) +
+        '" y="' +
+        f.padT +
+        '" width="' +
+        f.band.toFixed(1) +
+        '" height="' +
+        f.plotH +
+        '"' +
+        tipAttr(tip) +
+        "/>";
     });
     s += xLabels(f, labels, xTitleFor(group));
     s += "</svg>";
@@ -828,13 +1099,13 @@
       isSpike(group)
         ? "Reads in each dataset (background + spike) vs what aligned to a reference."
         : "How much of each subsample aligned to a reference.",
-      s
+      s,
     );
     card.appendChild(
       legend([
         { label: "In dataset", color: ACCENT, outline: true },
         { label: "Aligned", color: ACCENT },
-      ])
+      ]),
     );
     return card;
   }
@@ -846,7 +1117,7 @@
     wrap.appendChild(
       el("div", { style: "font-weight:600;color:#333;margin:.2em 0 .5em;font-size:.95em" }, [
         isSpike(group) ? "Run metrics across the spike-in series" : "Run metrics across the dilution series",
-      ])
+      ]),
     );
     var grid = el("div", {
       style: "display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:.8em",
@@ -864,7 +1135,7 @@
   // single series: reads add, TASS takes the strongest member (a genus is as
   // detectable as its best-supported member, not the sum of their scores), and
   // the genus counts as detected at a depth if any member was.
-  var INSIL_ROLLUP = "native";   // "native" | "Genus"
+  var INSIL_ROLLUP = "native"; // "native" | "Genus"
 
   function rollupOrganisms(group) {
     var orgs = group.organisms || [];
@@ -885,24 +1156,43 @@
         // Single member: keep its real numbers, just relabel to the genus.
         var only = ms[0];
         return {
-          taxid: only.taxid, name: b.genus, category: only.category,
-          expected_fraction: only.expected_fraction, lod_count: only.lod_count,
-          series: only.series, rolled: true, n_members: 1,
-          members: [only.name], member_taxids: [only.taxid],
+          taxid: only.taxid,
+          name: b.genus,
+          category: only.category,
+          expected_fraction: only.expected_fraction,
+          lod_count: only.lod_count,
+          series: only.series,
+          rolled: true,
+          n_members: 1,
+          members: [only.name],
+          member_taxids: [only.taxid],
         };
       }
       if (!b.genus) return ms[0];
       // Union the count axis (all members share it, but be defensive).
       var counts = {};
       ms.forEach(function (o) {
-        (o.series || []).forEach(function (p) { counts[p.count] = 1; });
+        (o.series || []).forEach(function (p) {
+          counts[p.count] = 1;
+        });
       });
-      var cs = Object.keys(counts).map(Number).sort(function (a, b2) { return a - b2; });
+      var cs = Object.keys(counts)
+        .map(Number)
+        .sort(function (a, b2) {
+          return a - b2;
+        });
       var lod = null;
       var series = cs.map(function (c) {
-        var exp = 0, obsr = 0, tass = 0, dr = 0, det = false, nreps = 1;
+        var exp = 0,
+          obsr = 0,
+          tass = 0,
+          dr = 0,
+          det = false,
+          nreps = 1;
         ms.forEach(function (o) {
-          var p = (o.series || []).find(function (q) { return q.count === c; });
+          var p = (o.series || []).find(function (q) {
+            return q.count === c;
+          });
           if (!p) return;
           exp += +p.expected_reads || 0;
           obsr += +p.observed_reads || 0;
@@ -923,22 +1213,36 @@
         };
       });
       var cats = {};
-      ms.forEach(function (o) { cats[o.category || "Unknown"] = 1; });
+      ms.forEach(function (o) {
+        cats[o.category || "Unknown"] = 1;
+      });
       var catKeys = Object.keys(cats);
       return {
-        taxid: ms.map(function (o) { return o.taxid; }).join("+"),
+        taxid: ms
+          .map(function (o) {
+            return o.taxid;
+          })
+          .join("+"),
         name: b.genus,
         category: catKeys.length === 1 ? catKeys[0] : catKeys.join(" / "),
-        expected_fraction: ms.reduce(function (a, o) { return a + (+o.expected_fraction || 0); }, 0),
+        expected_fraction: ms.reduce(function (a, o) {
+          return a + (+o.expected_fraction || 0);
+        }, 0),
         lod_count: lod,
         series: series,
         rolled: true,
         n_members: ms.length,
-        members: ms.map(function (o) { return o.name; }),
-        member_taxids: ms.map(function (o) { return o.taxid; }),
+        members: ms.map(function (o) {
+          return o.name;
+        }),
+        member_taxids: ms.map(function (o) {
+          return o.taxid;
+        }),
       };
     });
-    out.sort(function (a, b) { return (b.expected_fraction || 0) - (a.expected_fraction || 0); });
+    out.sort(function (a, b) {
+      return (b.expected_fraction || 0) - (a.expected_fraction || 0);
+    });
     return out;
   }
 
@@ -949,27 +1253,42 @@
   function organismChart(o, group) {
     var series = o.series || [];
     var unit = group.read_unit || "reads";
-    var labels = series.map(function (s) { return kfmt(s.count); });
+    var labels = series.map(function (s) {
+      return kfmt(s.count);
+    });
     var maxV = 1;
     series.forEach(function (s) {
       maxV = Math.max(maxV, s.expected_reads, s.observed_reads);
     });
-    var ticks = [0, 0.25, 1].map(function (p) { return { v: maxV * p, p: Math.sqrt(p) }; });
+    var ticks = [0, 0.25, 1].map(function (p) {
+      return { v: maxV * p, p: Math.sqrt(p) };
+    });
     var f = axisFrame(series.length, labels, {
       plotH: 92,
       padR: 10,
       padT: 10,
-      extraB: 18,   // detection strip
+      extraB: 18, // detection strip
       minBand: 46,
       minInner: 170,
-      yLabels: ticks.map(function (t) { return kfmt(t.v); }),
+      yLabels: ticks.map(function (t) {
+        return kfmt(t.v);
+      }),
       yTitle: true,
       xTitle: true,
     });
     // sqrt scale keeps small dilutions visible next to large ones
-    var sc = function (v) { return (Math.sqrt(Math.max(0, v)) / Math.sqrt(maxV)) * f.plotH; };
+    var sc = function (v) {
+      return (Math.sqrt(Math.max(0, v)) / Math.sqrt(maxV)) * f.plotH;
+    };
     var s = svgOpen(f);
-    s += yAxis(f, ticks, function (v) { return kfmt(v); }, unit + " (√)");
+    s += yAxis(
+      f,
+      ticks,
+      function (v) {
+        return kfmt(v);
+      },
+      unit + " (√)",
+    );
     var dotY = f.yb + f.extraB / 2 + 1;
     var bw = Math.min(16, f.band * 0.3);
 
@@ -978,21 +1297,59 @@
       var eh = sc(pt.expected_reads);
       var oh = sc(pt.observed_reads);
       // expected (outline)
-      s += '<rect x="' + (c - bw - 1).toFixed(1) + '" y="' + (f.yb - eh).toFixed(1) + '" width="' + bw.toFixed(1) +
-           '" height="' + eh.toFixed(1) + '" fill="none" stroke="' + ACCENT + '" stroke-width="1.2" rx="1"/>';
+      s +=
+        '<rect x="' +
+        (c - bw - 1).toFixed(1) +
+        '" y="' +
+        (f.yb - eh).toFixed(1) +
+        '" width="' +
+        bw.toFixed(1) +
+        '" height="' +
+        eh.toFixed(1) +
+        '" fill="none" stroke="' +
+        ACCENT +
+        '" stroke-width="1.2" rx="1"/>';
       // observed (filled, coloured by detection)
-      s += '<rect x="' + (c + 1).toFixed(1) + '" y="' + (f.yb - oh).toFixed(1) + '" width="' + bw.toFixed(1) +
-           '" height="' + oh.toFixed(1) + '" fill="' + (pt.detected ? GOOD : BAD) + '" opacity=".85" rx="1"/>';
+      s +=
+        '<rect x="' +
+        (c + 1).toFixed(1) +
+        '" y="' +
+        (f.yb - oh).toFixed(1) +
+        '" width="' +
+        bw.toFixed(1) +
+        '" height="' +
+        oh.toFixed(1) +
+        '" fill="' +
+        (pt.detected ? GOOD : BAD) +
+        '" opacity=".85" rx="1"/>';
       // detection strip (partial detection across replicates -> amber)
       var dr = pt.detection_rate;
       var dotFill = dr >= 1 ? GOOD : dr > 0 ? WARN : "#e4e4e4";
       var dotStroke = dr > 0 ? (dr >= 1 ? GOOD : WARN) : "#c4c4c4";
-      s += '<circle cx="' + c.toFixed(1) + '" cy="' + dotY.toFixed(1) + '" r="4" fill="' + dotFill +
-           '" stroke="' + dotStroke + '" stroke-width="1"/>';
+      s +=
+        '<circle cx="' +
+        c.toFixed(1) +
+        '" cy="' +
+        dotY.toFixed(1) +
+        '" r="4" fill="' +
+        dotFill +
+        '" stroke="' +
+        dotStroke +
+        '" stroke-width="1"/>';
       // LoD marker
       if (o.lod_count != null && pt.count === o.lod_count) {
-        s += '<line x1="' + c.toFixed(1) + '" y1="' + f.padT + '" x2="' + c.toFixed(1) + '" y2="' + f.yb +
-             '" stroke="' + ACCENT + '" stroke-width="1" stroke-dasharray="3 3" opacity=".55"/>';
+        s +=
+          '<line x1="' +
+          c.toFixed(1) +
+          '" y1="' +
+          f.padT +
+          '" x2="' +
+          c.toFixed(1) +
+          '" y2="' +
+          f.yb +
+          '" stroke="' +
+          ACCENT +
+          '" stroke-width="1" stroke-dasharray="3 3" opacity=".55"/>';
       }
     });
 
@@ -1011,8 +1368,18 @@
         ["Expected share of pool", pct(o.expected_fraction)],
         ["Limit of detection", o.lod_count == null ? "not reached" : kfmt(o.lod_count) + " " + unit],
       ]);
-      s += '<rect class="insil-band" x="' + (f.padL + f.band * i).toFixed(1) + '" y="' + f.padT +
-           '" width="' + f.band.toFixed(1) + '" height="' + (f.plotH + f.extraB) + '"' + tipAttr(tip) + "/>";
+      s +=
+        '<rect class="insil-band" x="' +
+        (f.padL + f.band * i).toFixed(1) +
+        '" y="' +
+        f.padT +
+        '" width="' +
+        f.band.toFixed(1) +
+        '" height="' +
+        (f.plotH + f.extraB) +
+        '"' +
+        tipAttr(tip) +
+        "/>";
     });
 
     s += xLabels(f, labels, xTitleFor(group));
@@ -1024,30 +1391,44 @@
     var wrap = el("div", { style: "margin-top:.3em" });
     var nativeLevel = group.level || "Strain";
     var head = el("div", {
-      style: "display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:.6em;margin:.2em 0 .5em",
+      style:
+        "display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:.6em;margin:.2em 0 .5em",
     });
     head.appendChild(
       el("div", { style: "font-weight:600;color:#333;font-size:.95em" }, [
         isSpike(group)
           ? "Per-organism spike-in series — expected vs recovered (limit of detection)"
           : "Per-organism dilution series — expected vs observed (limit of detection)",
-      ])
+      ]),
     );
     // Rollup control: the series is built at one level; Genus merges members.
     var ctl = el("div", { style: "display:flex;align-items:center;gap:.4em;font-size:.8em;color:" + MUTED });
     ctl.appendChild(el("span", {}, ["Level:"]));
-    [[nativeLevel, "native"], ["Genus", "Genus"]].forEach(function (o) {
+    [
+      [nativeLevel, "native"],
+      ["Genus", "Genus"],
+    ].forEach(function (o) {
       var on = INSIL_ROLLUP === o[1];
-      var b = el("button", {
-        type: "button",
-        style:
-          "border:1px solid " + (on ? ACCENT : "#ddd") + ";background:" + (on ? ACCENT : "#fff") +
-          ";color:" + (on ? "#fff" : "#555") + ";border-radius:6px;padding:.2em .6em;font-size:.95em;" +
-          "font-weight:600;cursor:pointer",
-        title: o[1] === "Genus"
-          ? "Merge members of the same genus into one series (reads add, TASS takes the strongest member)"
-          : "The level the series was simulated and scored at",
-      }, [o[0]]);
+      var b = el(
+        "button",
+        {
+          type: "button",
+          style:
+            "border:1px solid " +
+            (on ? ACCENT : "#ddd") +
+            ";background:" +
+            (on ? ACCENT : "#fff") +
+            ";color:" +
+            (on ? "#fff" : "#555") +
+            ";border-radius:6px;padding:.2em .6em;font-size:.95em;" +
+            "font-weight:600;cursor:pointer",
+          title:
+            o[1] === "Genus"
+              ? "Merge members of the same genus into one series (reads add, TASS takes the strongest member)"
+              : "The level the series was simulated and scored at",
+        },
+        [o[0]],
+      );
       b.addEventListener("click", function () {
         INSIL_ROLLUP = o[1];
         window.drawInsilico();
@@ -1060,13 +1441,25 @@
       el("div", {
         style: "font-size:.76em;color:" + MUTED + ";margin-bottom:.6em",
         html:
-          '<span style="border:1.2px solid ' + ACCENT + ';padding:0 6px;border-radius:2px;margin-right:4px">&nbsp;</span>expected &nbsp;&nbsp;' +
-          '<span style="background:' + GOOD + ';color:#fff;padding:0 6px;border-radius:2px;margin-right:4px">obs</span>detected &nbsp;&nbsp;' +
-          '<span style="background:' + BAD + ';color:#fff;padding:0 6px;border-radius:2px;margin-right:4px">obs</span>below threshold &nbsp;&nbsp;' +
-          '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + WARN + ';margin-right:4px"></span>detected in some replicates &nbsp;&nbsp;' +
-          '<span style="color:' + ACCENT + '">┆</span> limit of detection &nbsp;&nbsp;' +
-          '<span style="opacity:.8">hover any ' + (isSpike(group) ? "spike level" : "depth") + " for full statistics</span>",
-      })
+          '<span style="border:1.2px solid ' +
+          ACCENT +
+          ';padding:0 6px;border-radius:2px;margin-right:4px">&nbsp;</span>expected &nbsp;&nbsp;' +
+          '<span style="background:' +
+          GOOD +
+          ';color:#fff;padding:0 6px;border-radius:2px;margin-right:4px">obs</span>detected &nbsp;&nbsp;' +
+          '<span style="background:' +
+          BAD +
+          ';color:#fff;padding:0 6px;border-radius:2px;margin-right:4px">obs</span>below threshold &nbsp;&nbsp;' +
+          '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' +
+          WARN +
+          ';margin-right:4px"></span>detected in some replicates &nbsp;&nbsp;' +
+          '<span style="color:' +
+          ACCENT +
+          '">┆</span> limit of detection &nbsp;&nbsp;' +
+          '<span style="opacity:.8">hover any ' +
+          (isSpike(group) ? "spike level" : "depth") +
+          " for full statistics</span>",
+      }),
     );
 
     var orgs = rollupOrganisms(group);
@@ -1077,9 +1470,11 @@
     if (INSIL_ROLLUP === "Genus") {
       wrap.appendChild(
         el("div", { style: "font-size:.76em;color:" + MUTED + ";margin:-.3em 0 .6em" }, [
-          "Rolled up from " + nativeLevel + " to Genus: reads and expected share add across members; " +
-          "TASS is the strongest member; the genus counts as detected wherever any member was.",
-        ])
+          "Rolled up from " +
+            nativeLevel +
+            " to Genus: reads and expected share add across members; " +
+            "TASS is the strongest member; the genus counts as detected wherever any member was.",
+        ]),
       );
     }
     var grid = el("div", {
@@ -1105,11 +1500,15 @@
         (o.rolled && o.n_members > 1
           ? "Genus · " + o.n_members + " members"
           : (o.rolled ? "Genus" : nativeLevel) + " · taxid " + o.taxid) +
-        " · " + o.category +
+        " · " +
+        o.category +
         (isSpike(group)
-          ? " · spiked " + kfmt(o.series && o.series.length ? o.series[0].expected_reads : 0) +
-            "–" + kfmt(o.series && o.series.length ? o.series[o.series.length - 1].expected_reads : 0) +
-            " " + (group.read_unit || "reads")
+          ? " · spiked " +
+            kfmt(o.series && o.series.length ? o.series[0].expected_reads : 0) +
+            "–" +
+            kfmt(o.series && o.series.length ? o.series[o.series.length - 1].expected_reads : 0) +
+            " " +
+            (group.read_unit || "reads")
           : " · expected " + (o.expected_fraction * 100).toFixed(1) + "% of pool");
       var subEl = el("div", { style: "font-size:.75em;color:" + MUTED + ";margin:1px 0 4px" }, [sub]);
       if (o.rolled && o.n_members > 1) {
@@ -1117,9 +1516,14 @@
         subEl.setAttribute(
           "data-tt",
           encodeURIComponent(
-            tipBody(o.name, "rolled up from " + o.n_members + " " + nativeLevel.toLowerCase() + "-level series",
-              o.members.map(function (m, i) { return [m, "taxid " + o.member_taxids[i]]; }))
-          )
+            tipBody(
+              o.name,
+              "rolled up from " + o.n_members + " " + nativeLevel.toLowerCase() + "-level series",
+              o.members.map(function (m, i) {
+                return [m, "taxid " + o.member_taxids[i]];
+              }),
+            ),
+          ),
         );
       }
       card.appendChild(subEl);
@@ -1154,17 +1558,23 @@
     head.appendChild(
       el("span", { style: "font-size:.8em;color:" + MUTED }, [
         group.n_datasets +
-          " datasets · " + (isSpike(group) ? "spike levels " : "counts ") +
+          " datasets · " +
+          (isSpike(group) ? "spike levels " : "counts ") +
           group.counts
-            .map(function (c) { return kfmt(c); })
+            .map(function (c) {
+              return kfmt(c);
+            })
             .join(", ") +
           " " +
           (group.read_unit || "reads") +
           (isSpike(group) && group.background_reads
-            ? " · fixed background " + kfmt(group.background_reads) + " " + (group.read_unit || "reads") +
+            ? " · fixed background " +
+              kfmt(group.background_reads) +
+              " " +
+              (group.read_unit || "reads") +
               (group.background_name ? " (" + group.background_name + ")" : "")
             : ""),
-      ])
+      ]),
     );
     box.appendChild(head);
     box.appendChild(renderDatasetTable(group));
@@ -1181,12 +1591,15 @@
   window.insilicoRollupOrganisms = function (group, mode) {
     var prev = INSIL_ROLLUP;
     INSIL_ROLLUP = mode || "native";
-    try { return rollupOrganisms(group); } finally { INSIL_ROLLUP = prev; }
+    try {
+      return rollupOrganisms(group);
+    } finally {
+      INSIL_ROLLUP = prev;
+    }
   };
 
   window.drawInsilico = function drawInsilico() {
-    var suite =
-      typeof INSILICO_SUITE !== "undefined" ? INSILICO_SUITE : (window.HEATMAP_BOOT || {}).insilico_suite;
+    var suite = typeof INSILICO_SUITE !== "undefined" ? INSILICO_SUITE : (window.HEATMAP_BOOT || {}).insilico_suite;
     var groupsHost = document.getElementById("insilico-groups");
     var emptyHost = document.getElementById("insilico-empty");
     if (!groupsHost) return;
@@ -1209,7 +1622,7 @@
   // Reveal the tab when subsample data is present (BOOT is already parsed by the
   // time this end-of-body script runs).
   function _unhideInsilicoTab() {
-    var has = typeof HAS_INSILICO !== "undefined" ? HAS_INSILICO : !!((window.HEATMAP_BOOT || {}).has_insilico_suite);
+    var has = typeof HAS_INSILICO !== "undefined" ? HAS_INSILICO : !!(window.HEATMAP_BOOT || {}).has_insilico_suite;
     var btn = document.getElementById("insilico-tab-btn");
     if (btn) btn.classList.toggle("hidden", !has);
   }
