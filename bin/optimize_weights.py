@@ -421,6 +421,7 @@ def calculate_normalized_groups(
     group_covered_bp_override: Optional[Dict[str, float]] = None,
     group_coverage_override: Optional[Dict[str, float]] = None,
     group_numreads_override: Optional[Dict[str, float]] = None,
+    representative_rollup: bool = False,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Aggregate `hits` into group-level summaries keyed by `group_field`.
@@ -439,6 +440,18 @@ def calculate_normalized_groups(
     species/genus level, MAPQ=0 reads are not ambiguous about the organism — only
     about which strain — so the full species read count is the correct input for
     RPM/abundance scoring. Strain-level calls pass None → unchanged behaviour.
+
+    representative_rollup: when True, treat this group's members as REDUNDANT
+    references for one underlying genome (true for conspecific strains under a
+    species, and for congeneric species under a genus) rather than as disjoint
+    pieces of a larger genome. Two pooled statistics assume disjointness and so
+    systematically score the parent BELOW its own best child: Σcovered_contigs /
+    Σtotal_contigs, and the Gini of member genomes concatenated end to end. Under
+    this flag both are taken from the best-supported member (the "representative
+    genome") instead. This is what makes species ≥ max(strain) hold on the
+    metrics themselves rather than only via the monotone floor applied
+    downstream. Strain-level calls must pass False: there the entries really ARE
+    distinct contigs of one assembly, so pooling is correct.
     """
 
     # sums
@@ -678,6 +691,30 @@ def calculate_normalized_groups(
                 alpha=1.8, reward_factor=2, beta=0.5)
         else:
             agg['gini_coefficient'] = 0.0
+
+        # ── Representative Gini (redundant-reference rollup) ──────────────
+        # The concatenation above lays each member genome end to end into one
+        # virtual genome of length Σ(member lengths).  For conspecific strains
+        # that space is ~N copies of the SAME genome, and reads concentrated in
+        # whichever copy won the alignment look maximally *unequal* — so adding
+        # redundant references to the database mechanically lowers the species'
+        # Gini.  A species is one genome, best represented by its best-supported
+        # member, so take that member's un-penalised Gini when it is higher.
+        # (Exact would be projecting every member's reads onto one representative
+        # coordinate system; the pipeline has no cross-strain coordinate map, and
+        # the best member's own profile is the closest available proxy.)
+        if representative_rollup:
+            _member_gini_raw = [
+                _to_float(_e.get('gini_raw'))
+                for _e in entries if _e.get('gini_raw') is not None
+            ]
+            if _member_gini_raw:
+                agg['gini_coefficient'] = max(agg['gini_coefficient'],
+                                              max(_member_gini_raw))
+
+        # Un-penalised Gini, stamped so the next level up can use this
+        # (representative) value instead of re-deriving it from concatenation.
+        agg['gini_raw'] = agg['gini_coefficient']
         # Preserve combined regions so the next aggregation level (strain→species)
         # can recompute Gini from the full picture instead of averaging.
         agg['covered_regions'] = _combined_regions
@@ -729,6 +766,27 @@ def calculate_normalized_groups(
             _n_covered_contigs / _n_total_contigs
             if _n_total_contigs > 0 else 1.0
         )
+        agg['contig_frac_pooled'] = _contig_frac
+
+        # ── Representative contig fraction (redundant-reference rollup) ───
+        # Σcovered / Σtotal across conspecific members counts the SAME
+        # chromosome once per strain and counts every strain's plasmid contigs
+        # as "missed".  Six B. anthracis assemblies whose chromosomes are fully
+        # covered give 6/14 = 0.43 → penalty 0.43^0.3 = 0.776, applied to the
+        # species Gini AND (via _mh_coverage_gate) to the species minhash —
+        # together ~65 % of the weight pool — dropping the species ~10 TASS
+        # points below its own best strain.  A species is one genome, so use the
+        # best member's contig utilisation.
+        if representative_rollup and _member_total > 0:
+            _rep_fracs = [
+                _to_float(_e.get('n_contigs_covered', 0)) / _to_float(_e.get('n_contigs_total', 0))
+                for _e in entries
+                if _to_float(_e.get('n_contigs_total', 0)) > 0
+            ]
+            if _rep_fracs:
+                _contig_frac = max(_contig_frac, max(_rep_fracs))
+        agg['contig_frac_representative_used'] = bool(
+            representative_rollup and _contig_frac > agg['contig_frac_pooled'])
 
         # Only apply contig penalty when there are multiple contigs —
         # single-contig organisms shouldn't be penalized for having 1/1.
@@ -771,6 +829,15 @@ def calculate_normalized_groups(
                     _rl_num += _arl * _nr
                     _rl_den += _nr
             _avg_rl = _rl_num / _rl_den if _rl_den > 0 else float(default_read_length)
+            # Stamp onto the group so the NEXT aggregation level inherits the
+            # real read length instead of silently falling back to
+            # default_read_length (150).  Group records never carried this
+            # field, so strain→species re-derived depth from the wrong read
+            # length, shifting the Lander–Waterman expected breadth and
+            # deflating gini_depth_conc_penalty (which scales both Gini and the
+            # minhash gate).  That alone cost ~4–5 TASS points on species with
+            # exactly ONE member — i.e. the aggregation was not idempotent.
+            agg['avg_read_length'] = _avg_rl
 
             if _total_numreads > 0 and _genome_len > 0:
                 # Lander–Waterman expected breadth instead of a linear
@@ -2099,6 +2166,125 @@ def compute_tass_score(data = {}, weights={}):
         tass_score = tass_score ** _effective_power
 
     return min(1.0, max(0.0, tass_score))
+
+def discriminating_fraction(child):
+    """Fraction of a child's reads that actually DISCRIMINATE it from its siblings.
+
+    A read that maps equally well to six near-identical B. anthracis assemblies
+    says the species is present; it says nothing about which strain. Only reads
+    that align preferentially to one member carry assignment information. The
+    best available proxies, in order of directness:
+
+      1-cluster_removal_frac  fraction of this reference's conflict-region reads
+                              it KEPT (1.0 = it won every contested read)
+      mapq_score              normalised mean MAPQ; near-identical siblings drive
+                              MAPQ to 0 precisely because the read is ambiguous
+      highmapq_fraction       fraction of reads above the MAPQ cutoff
+
+    The minimum is taken: assignment is a strong claim, so the weakest evidence
+    channel governs. Returns 1.0 when none are available, which degrades the
+    share below to a plain read-count share.
+    """
+    cands = []
+    _cd = child.get('cluster_dominance') or {}
+    if _cd.get('cluster_removal_frac') is not None:
+        try:
+            cands.append(max(0.0, min(1.0, 1.0 - float(_cd['cluster_removal_frac']))))
+        except (TypeError, ValueError):
+            pass
+    for _f in ('mapq_score', 'highmapq_fraction'):
+        _v = child.get(_f)
+        if _v is None:
+            continue
+        try:
+            cands.append(max(0.0, min(1.0, float(_v))))
+        except (TypeError, ValueError):
+            pass
+    return min(cands) if cands else 1.0
+
+
+def compute_assignment_confidence(parent, level='strain',
+                                  resolved_share=0.5, resolved_margin=0.2,
+                                  unresolved_discriminability=0.05):
+    """Split a parent's PRESENCE score into per-child ASSIGNMENT confidences.
+
+    The rollup answers two different questions that the pipeline has been
+    conflating into one number:
+
+      presence   -- is this taxon in the sample?  Monotone up the tree: a species
+                    is present if ANY of its strains is, so it can never be less
+                    certain than its best child.  This is `tass_score`.
+      assignment -- GIVEN the parent is present, which child is it?  This is a
+                    partition: the children's confidences sum to at most the
+                    parent's, and near-identical siblings must SHARE it.
+
+    Scoring six conspecific B. anthracis assemblies independently produces six
+    high presence scores, five of which read as false positives -- but they are
+    not false presence claims, they are unsupported *assignment* claims. Here:
+
+        share_i      = (reads_i * discriminating_fraction_i) / sum_j(...)
+        assignment_i = min(child_presence_i, parent_presence * share_i)
+
+    The cap keeps a child from inheriting more confidence than its own evidence
+    supports. `strain_discriminability` (share of the parent's reads that
+    discriminate at all) reports whether a child-level call is supportable in
+    the first place; when it is near zero, no assignment is defensible however
+    the shares fall out.
+
+    Mutates and returns `parent`. Purely additive: `tass_score` is untouched.
+    """
+    children = parent.get('members') or []
+    if not children:
+        return parent
+
+    parent_presence = float(parent.get('tass_score', 0) or 0)
+    weights, reads = [], []
+    for c in children:
+        try:
+            r = float(c.get('numreads', 0) or 0)
+        except (TypeError, ValueError):
+            r = 0.0
+        reads.append(r)
+        weights.append(r * discriminating_fraction(c))
+
+    total_w = sum(weights)
+    total_reads = sum(reads)
+
+    for c, w, r in zip(children, weights, reads):
+        if total_w > 0:
+            share = w / total_w
+        elif total_reads > 0:
+            share = r / total_reads      # no discriminating signal: fall back to reads
+        else:
+            share = 1.0 / len(children)
+        own = float(c.get('tass_score', 0) or 0)
+        c['assignment_share'] = round(share, 6)
+        c['assignment_confidence'] = round(min(own, parent_presence * share), 4)
+        c['discriminating_fraction'] = round(discriminating_fraction(c), 6)
+        c['presence_score'] = round(own, 4)
+        c['assignment_parent_level'] = level
+
+    shares = sorted((float(c.get('assignment_share', 0)) for c in children), reverse=True)
+    top = shares[0] if shares else 0.0
+    runner = shares[1] if len(shares) > 1 else 0.0
+    discriminability = (total_w / total_reads) if total_reads > 0 else 0.0
+
+    if len(children) == 1:
+        status = 'resolved'
+    elif discriminability < unresolved_discriminability:
+        status = 'unresolved'
+    elif top >= resolved_share and (top - runner) >= resolved_margin:
+        status = 'resolved'
+    else:
+        status = 'ambiguous'
+
+    parent['presence_score'] = round(parent_presence, 4)
+    parent['child_discriminability'] = round(discriminability, 6)
+    parent['child_assignment_status'] = status
+    parent['child_top_share'] = round(top, 6)
+    parent['child_lead_margin'] = round(top - runner, 6)
+    return parent
+
 
 def calculate_hmp_percentile(
         value = {},

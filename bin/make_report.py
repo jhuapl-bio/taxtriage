@@ -828,6 +828,16 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
     species_name = str(_species_src.get("name", org.get("name", "")) or "")
     genus_name = str(_genus_src.get("name", "") or tax.get("genus", "") or "")
 
+    # The record that partitioned its presence score across this row: the
+    # species for a strain row, the genus for a species row. A genus row has no
+    # parent, so it carries no assignment verdict.
+    if level == "Strain":
+        _assign_src = species_parent if species_parent is not None else {}
+    elif level == "Species":
+        _assign_src = genus_parent if genus_parent is not None else {}
+    else:
+        _assign_src = {}
+
     return {
         "Specimen ID":         sample_name,
         "Sample Type":         sample_type,
@@ -883,6 +893,20 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
         # the active threshold, so only the scores are emitted here.
         "Species TASS":        round(species_tass, 4),
         "Genus TASS":          round(genus_tass, 4),
+        # ── Presence vs assignment ────────────────────────────────────────
+        # "TASS Score" answers "is this taxon present?" and is monotone up the
+        # tree, so N conspecific strains of a present species all score high.
+        # These answer the different question "given the parent is present,
+        # which child is it?" -- a partition of the parent's confidence weighted
+        # by each child's DISCRIMINATING read evidence. Near-identical siblings
+        # share it out and drop away; the parent stays high. Status is the
+        # parent's verdict on whether a child-level call is supportable at all
+        # (resolved / ambiguous / unresolved).
+        "Assignment Confidence": round(float(org.get("assignment_confidence", tass) or 0), 4),
+        "Assignment Share":      round(float(org.get("assignment_share", 1.0) or 0), 4),
+        "Discriminating Fraction": round(float(org.get("discriminating_fraction", 1.0) or 0), 4),
+        "Assignment Status":     str(_assign_src.get("child_assignment_status", "") or ""),
+        "Child Discriminability": round(float(_assign_src.get("child_discriminability", 0) or 0), 4),
         "Species Name":        species_name,
         "Genus Name":          genus_name,
         # taxonomy
