@@ -61,7 +61,7 @@ from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 import random
 from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
-from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison, find_missing_positive_controls
+from optimize_weights import annotate_aggregate_dict, compute_assignment_confidence, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison, find_missing_positive_controls
 from map_taxid import load_taxdump, load_names, get_root
 from utils import taxid_to_rank, calculate_var, load_matchfile
 
@@ -638,6 +638,23 @@ def parse_args(argv=None):
                          "e.g. 80K reads on 65Mbp genome with 0.15%% coverage: "
                          "efficiency=0.008, penalty^0.3=0.22 -> Gini crushed to 22%%. "
                          "Default: 0.1. Set to 0 to disable.")
+    parser.add_argument('--disable_monotone_rollup', action='store_true',
+                    help="Disable the monotone rollup floor. By default a parent rank's "
+                         "TASS score is floored at its best child's score "
+                         "(species >= max(strain), genus >= max(species)), because "
+                         "'this species is present' is a strictly weaker claim than "
+                         "'this strain is present' and so can never be less certain. "
+                         "Use this flag to reproduce pre-fix scores.")
+    parser.add_argument('--representative_rollup', action='store_true',
+                    help="Aggregate species/genus metrics against a REPRESENTATIVE genome "
+                         "(the best-supported member) instead of the pooled concatenation "
+                         "of all member references. Fixes the two pooled statistics that "
+                         "assume member references are disjoint -- contig utilisation "
+                         "(sum-covered/sum-total) and the concatenated-genome Gini -- both "
+                         "of which mechanically drop as redundant conspecific references "
+                         "are added to the database. Off by default; the monotone floor "
+                         "already guarantees the invariant. Turn on to fix the metrics "
+                         "themselves rather than clamping the result.")
     parser.add_argument(
         '--dominance_protect_ratio',
         type=float,
@@ -2645,6 +2662,7 @@ def main():
         group_covered_bp_override=_subkey_union_cb if _subkey_union_cb else None,
         group_coverage_override=_subkey_cov_frac if _subkey_cov_frac else None,
         group_numreads_override=_subkey_numreads_override if _subkey_numreads_override else None,
+        representative_rollup=bool(args.representative_rollup),
     )
     # Attach strain-level members to each subkey group
     for _, sk_data in subkey_summary.items():
@@ -2668,6 +2686,7 @@ def main():
         group_covered_bp_override=_toplevelkey_union_cb if _toplevelkey_union_cb else None,
         group_coverage_override=_toplevelkey_cov_frac if _toplevelkey_cov_frac else None,
         group_numreads_override=_toplevelkey_numreads_override if _toplevelkey_numreads_override else None,
+        representative_rollup=bool(args.representative_rollup),
     )
     # iterate through aggregate_dict, make the accession_to_key dict
     for k, v in aggregate_dict.items():
@@ -2724,6 +2743,58 @@ def main():
             weights=weights,
         ))
 
+    # ── Monotone rollup floor ──────────────────────────────────────────────
+    # A parent rank is a strictly WEAKER claim than any of its children:
+    # "some strain of B. anthracis is present" is implied by "B. anthracis
+    # str. Ames is present", so the parent can never be less certain than its
+    # best-supported child.  The aggregation re-derives parent metrics from a
+    # pooled pseudo-organism (Sigma lengths, Sigma contigs, read-weighted means),
+    # every one of which is <= the best child's value, so without a floor the
+    # rollup routinely inverts.  Downstream reporting already assumes this
+    # invariant holds (create_report.get_qualifying_strains subkey promotion;
+    # make_report._organism_row parent-TASS fallback).
+    def _apply_monotone_floor(parent, level):
+        _children = parent.get('members', []) or []
+        _child_max = max(
+            (float(c.get('tass_score', 0) or 0) for c in _children),
+            default=0.0,
+        )
+        _own = float(parent.get('tass_score', 0) or 0)
+        if _child_max > _own:
+            parent['tass_score_computed'] = _own
+            parent['tass_score'] = _child_max
+            parent['tass_rollup_floored'] = True
+            parent['tass_rollup_floor_delta'] = round(_child_max - _own, 4)
+            parent['tass_rollup_floor_level'] = level
+        return parent
+
+    if not args.disable_monotone_rollup:
+        _n_floored = 0
+        for _, sk_data in subkey_summary.items():
+            _before = float(sk_data.get('tass_score', 0) or 0)
+            _apply_monotone_floor(sk_data, 'subkey')
+            if sk_data.get('tass_rollup_floored'):
+                _n_floored += 1
+                print(f"[rollup] species floored: {sk_data.get('name')} "
+                      f"{_before:.2f} -> {sk_data['tass_score']:.2f}")
+        print(f"[rollup] monotone floor applied to {_n_floored}/{len(subkey_summary)} species")
+
+    # ── Presence vs assignment ─────────────────────────────────────────────
+    # Scoring N conspecific assemblies independently yields N high scores, and
+    # the N-1 that are not the real strain read as false positives. They are
+    # not false PRESENCE calls -- the species really is there -- they are
+    # unsupported ASSIGNMENT calls. Split the species' presence score into a
+    # partition over its strains, weighted by each strain's discriminating (not
+    # total) read evidence, and record whether a strain-level call is
+    # supportable at all. Additive: tass_score is not modified.
+    _status_counts = {}
+    for _, sk_data in subkey_summary.items():
+        compute_assignment_confidence(sk_data, level='subkey')
+        _st = sk_data.get('child_assignment_status')
+        _status_counts[_st] = _status_counts.get(_st, 0) + 1
+    print(f"[rollup] strain assignment status across {len(subkey_summary)} species: "
+          + ", ".join(f"{k}={v}" for k, v in sorted(_status_counts.items()) if k))
+
     for _, data in aggregate_dict.items():
         # Nest subkey groups as members of the toplevelkey group.
         # Each subkey group already contains its own 'members' list of strains.
@@ -2756,6 +2827,23 @@ def main():
             data = data,
             weights = weights,
         ))
+
+    # Genus-level floor.  Runs after the species floor above so the invariant
+    # propagates transitively: genus >= max(species) >= max(strain).
+    if not args.disable_monotone_rollup:
+        _n_floored = 0
+        for _, data in aggregate_dict.items():
+            _before = float(data.get('tass_score', 0) or 0)
+            _apply_monotone_floor(data, 'toplevelkey')
+            if data.get('tass_rollup_floored'):
+                _n_floored += 1
+                print(f"[rollup] genus floored: {data.get('name')} "
+                      f"{_before:.2f} -> {data['tass_score']:.2f}")
+        print(f"[rollup] monotone floor applied to {_n_floored}/{len(aggregate_dict)} genera")
+
+    # Species-within-genus assignment, same partition one rank up.
+    for _, data in aggregate_dict.items():
+        compute_assignment_confidence(data, level='toplevelkey')
     # for values of pathogens, klust the ones with high_cons != ''
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
