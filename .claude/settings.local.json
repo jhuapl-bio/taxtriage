@@ -1,0 +1,14 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); m=d.get\\('metadata',{}\\); print\\(json.dumps\\({k:v for k,v in m.items\\(\\) if k in ['workflow_revision','commit_id','sample_name','run_date','run_timestamp','workflow_start','start_time']}, indent=2\\)\\)\")",
+            "Bash(python3 -c ' *)",
+            "Bash(find /opt /usr/local /Users/merribb1 -name \"python3\" -type f 2>/dev/null | grep -v \"framework\\\\|Cellar/python\" | head -5)",
+            "Bash(grep -o \"\\\\\"Novelty\\\\\".*nosort.*novelty\\\\|Novelty.*chip\\\\|has_novelty.*true\" /tmp/test_report.html | head -5)",
+            "Bash(xargs -I{} python3 -c \"import json,sys; d=json.load\\(open\\('{}',\\)\\); m=d.get\\('metadata',{}\\); print\\(list\\(m.keys\\(\\)\\)[:20]\\)\")",
+            "Bash(~/.pyenv/shims/python3 bin/make_report.py test_output/alignment/Nanopore_Run_A.paths.json test_output/alignment/Miseq_Run_A.paths.json test_output/alignment/Negative_Control_Miseq.paths.json test_output/alignment/Positive_Control_Miseq.paths.json -o /tmp/test_report_empty.html --template assets/heatmap.html)",
+            "Bash(~/.pyenv/shims/python3 bin/make_report.py -i test_output/alignment/Nanopore_Run_A.paths.json test_output/alignment/Miseq_Run_A.paths.json test_output/alignment/Negative_Control_Miseq.paths.json test_output/alignment/Positive_Control_Miseq.paths.json -o /tmp/test_report_empty.html -t assets/heatmap.html)",
+            "Bash(ls /usr/local/bin/ | grep -i node; ls /opt/homebrew/bin/ | grep -i node 2>/dev/null; which npx 2>/dev/null)"
+        ]
+    }
+}

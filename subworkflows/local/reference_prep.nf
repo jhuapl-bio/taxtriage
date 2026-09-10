@@ -236,7 +236,14 @@ workflow  REFERENCE_PREP {
         }
         // merge all the fasta outputs from the DOWNLOAD_ASSEMBLY process into ch_fastas on id meta.
         // remainder:true keeps samples with no downloaded fasta (no top hits) in ch_fastas.
+        // Normalise the remainder row before destructuring — see the note above:
+        // an unmatched item from a join with remainder:true can arrive SHORT when
+        // Nextflow has not yet observed a full-width tuple to infer padding from,
+        // and a multi-param closure chained straight after it then throws
+        // MissingMethodException deep inside the dataflow operator.
         ch_fastas = ch_fastas.join(DOWNLOAD_ASSEMBLY.out.fasta, remainder: true)
+            .map { row -> [row[0], row.size() > 1 ? row[1] : null, row.size() > 2 ? row[2] : null] }
+            .filter { it[0] != null && it[1] != null }
             .map { meta, fastas, fasta ->
                 if (fasta != null) fastas.add(fasta)
                 [meta, fastas]
@@ -246,10 +253,20 @@ workflow  REFERENCE_PREP {
         // assembly (i.e. those whose top hits were all filtered out) are NOT
         // silently dropped from ch_mapped_assemblies.  Their fasta/gcfids/mapfile
         // elements will be null and are guarded below.
+        // Each join normalised immediately, for the same reason as above. A sample
+        // that reached DOWNLOAD_ASSEMBLY but has no ch_mapped_assemblies entry (its
+        // meta differs, so the join misses) otherwise arrives here as a short
+        // right-only row such as [meta, null, <mapfile>] and crashes the 7-param
+        // closure. Dropping such rows is what the earlier chains already do.
         ch_mapped_assemblies = ch_mapped_assemblies
             .join(merged_index, remainder: true)
+            .map { row -> [row[0], row.size() > 1 ? row[1] : null, row.size() > 2 ? row[2] : null,
+                           row.size() > 3 ? row[3] : null, row.size() > 4 ? row[4] : null] }
             .join(DOWNLOAD_ASSEMBLY.out.gcfids, remainder: true)
+            .map { row -> [row[0], row[1], row[2], row[3], row[4], row.size() > 5 ? row[5] : null] }
             .join(DOWNLOAD_ASSEMBLY.out.mapfile, remainder: true)
+            .map { row -> [row[0], row[1], row[2], row[3], row[4], row[5], row.size() > 6 ? row[6] : null] }
+            .filter { it[0] != null && it[1] != null }
             .map { meta, fastas, listmaps, listids, fasta, gcfids, mapfile ->
                 if (mapfile != null) listmaps.add(mapfile)
                 if (gcfids  != null) listids.add(gcfids)

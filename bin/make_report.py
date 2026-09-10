@@ -36,6 +36,7 @@ import math
 import os
 import re
 import sys
+from collections import defaultdict
 
 import pandas as pd
 
@@ -253,6 +254,27 @@ def parse_args(argv=None):
              "(assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.tsv). Used to recover "
              "each VF/AMR hit's taxids from its Source ID so pathogen matching can key on taxid "
              "instead of the merged sheet's (often mis-parsed) Genus/Species text.",
+    )
+    parser.add_argument(
+        "--insilico_params", default=None, metavar="JSON",
+        help="Optional: JSON file of the in-silico subsampling run parameters "
+             "(mode, series counts, replicates, seed, sim_nreads, iss_model, ...). "
+             "Populates the provenance panel on the In-Silico suite tab. When absent, "
+             "the params are inferred from the subsample sample names/metadata.",
+    )
+    parser.add_argument(
+        "--insilico_json", nargs="*", default=[], metavar="JSON",
+        help="Optional: per-dataset .paths.json file(s) for the in-silico subsample datasets "
+             "(from ALIGNMENT_PER_SAMPLE_INSILICO). These are used ONLY to build the In-Silico "
+             "suite tab (expected-vs-reality + dilution-series LoD); they are NOT added to the "
+             "main multi-run heatmap/table so they don't skew cross-sample views.",
+    )
+    parser.add_argument(
+        "--insilico_manifests", nargs="*", default=[], metavar="TSV",
+        help="Optional: *_subsample_manifest.tsv file(s) produced by SUBSAMPLE_INSILICO. "
+             "Provide authoritative target/actual read counts, total master reads and per-dataset "
+             "seeds for the In-Silico suite tab. When absent, target counts are parsed from the "
+             "subsample sample names.",
     )
     return parser.parse_args(argv)
 
@@ -1611,6 +1633,568 @@ def _sanitize(obj):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# In-Silico subsampling suite  (spike-in / dilution-series: expected vs reality)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Subsample dataset sample ids look like:
+#   <parent>_insilico_<iss|nanosim>_ss_<mode>_c<count>_r<rep>   (synthetic)
+#   <parent>_background_ss_<mode>_c<count>_r<rep>               (natural background)
+_SS_ID_RE = re.compile(
+    r'^(?P<parent>.+?)_'
+    r'(?:insilico_(?P<isstok>iss|nanosim)|background)'
+    r'_ss_(?P<mode>consistent|randomized)_c(?P<count>\d+)_r(?P<rep>\d+)$'
+)
+
+
+def _load_insilico_params(path):
+    """Load the optional in-silico params JSON. Returns {} on any problem."""
+    if not path:
+        return {}
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        print(f"[make_report] WARNING: could not read --insilico_params {path!r}: {exc}",
+              file=sys.stderr)
+        return {}
+
+
+def _load_insilico_manifests(paths):
+    """Parse *_subsample_manifest.tsv files → {dataset_id: {row fields}}."""
+    out = {}
+    for p in paths or []:
+        try:
+            with open(p) as fh:
+                reader = csv.DictReader(fh, delimiter="\t")
+                for row in reader:
+                    did = (row.get("dataset_id") or "").strip()
+                    if did:
+                        out[did] = row
+        except Exception as exc:
+            print(f"[make_report] WARNING: could not read manifest {p!r}: {exc}",
+                  file=sys.stderr)
+    return out
+
+
+def _f1(precision, recall):
+    return (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+
+def _spike_expectations(items, manifests):
+    """
+    Map each spike-in dataset to what was actually spiked into it.
+
+    Returns {dataset_id: {"total": int, "by_name": {lower name: reads},
+                          "by_acc": {accession: reads}}}, read from the
+    spike_detail JSON the mixing step writes. Organism identity is carried as an
+    accession plus whatever name the user put in the sheet, so matching to a
+    detected organism is by name where one was given.
+    """
+    out = {}
+    for sname, _d in items:
+        man = manifests.get(sname) or {}
+        if (man.get("kind") or "") != "spikein":
+            continue
+        entry = {"total": 0, "by_name": {}, "by_acc": {}, "by_taxid": {},
+                 "is_control": str(man.get("is_control") or "0") == "1"}
+        try:
+            detail = json.loads(man.get("spike_detail") or "[]")
+        except Exception:
+            detail = []
+        for d in detail:
+            got = int(d.get("spiked") or d.get("requested") or 0)
+            entry["total"] += got
+            acc = str(d.get("accession") or "")
+            if acc:
+                entry["by_acc"][acc] = entry["by_acc"].get(acc, 0) + got
+            # Taxid is the reliable key: the sheet's name column is optional and
+            # usually blank, so name matching silently fails on real sheets.
+            tid = str(d.get("taxid") or "").strip()
+            if tid:
+                entry["by_taxid"][tid] = entry["by_taxid"].get(tid, 0) + got
+            nm = str(d.get("name") or "").strip().lower()
+            if nm:
+                entry["by_name"][nm] = entry["by_name"].get(nm, 0) + got
+        if not entry["total"]:
+            try:
+                entry["total"] = int(man.get("spiked_count") or 0)
+            except Exception:
+                entry["total"] = 0
+        out[sname] = entry
+    return out
+
+
+def _spiked_taxids(spike_expect):
+    """Every taxid that was spiked anywhere in this group's series."""
+    out = set()
+    for e in spike_expect.values():
+        out.update(e.get("by_taxid") or {})
+    return out
+
+
+def _sweep_cutoff(datasets_obs, control_obs, spiked, background_tids,
+                  lo=0.0, hi=100.0, step=0.5):
+    """
+    Recommend a TASS cutoff from the spike-in results by maximising F1.
+
+    The level-0 control is the BLANK: it contains the matrix and nothing spiked, so
+    at each candidate cutoff,
+
+      TP = a spiked organism called in a dataset it was spiked into,
+      FN = a spiked organism missed where it was spiked,
+      FP = a spiked organism called in the blank (limit-of-blank violation:
+           the score cannot tell the spike from the matrix at this cutoff),
+           plus any call in a spiked dataset that is neither spiked nor part of
+           the matrix (noise the spike-in introduced).
+
+    Matrix organisms are not themselves penalised — they are genuinely present,
+    which is the point of running against a real background. Without the blank
+    term nothing would penalise a low cutoff and the sweep would always recommend
+    zero.
+
+    Among cutoffs that tie on F1 the MIDPOINT of the widest tied run is chosen: it
+    is the operating point furthest from both failure modes, whereas taking the
+    first or last of a plateau sits right against an edge.
+
+    Returns {"threshold", "f1", "precision", "recall", "curve": [...]}, or None.
+    """
+    if not datasets_obs or not spiked:
+        return None
+    curve = []
+    n = int(round((hi - lo) / step)) + 1
+    for i in range(n):
+        thr = round(lo + i * step, 3)
+        tp = fp = fn = 0
+        for d in datasets_obs:
+            called = {t for t, v in d["obs"].items() if v >= thr}
+            want = d["spiked_tids"]
+            tp += len(want & called)
+            fn += len(want - called)
+            fp += len({t for t in called if t not in want and t not in background_tids})
+        for c in control_obs:
+            # A spiked organism showing up in the blank at this cutoff.
+            fp += len({t for t, v in c.items() if v >= thr and t in spiked})
+        prec = tp / (tp + fp) if (tp + fp) else 0.0
+        rec = tp / (tp + fn) if (tp + fn) else 0.0
+        curve.append({"threshold": thr, "tp": tp, "fp": fp, "fn": fn,
+                      "precision": round(prec, 4), "recall": round(rec, 4),
+                      "f1": round(_f1(prec, rec), 4)})
+    best_f1 = max(r["f1"] for r in curve)
+    if best_f1 <= 0:
+        return None
+    # widest contiguous run at the best F1 -> take its midpoint
+    runs, cur = [], []
+    for r in curve:
+        if r["f1"] == best_f1:
+            cur.append(r)
+        elif cur:
+            runs.append(cur); cur = []
+    if cur:
+        runs.append(cur)
+    widest = max(runs, key=len)
+    best = widest[len(widest) // 2]
+    return {"threshold": best["threshold"], "f1": best["f1"],
+            "precision": best["precision"], "recall": best["recall"],
+            "tp": best["tp"], "fp": best["fp"], "fn": best["fn"],
+            "plateau": [widest[0]["threshold"], widest[-1]["threshold"]],
+            "curve": curve}
+
+
+def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=None,
+                         detect_threshold=None):
+    """
+    Assemble the In-Silico subsampling suite payload: run parameters plus, for
+    each (parent sample, platform) group, a per-dataset expected-vs-reality table
+    and a per-organism dilution-series / limit-of-detection view.
+
+    "Reality" comes from the subsample datasets already present in `rows` (each
+    subsample flows through the pipeline as its own sample). An organism counts as
+    *detected* when its TASS score clears `detect_threshold` (the same recommended
+    cutoff the report uses — best_cutoffs.subkey.best_threshold — NOT the raw
+    per-row passes_threshold flag, which is computed client-side and is unset in
+    the JSON). "Expected" is the truth set of organisms detected at full depth; its
+    composition is scaled to each dataset's target read count. Authoritative
+    target/actual/total counts are taken from the subsample manifest when supplied.
+
+    Rows are collapsed to a SINGLE taxonomic level (Species when available, else
+    Strain) so the same reads are not triple-counted across strain/species/genus
+    rollup rows.
+
+    Returns None when no subsample datasets are present (feature off).
+    """
+    thr = float(detect_threshold) if detect_threshold not in (None, "") else 0.0
+
+    # ── Identify subsample datasets from the sample-id pattern ────────────────
+    datasets = {}   # sname -> {parent, plat, mode, count, rep}
+    sample_names = set(r.get("Specimen ID") for r in rows)
+    sample_names.update(sample_meta.keys())
+    for sname in sample_names:
+        if not sname:
+            continue
+        m = _SS_ID_RE.match(str(sname))
+        if m:
+            datasets[sname] = {
+                "parent": m.group("parent"),
+                "plat": m.group("isstok") or "background",
+                "mode": m.group("mode"),
+                "count": int(m.group("count")),
+                "rep": int(m.group("rep")),
+            }
+    if not datasets:
+        return None
+
+    # Pairing (read pairs vs reads) is best taken from the sample's platform
+    # metadata; fall back to the platform token (iss = paired Illumina).
+    def _is_paired(sname, plat):
+        p = str((sample_meta.get(sname) or {}).get("platform", "")).upper()
+        if p:
+            return p == "ILLUMINA"
+        return plat == "iss"
+
+    manifests = _load_insilico_manifests(manifest_files)
+
+    # ── Choose ONE taxonomic level to avoid triple-counting rollup rows ───────
+    subsample_rows = [r for r in rows if r.get("Specimen ID") in datasets]
+    _levels = {r.get("Level") for r in subsample_rows}
+    level_pick = "Species" if "Species" in _levels else ("Strain" if "Strain" in _levels else None)
+
+    # ── Observed organisms per dataset (taxid -> observed metrics) ────────────
+    # Subsampling selects records: for paired-end an index is a read PAIR, so the
+    # target/actual counts are in pairs, while the aligner counts each mate
+    # separately (≈ 2× reads). Normalise observed read counts back to records
+    # (÷2 for paired) so they are directly comparable to the target read counts.
+    obs = defaultdict(dict)
+    for r in subsample_rows:
+        if level_pick is not None and r.get("Level") != level_pick:
+            continue
+        sn = r.get("Specimen ID")
+        tid = str(r.get("Taxonomic ID #", "") or "")
+        if not tid:
+            continue
+        rpr = 2 if _is_paired(sn, datasets[sn]["plat"]) else 1
+        tass = float(r.get("TASS Score", 0) or 0)
+        obs[sn][tid] = {
+            "name": r.get("Detected Organism", "Unknown"),
+            "reads": int(round(int(r.get("# Reads Aligned", 0) or 0) / rpr)),
+            "tass": tass,
+            "passes": tass >= thr,   # detection vs the report's recommended TASS cutoff
+            "category": r.get("Microbial Category", "Unknown"),
+            # Lineage labels so the report can roll the suite up to Species or
+            # Genus, and so a Strain-level detection can still be matched to a
+            # series that was collapsed to Species.
+            "species": str(r.get("Species Name", "") or ""),
+            "genus": str(r.get("Genus Name", "") or ""),
+        }
+
+    # ── Group datasets by (parent, platform) ──────────────────────────────────
+    groups = defaultdict(list)
+    for sname, d in datasets.items():
+        groups[(d["parent"], d["plat"])].append((sname, d))
+
+    suite_groups = []
+    all_counts = set()
+    all_modes = set()
+    max_rep = 1
+
+    for (parent, plat), items in sorted(groups.items()):
+        items.sort(key=lambda x: (x[1]["count"], x[1]["rep"]))
+        mode = items[0][1]["mode"]
+        all_modes.add(mode)
+
+        # ── Spike-in series? ─────────────────────────────────────────────────
+        # A spike-in series holds the background fixed and varies how many organism
+        # reads are mixed in, so c<N> in the dataset id is a SPIKE AMOUNT, not a
+        # sequencing depth, and the expected reads at each level are stated
+        # outright by the manifest rather than inferred from composition.
+        _kinds = {(manifests.get(sn) or {}).get("kind", "") for sn, _ in items}
+        is_spike = "spikein" in _kinds
+        spike_expect = _spike_expectations(items, manifests) if is_spike else {}
+
+        # The level-0 dataset is the background with nothing spiked in. Everything
+        # detected there is matrix, so it defines what a false positive is and gives
+        # the real samples a baseline. Detected at ANY score is deliberate: an
+        # organism that is faintly present in the background is still present, and
+        # calling it later must not count against the spike-in.
+        control_snames = [sn for sn, _ in items
+                          if (spike_expect.get(sn) or {}).get("is_control")]
+        background_tids = set()
+        background_profile = []
+        for sn in control_snames:
+            for tid, ov in obs.get(sn, {}).items():
+                background_tids.add(tid)
+                background_profile.append({
+                    "taxid": tid, "name": ov["name"], "category": ov["category"],
+                    "reads": ov["reads"], "tass": round(ov["tass"], 2),
+                    "passes": bool(ov["passes"]),
+                })
+        background_profile.sort(key=lambda r: -r["reads"])
+
+        # ── Truth set ────────────────────────────────────────────────────────
+        # SPIKE-IN: the truth is exactly what the sheet says was spiked. The rest of
+        # what is detected is the background matrix, which is context, not signal —
+        # deriving the truth from the deepest dataset (as the dilution series does)
+        # would make every background organism "expected" and turn precision/recall
+        # into a statement about the matrix rather than about the assay.
+        if is_spike:
+            spiked_tids = _spiked_taxids(spike_expect)
+            # Reads per spiked organism at the deepest level, only to order the cards.
+            deepest_count = max(d["count"] for _, d in items)
+            deepest_snames = [sn for sn, d in items if d["count"] == deepest_count]
+            exp_reads_by_tid = defaultdict(float)
+            name_by_tid, cat_by_tid, sp_by_tid, gen_by_tid = {}, {}, {}, {}
+            for tid in spiked_tids:
+                exp_reads_by_tid[tid] = max(
+                    (e.get("by_taxid", {}).get(tid, 0) for e in spike_expect.values()),
+                    default=0,
+                )
+            # Labels come from the detection when we have one, else from the sheet.
+            for sn, _d in items:
+                for tid, ov in obs.get(sn, {}).items():
+                    if tid in spiked_tids and tid not in name_by_tid:
+                        name_by_tid[tid] = ov["name"]
+                        cat_by_tid[tid] = ov["category"]
+                        sp_by_tid[tid] = ov["species"]
+                        gen_by_tid[tid] = ov["genus"]
+            for sname, _d in items:
+                for d in json.loads((manifests.get(sname) or {}).get("spike_detail") or "[]"):
+                    tid = str(d.get("taxid") or "")
+                    if tid and tid not in name_by_tid:
+                        name_by_tid[tid] = d.get("name") or f"taxid {tid}"
+                        cat_by_tid[tid] = "Unknown"
+                        sp_by_tid[tid] = d.get("name") or ""
+                        gen_by_tid[tid] = ""
+            _tot = sum(exp_reads_by_tid.values()) or 1.0
+            expected_fraction = {t: v / _tot for t, v in exp_reads_by_tid.items()}
+            expected_set = set(expected_fraction)
+            counts_sorted = sorted({d["count"] for _, d in items})
+            by_count = defaultdict(list)
+            for sname, d in items:
+                by_count[d["count"]].append(sname)
+
+        # DILUTION: truth set = organisms DETECTED at full depth (deepest dataset),
+        # i.e. TASS clears the cutoff. Composition (expected read fraction) is taken
+        # from their full-depth reads. Organisms present only as low-depth noise are
+        # excluded. (The spike-in branch above has already set all of this.)
+        if not is_spike:
+            deepest_count = max(d["count"] for _, d in items)
+            deepest_snames = [sn for sn, d in items if d["count"] == deepest_count]
+            exp_reads_by_tid = defaultdict(float)
+            name_by_tid, cat_by_tid, sp_by_tid, gen_by_tid = {}, {}, {}, {}
+            for sn in deepest_snames:
+                for tid, ov in obs.get(sn, {}).items():
+                    if not ov["passes"]:
+                        continue   # only organisms confidently detected at full depth
+                    exp_reads_by_tid[tid] += ov["reads"]
+                    name_by_tid[tid] = ov["name"]
+                    cat_by_tid[tid] = ov["category"]
+                    sp_by_tid[tid] = ov["species"]
+                    gen_by_tid[tid] = ov["genus"]
+            # Fallback: if the cutoff excluded everything at full depth, use all
+            # organisms present at full depth so the tab still shows the pool.
+            if not exp_reads_by_tid:
+                for sn in deepest_snames:
+                    for tid, ov in obs.get(sn, {}).items():
+                        exp_reads_by_tid[tid] += ov["reads"]
+                        name_by_tid[tid] = ov["name"]
+                        cat_by_tid[tid] = ov["category"]
+                        sp_by_tid[tid] = ov["species"]
+                        gen_by_tid[tid] = ov["genus"]
+            total_deep = sum(exp_reads_by_tid.values()) or 1.0
+            expected_fraction = {tid: v / total_deep for tid, v in exp_reads_by_tid.items()}
+            expected_set = set(expected_fraction)
+            counts_sorted = sorted({d["count"] for _, d in items})
+            by_count = defaultdict(list)
+            for sname, d in items:
+                by_count[d["count"]].append(sname)
+
+        # Per-dataset (count × rep) expected-vs-reality rows.
+        dataset_rows = []
+        sweep_obs = []
+        for sname, d in items:
+            o = obs.get(sname, {})
+            observed_total = sum(v["reads"] for v in o.values())
+            detected_set = {tid for tid, v in o.items() if v["passes"]}
+            if is_spike:
+                # Expected here = what THIS dataset was spiked with. The level-0
+                # control expects nothing, so it scores no TP/FN and any call it
+                # makes is matrix rather than a miss.
+                want = set((spike_expect.get(sname) or {}).get("by_taxid") or {})
+                tp = len(want & detected_set)
+                fn = len(want - detected_set)
+                # Matrix organisms are genuinely present, so only calls that are
+                # neither spiked nor in the background control count against us.
+                fp = len({t for t in detected_set
+                          if t not in want and t not in background_tids})
+                if (spike_expect.get(sname) or {}).get("is_control"):
+                    # In the blank, any SPIKED organism that gets called is a false
+                    # positive: nothing was spiked, so the score cannot be telling
+                    # the spike apart from the matrix.
+                    fp += len(detected_set & _spiked_taxids(spike_expect))
+                if want:
+                    sweep_obs.append({
+                        "spiked_tids": want,
+                        "obs": {t: v["tass"] for t, v in o.items()},
+                    })
+            else:
+                tp = len(expected_set & detected_set)
+                fp = len(detected_set - expected_set)
+                fn = len(expected_set - detected_set)
+            precision = tp / (tp + fp) if (tp + fp) else 0.0
+            recall = tp / (tp + fn) if (tp + fn) else 0.0
+            man = manifests.get(sname, {})
+            dataset_rows.append({
+                "id": sname,
+                "replicate": d["rep"],
+                "target_count": int(man.get("target_count") or d["count"]),
+                "actual_count": int(man["actual_count"]) if man.get("actual_count") else d["count"],
+                "total_master_reads": int(man["total_master_reads"]) if man.get("total_master_reads") else None,
+                "seed": man.get("seed"),
+                "observed_total_reads": observed_total,
+                "n_detected": len(detected_set),
+                "tp": tp, "fp": fp, "fn": fn,
+                "precision": round(precision, 4),
+                "recall": round(recall, 4),
+                "f1": round(_f1(precision, recall), 4),
+            })
+            all_counts.add(d["count"])
+            max_rep = max(max_rep, d["rep"])
+
+        # Per-count aggregation across replicates (for the LoD chart).
+        counts_sorted = sorted({d["count"] for _, d in items})
+        by_count = defaultdict(list)
+        for sname, d in items:
+            by_count[d["count"]].append(sname)
+
+        organisms = []
+        for tid, frac in sorted(expected_fraction.items(), key=lambda kv: -kv[1]):
+            series = []
+            lod = None
+            for c in counts_sorted:
+                reps = by_count[c]
+                obs_reads_vals, tass_vals, det_flags = [], [], []
+                for sn in reps:
+                    ov = obs.get(sn, {}).get(tid)
+                    obs_reads_vals.append(ov["reads"] if ov else 0)
+                    tass_vals.append(ov["tass"] if ov else 0.0)
+                    det_flags.append(bool(ov and ov["passes"]))
+                mean_obs = sum(obs_reads_vals) / len(obs_reads_vals)
+                mean_tass = sum(tass_vals) / len(tass_vals)
+                det_rate = sum(1 for f in det_flags if f) / len(det_flags)
+                detected = det_rate >= 0.5
+                # Depth series: expected = this organism's share of the pool at that
+                # depth. Spike series: expected = what was actually spiked at that
+                # level (matched by organism name, falling back to the dataset's
+                # spike total when only one organism was spiked).
+                if is_spike:
+                    exp_vals = []
+                    for sn in reps:
+                        se = spike_expect.get(sn) or {}
+                        nm = (name_by_tid.get(tid, "") or "").strip().lower()
+                        v = se.get("by_name", {}).get(nm)
+                        if v is None and len(se.get("by_acc", {})) == 1 and len(expected_fraction) == 1:
+                            v = se.get("total", 0)
+                        exp_vals.append(v if v is not None else frac * se.get("total", c))
+                    expected_reads = sum(exp_vals) / max(1, len(exp_vals))
+                else:
+                    expected_reads = frac * c
+                series.append({
+                    "count": c,
+                    "expected_reads": round(expected_reads, 1),
+                    "observed_reads": round(mean_obs, 1),
+                    "tass": round(mean_tass, 2),
+                    # Every replicate's TASS, so the report can recompute detection
+                    # (and therefore the LoD) live when the cutoff slider moves,
+                    # instead of being frozen at the cutoff used at build time.
+                    "tass_reps": [round(t, 2) for t in tass_vals],
+                    "detection_rate": round(det_rate, 3),
+                    "detected": detected,
+                    "n_reps": len(reps),
+                })
+                if detected and lod is None:
+                    lod = c
+            organisms.append({
+                "taxid": tid,
+                "name": name_by_tid.get(tid, "Unknown"),
+                "category": cat_by_tid.get(tid, "Unknown"),
+                # Lineage for the report's Species/Genus rollups and for matching
+                # a Strain-level detection against a Species-level series.
+                "species": sp_by_tid.get(tid, ""),
+                "genus": gen_by_tid.get(tid, ""),
+                "expected_fraction": round(frac, 6),
+                "lod_count": lod,
+                "series": series,
+            })
+
+        # Group pairing: use the first dataset's platform metadata.
+        _grp_paired = _is_paired(items[0][0], plat)
+        suite_groups.append({
+            "parent": parent,
+            "platform": plat,
+            # The single level the series rows were collapsed to (Species when
+            # available, else Strain). The report labels its plots with this and
+            # uses it to explain Strain->Species matches.
+            "level": level_pick or "Strain",
+            "source": "background" if plat == "background" else "insilico",
+            "mode": mode,
+            "n_datasets": len(items),
+            "counts": counts_sorted,
+            # Unit that target/observed counts are expressed in. Paired-end
+            # subsamples read pairs; observed reads are normalised to pairs above.
+            "read_unit": "read pairs" if _grp_paired else "reads",
+            # "depth"  -> c<N> is a sequencing depth (subsampling series)
+            # "spikein" -> c<N> is how many organism reads were mixed into a fixed
+            #              background; the x axis is organism load, not depth.
+            "series_kind": "spikein" if is_spike else "depth",
+            # The level-0 background-only control: what the matrix contributes on
+            # its own. Drives the false-positive definition and the real-sample
+            # baseline comparison in the tab.
+            "control_dataset": (control_snames[0] if is_spike and control_snames else None),
+            "background_profile": background_profile if is_spike else None,
+            # Cutoff recommended by maximising F1 over spiked vs matrix across the
+            # whole series — the LoD curves choosing the operating point.
+            "recommended_cutoff": (
+                _sweep_cutoff(sweep_obs,
+                              [{t: v["tass"] for t, v in (obs.get(sn) or {}).items()}
+                               for sn in control_snames],
+                              _spiked_taxids(spike_expect), background_tids)
+                if is_spike else None
+            ),
+            "background_reads": (
+                int((manifests.get(items[0][0]) or {}).get("background_reads") or 0)
+                if is_spike else None
+            ),
+            "background_name": (
+                ((manifests.get(items[0][0]) or {}).get("background_name") or parent)
+                if is_spike else None
+            ),
+            "datasets": dataset_rows,
+            "organisms": organisms,
+        })
+
+    # ── Parameters (explicit file overrides inferred) ─────────────────────────
+    _kinds_all = {g.get("series_kind") for g in suite_groups}
+    inferred = {
+        "mode": "/".join(sorted(all_modes)) if all_modes else None,
+        "series_counts": sorted(all_counts),
+        "replicates": max_rep,
+        "detection_threshold": round(thr, 2),
+        # What the series varies. Mixed runs (a depth series AND a spike-in series
+        # in one report) are reported as "depth + spikein" so the panel is honest
+        # about the tab holding two different kinds of experiment.
+        "series_kind": " + ".join(sorted(k for k in _kinds_all if k)) or "depth",
+    }
+    params = dict(inferred)
+    params.update({k: v for k, v in _load_insilico_params(params_file).items() if v is not None})
+
+    return {
+        "enabled": True,
+        "params": params,
+        "groups": suite_groups,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1872,6 +2456,49 @@ def main():
             smeta["min_conf_applied"] = args.min_conf
         print(f"[make_report] --min_conf={args.min_conf} overriding all sample/type slider defaults")
 
+    # ── in-silico subsampling suite (spike-in / dilution-series) ──────────────
+    # The subsample datasets are kept OUT of the main heatmap/table (report.nf feeds
+    # only non-control samples to -i). Load their JSONs here on a SEPARATE track so
+    # the suite tab can be built without adding them to the cross-sample records.
+    insil_rows, insil_meta = [], {}
+    _insil_json = [f for f in (args.insilico_json or [])
+                   if f and f.strip().endswith(".json") and not os.path.basename(f).startswith("NO_FILE")]
+    if _insil_json:
+        try:
+            insil_rows, insil_meta, _ = load_json_inputs(
+                _insil_json, mintass=mintass, microbial_cats=microbial_cats
+            )
+            print(f"[make_report] Loaded {len(insil_rows)} in-silico subsample organism rows "
+                  f"from {len(_insil_json)} dataset JSON(s)")
+        except Exception as exc:
+            print(f"[make_report] WARNING: could not load --insilico_json inputs: {exc}",
+                  file=sys.stderr)
+    # Union with main rows is harmless — the suite only picks rows whose sample id
+    # matches the subsample pattern, so non-subsample rows are ignored. This also
+    # lets the suite work if a user passes subsample JSONs straight to -i.
+    _suite_rows = rows + insil_rows
+    _suite_meta = dict(sample_meta); _suite_meta.update(insil_meta)
+    # Detection cutoff for the suite: use the SAME recommended TASS threshold the
+    # report defaults to (best_cutoffs.subkey → key), so "detected" here matches
+    # what the user sees elsewhere. Fall back to the --mintass hard filter.
+    _suite_bc = _collect_best_cutoffs(_suite_meta) or {}
+    _suite_thr = ((_suite_bc.get("subkey") or {}).get("best_threshold")
+                  or (_suite_bc.get("key") or {}).get("best_threshold"))
+    if _suite_thr is None:
+        _suite_thr = mintass if (mintass and mintass > 1) else 0.0
+    insilico_suite = build_insilico_suite(
+        _suite_rows, _suite_meta,
+        params_file=args.insilico_params,
+        manifest_files=args.insilico_manifests,
+        detect_threshold=_suite_thr,
+    )
+    if insilico_suite:
+        _ng = len(insilico_suite["groups"])
+        _nd = sum(len(g["datasets"]) for g in insilico_suite["groups"])
+        print(f"[make_report] In-Silico suite: {_ng} group(s), {_nd} subsample dataset(s)")
+    else:
+        print("[make_report] In-Silico suite: no subsample datasets detected (tab hidden)")
+
     # ── collect best_cutoffs for UI pre-population ────────────────────────────
     best_cutoffs_payload = _collect_best_cutoffs(sample_meta)
     if best_cutoffs_payload:
@@ -1916,6 +2543,8 @@ def main():
         "report_generated_at":   datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pipeline_revision":     pipeline_revision,            # global branch/tag or "local"
         "pipeline_commit":       pipeline_commit,              # global commit hash or None
+        "insilico_suite":        insilico_suite,               # spike-in/dilution suite or None
+        "has_insilico_suite":    bool(insilico_suite),         # true when subsample datasets present
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))

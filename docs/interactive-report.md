@@ -202,6 +202,59 @@ The value is linked to each organism by **reference accession** (parsed from the
 
 ---
 
+## In-Silico suite tab
+
+The **In-Silico** tab appears whenever a run produced series datasets — `--sim_subsample` on simulated reads, `--background_reads` on a real matrix, or `--spikein_sheet` for a spike-in series (see [In-Silico → Choosing an experiment](in-silico.md#choosing-an-experiment)). Each subsample dataset flows through the pipeline as its own sample, so the report already holds the _observed_ result at every dilution; the tab aggregates those into an expected-vs-reality view. It has four parts:
+
+**Parameters used.** A provenance panel listing the subsampling mode (`consistent` / `randomized`), the read-count series, replicates, seed, master read count, ISS/NanoSim settings, and abundance source. These come from an `insilico_params.json` emitted at report time (with any gaps inferred from the subsample sample names). The panel header also carries **Export suite** buttons — **CSV** / **TSV** (two files: one per-dataset table, one long-format per-organism series), **XLSX** (one workbook with `Parameters`, `Datasets` and `Organism series` sheets) and **JSON** (the raw suite payload the report holds). These export every group at once, including columns not shown on screen (dataset id, seed, master pool size, log2 fold change); the per-plot and per-table download buttons still export a single figure or table.
+
+**Per-dataset expected vs reality.** For each `(parent sample × platform)` group, one row per subsample dataset (count × replicate) shows the target vs actual read count, the observed aligned reads, and TP/FP/FN plus precision / recall / F1. "Expected" organisms are those recovered at full depth; a dataset that drops a low-abundance organism at shallow depth records it as a false negative. Authoritative target/actual/master counts come from the `*_subsample_manifest.tsv` files; when those are absent the target count is parsed from the dataset name.
+
+**Run metrics across the dilution series.** Three charts per group, averaged over replicates at each target depth:
+
+- **Performance vs depth** — precision, recall and F1 as depth increases.
+- **Detection composition vs depth** — stacked mean TP / FP / FN organism counts, showing whether a shallow depth loses organisms (FN) or invents them (FP).
+- **Read recovery vs depth** — reads present in the dataset vs reads that actually aligned to a reference, on a √ scale.
+
+**Per-organism dilution series (limit of detection).** For every simulated organism, a compact chart plots expected vs observed reads across the read-count series, with a per-count detection dot and a **LoD** badge marking the lowest read count at which the organism is still recovered (detection rate ≥ 50 % across replicates). This is the at-a-glance answer to "how deep do I need to sequence to still catch this organism?" A dashed rule marks the LoD depth; a detection dot is green when every replicate detected the organism, amber when only some did, and grey when none did.
+
+A **Level** control above this section switches between the level the series was simulated at and a **Genus** rollup, which merges members of the same genus into one series (reads and expected share add, TASS takes the strongest member, and the genus counts as detected wherever any member was). The rollup is reflected in the card subtitles, in the member list on hover, and in the suite export, which always exports the level currently on screen.
+
+**The detection cutoff, and how a spike-in run can improve on it.** The cutoff the tab detects against is the *calculated* recommendation — `best_cutoffs.subkey.best_threshold`, derived from historical sample-type data — not `--min_conf`/`--mintass`, which is only a fallback when no recommendation exists. For a spike-in run the tab adds a **Detection cutoff** card:
+
+- A **slider** that recomputes every organism's detection and limit of detection live, from the per-replicate TASS values in the payload. The dataset table and the three run-metric charts stay at the build cutoff and say so.
+- A **recommendation derived from these LoD curves**, chosen by maximising F1 over the whole series: a spiked organism called where it was spiked is a TP, missed is a FN, and a FP is either a spiked organism called in the level-0 blank (the score cannot separate spike from matrix at that cutoff) or a call that is neither spiked nor part of the matrix. Ties resolve to the middle of the widest tied run rather than to an edge. The F1-vs-cutoff curve is drawn with the run, recommended and current cutoffs marked.
+- Level 0 is never a limit of detection — nothing was spiked into it. An organism called there gets an **in blank** badge, because the LoD shown beside it is optimistic at that cutoff.
+
+**What counts as truth in a spike-in run.** A dilution series takes its truth from the deepest dataset, which is right when the whole community was simulated. A spike-in series does not: the truth set is exactly what the sheet says was spiked, matched **by taxid** (resolved from the accession at fetch time, since the sheet's `name` column is optional). Everything else detected is the background matrix — genuinely present, so it is never counted as a false positive. The matrix is listed separately under **Background matrix**, from the level-0 control.
+
+**The real samples.** Because a spike-in run analyses the background and its spiked copies, the samples the run is actually about would otherwise be absent from this tab. Two tables close that gap: **Real samples vs this background** (per sample: organisms called, how many are also in the matrix, how many are unique, which spiked organisms appear) and **Spiked organisms in the real samples**, which places each sample's load for each spiked organism against that organism's LoD at the current cutoff.
+
+**Cross-reference from the Detections table.** When an organism in the **Detections** table was also part of the in-silico pool, a small **⚗** chip appears beside its name. Hovering shows a depth-matched comparison card; clicking opens the full comparison (reads-vs-depth and TASS-vs-depth panels plus the series datapoints).
+
+The comparison is _depth-relative_, which is the point: the real sample is placed on the dilution axis at **its own sequencing depth**, not compared against the deepest dataset. If the series runs 5k / 8k / 10k / 15k / 20k / 30k and the sample carries 20k reads, the sample is drawn at 20k and measured against the series value interpolated at 20k. Three reference values are shown at that depth:
+
+- **Series at this depth** — the observed reads the dilution series actually produced there (piecewise-linear between the bracketing datasets; scaled through the origin below the shallowest and extrapolated along the last segment above the deepest, flagged when extrapolated).
+- **Expected from pool share** — this organism's fraction of the simulated pool times the sample's depth. Compositional, so it is exact at any depth.
+- **Limit of detection** — and how many times the sample's depth exceeds (or falls short of) it.
+
+**Levels: strains, species and genera.** The suite is built at a single level (`group.level` — Species when the data supports it, else Strain), so a detection can sit _below_ the level its series exists at: an Orthopoxvirus strain detection has no series of its own while its species does. Matching therefore walks the row's lineage — the row's own taxon, then its species, then its genus — and always says which rung it landed on:
+
+- The chip carries a rung marker: **⚗ sp** for a strain shown against its species' series, **⚗ gen** for a genus series.
+- The card and modal open with a banner reading, for example, _"Strain detection · Species series — You are looking at a strain detection. The dilution series exists at species level (Monkeypox virus), so this plot is the species's series."_
+- Where the report also holds the matching Species/Genus row for that sample (the rollup levels are all in the data), **that** row's reads and TASS are used for the comparison so both sides are at the same level, and the clicked row's own numbers are kept alongside — _"This strain's reads 2,600 (50% of the species)"_. If no such row exists, the strain's own reads are plotted and the card says a strain is a subset of its species, so sitting below the series is arithmetic rather than a finding (the verdict is softened to match, instead of crying under-recovery).
+- A **genus** comparison has no directly simulated counterpart, so the series is assembled from every simulated member of that genus: reads and expected share add, TASS takes the strongest member, and the genus counts as detected wherever any member was. The banner names the members.
+
+The chip is colour-coded by the verdict: green when the sample is within 0.5–2× of the series, amber with a **↓** when it is under-recovered, purple with a **↑** when over-recovered, and red when the sample was sequenced **below** the organism's LoD — the case worth acting on, since the series says this depth cannot reliably see this organism. TASS is compared the same way, against the run's detection cutoff.
+
+Paired-end runs are reconciled automatically: the series counts read _pairs_ while the report's read columns count each mate, so the real sample is halved before comparison and both sides are labelled in the group's unit. If the organism was simulated in more than one group, the sample's own group is used and the modal offers a selector for the others.
+
+**Hover statistics.** Every dataset row, chart bar and chart point raises the shared report tooltip with the full statistics for that point — target vs actual vs aligned reads and alignment recovery, TP/FP/FN with precision / recall / F1 (plus the F1 standard deviation across replicates), and per organism the expected vs observed reads, recovery, log2 fold change, mean TASS, detection rate across replicates and the LoD. Every plot reserves its own axis gutter, detection strip and label row, so marks and axis labels never overlap.
+
+> Expected per-organism composition is modeled from the full-depth (deepest) dataset's observed proportions scaled to each target read count. This is a practical proxy for the simulated ground truth; if you need the exact simulated abundances instead, they are available in `simulation/<sample>/` (the accession-level `abundance.tsv`).
+
+---
+
 ## Run Metadata tab and metadata-driven views
 
 The **Run Metadata** tab shows an editable per-sample metadata table and unlocks several cross-sample analyses. Every metadata column you supply, either via extra samplesheet columns or a separate `--meta` CSV/XLSX (see [Samplesheet → Metadata Support](samplesheet.md#metadata-support)), appears in this table and is carried into the report. A set of **recognized column names** additionally power dedicated views; columns are matched by exact name (snake_case), so spelling matters.
