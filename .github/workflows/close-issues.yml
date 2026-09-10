@@ -1,0 +1,66 @@
+name: Close shipped issues
+
+# Closes the issue a merged PR was working on.
+#
+# GitHub already closes issues linked with "Fixes #123" in the PR body when the
+# PR merges into the default branch. This adds the two cases it does not cover:
+#
+#   1. the repo's branch convention, `226-short-description`, where the issue
+#      number is the branch prefix and nothing says "fixes" anywhere;
+#   2. any "#123" mentioned in the PR title or body without a closing keyword.
+#
+# It only runs for PRs that actually merged into main, so a closed-unmerged PR
+# never closes anything.
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  close:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close referenced issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+
+          # Branch prefix: 226-add-a-metadata-module -> 226
+          NUMS="$(printf '%s\n' "$HEAD_REF" | grep -oE '^[0-9]+' || true)"
+          # Any #123 in the title or body.
+          NUMS="$NUMS
+          $(printf '%s\n%s\n' "$TITLE" "$BODY" | grep -oE '#[0-9]+' | tr -d '#' || true)"
+
+          NUMS="$(printf '%s\n' "$NUMS" | tr -d ' ' | grep -E '^[0-9]+$' | sort -un || true)"
+          if [ -z "$NUMS" ]; then
+            echo "No issue references found on PR #$PR; nothing to close."
+            exit 0
+          fi
+
+          for N in $NUMS; do
+            # Skip anything that is not an open issue: a PR number, a deleted
+            # issue, or one that is already closed.
+            KIND="$(gh api "repos/$REPO/issues/$N" --jq \
+              'if .pull_request then "pr" else .state end' 2>/dev/null || echo "missing")"
+            case "$KIND" in
+              open)
+                gh issue close "$N" --repo "$REPO" --reason completed \
+                  --comment "Shipped on \`main\` in $PR_URL."
+                echo "closed #$N"
+                ;;
+              *) echo "skipped #$N ($KIND)" ;;
+            esac
+          done

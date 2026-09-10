@@ -21,7 +21,7 @@ Search [existing issues](https://github.com/jhuapl-bio/taxtriage/issues) to avoi
 
 ### 2. Fork and Branch
 
-[Fork](https://help.github.com/en/github/getting-started-with-github/fork-a-repo) the [jhuapl-bio/taxtriage repository](https://github.com/jhuapl-bio/taxtriage) to your GitHub account, then create a feature branch from `dev`.
+[Fork](https://help.github.com/en/github/getting-started-with-github/fork-a-repo) the [jhuapl-bio/taxtriage repository](https://github.com/jhuapl-bio/taxtriage) to your GitHub account, then create a feature branch from `main`. Name it after the issue it closes — `226-metadata-module` — so the issue closes automatically when the PR merges.
 
 ### 3. Make Changes
 
@@ -35,7 +35,11 @@ This requires [nf-core tools](https://github.com/nf-core/tools) >= 1.10.
 
 ### 4. Submit a Pull Request
 
-Open a pull request against the **`dev` branch**. Wait for CI tests to pass and code review to complete before merging.
+Open a pull request against the **`main` branch**. Wait for CI tests to pass and code review to complete before merging.
+
+Merging closes the issue the branch is named after (and any `#123` mentioned in
+the PR title or body). Publishing a release then moves the `stable` branch onto
+that release's tag, which is what `nextflow run ... -r stable` resolves to.
 
 ---
 

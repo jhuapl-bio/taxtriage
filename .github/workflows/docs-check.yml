@@ -1,8 +1,8 @@
 name: Docs check
 
 # Builds and tests the documentation site without deploying it. Runs on pull
-# requests into dev and main so doc breakage is caught in review rather than
-# after a merge triggers a deploy.
+# requests into main so doc breakage is caught in review rather than after a
+# merge triggers a deploy.
 #
 # Both shapes are built:
 #   latest   the full site, including the real Demo Report tab
@@ -13,7 +13,7 @@ name: Docs check
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [main]
     paths:
       - "docs/**"
       - "mkdocs.yml"
@@ -26,6 +26,7 @@ on:
       - "assets/heatmap.html"
       - "assets/pages.js"
       - "assets/heatmap_boot.js"
+      - "assets/src/**"
       - "assets/pathogen_sheet.csv"
       - ".github/workflows/docs*.yml"
   workflow_dispatch:
@@ -118,6 +119,15 @@ jobs:
             echo "DOCS_CSS_TABLE=stylesheets/pathogen_table.css?v=$V"
           } >> "$GITHUB_ENV"
           echo "Assets stamped with ?v=$V"
+
+          # Same footer build stamp the deploy workflow writes, so the preview
+          # exercises the real footer. See docs.yml for why this is a one-liner.
+          BASE="$(sed -nE 's/^copyright: !ENV \[DOCS_COPYRIGHT, "(.*)"\].*/\1/p' mkdocs.yml)"
+          test -n "$BASE" || { echo "::error::could not read the copyright default from mkdocs.yml"; exit 1; }
+          SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          REF="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          URL="https://github.com/${GITHUB_REPOSITORY}"
+          echo "DOCS_COPYRIGHT=$BASE &middot; PR preview (${{ matrix.variant }}) &middot; built from <a href=\"$URL/tree/$REF\"><code>$REF</code></a> &middot; <a href=\"$URL/commit/$SHA\"><code>${SHA:0:7}</code></a>" >> "$GITHUB_ENV"
 
       - name: Build site
         run: mkdocs build --strict

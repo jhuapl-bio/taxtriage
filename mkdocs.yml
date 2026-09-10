@@ -11,7 +11,11 @@ repo_url: https://github.com/jhuapl-bio/taxtriage
 repo_name: jhuapl-bio/taxtriage
 edit_uri: edit/main/docs/
 
-copyright: Copyright &copy; Johns Hopkins University Applied Physics Laboratory
+# The docs workflow appends a build stamp (version label, ref and commit,
+# linked to GitHub) to this line, so every page records which revision it was
+# built from. Material renders the value as raw HTML. The workflow reads the
+# default below and appends to it, so this stays the single source of truth.
+copyright: !ENV [DOCS_COPYRIGHT, "Copyright &copy; Johns Hopkins University Applied Physics Laboratory"]
 
 # docs/ predates the site and also holds design sketches and reference PDFs.
 # Keep them in the repo but out of the published site.
@@ -138,7 +142,8 @@ extra_css:
 
 extra:
   # Renders the version dropdown in the header. mike writes versions.json to
-  # the root of the gh-pages branch; the theme reads it at runtime.
+  # the root of the gh-pages branch; the theme reads it at runtime. `latest` is
+  # the newest release, listed there as "stable (vX.Y.Z)".
   version:
     provider: mike
     default: latest

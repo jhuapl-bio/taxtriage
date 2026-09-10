@@ -55,3 +55,6 @@ bin/tmp-*
 data
 !examples/data/*
 *assembly_refseq*
+
+# Local agent/editor state — never tracked
+.claude/

@@ -123,7 +123,7 @@ The achievable reporting resolution depends on sequence quantity, quality, and u
 
 ```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
-  -r main \
+  -r stable \
   -profile test,docker \
   -resume
 ```
@@ -132,7 +132,7 @@ For SingularityCE, replace `docker` with `singularity`.
 
 ```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
-  -r main \
+  -r stable \
   -profile test,singularity \
   -resume
 ```
@@ -170,7 +170,7 @@ You do not need both. Docker is generally simplest on workstations; SingularityC
 
 ```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
-  -r main \
+  -r stable \
   -profile local,docker \
   --input examples/Samplesheet.csv \
   --db viral \
@@ -183,7 +183,7 @@ Using a local Kraken2 database:
 
 ```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
-  -r main \
+  -r stable \
   -profile local,docker \
   --input examples/Samplesheet.csv \
   --db /absolute/path/to/k2_database \

@@ -10,20 +10,39 @@ pull requests, so docs and code review together.
 
 ## Versions
 
-| Version             | Built from      | Trigger                             |
-| ------------------- | --------------- | ----------------------------------- |
-| `latest`            | `main`          | every push to `main`                |
-| `3.3.9`, `3.3.8`, … | the release tag | publishing **or editing** a Release |
+| Version             | Built from             | Trigger                             |
+| ------------------- | ---------------------- | ----------------------------------- |
+| `latest`            | the newest release tag | publishing **or editing** a Release |
+| `main`              | `main`                 | every push to `main`                |
+| `3.3.9`, `3.3.8`, … | that release's tag     | publishing **or editing** a Release |
 
-`latest` tracks `main` and is the default, so the site root redirects there.
-Releasing `v3.3.9` publishes version **`3.3.9`** — the exact patch, so the
-dropdown shows `3.3.9` rather than `3.3`. There are no minor-series aliases.
-Releases never move the default.
+`latest` is the newest release and is the default, so the site root redirects
+there. It is labelled **`stable (vX.Y.Z)`** in the version dropdown and is also
+reachable at `/stable/`, matching `nextflow run ... -r stable`. Releasing
+`v3.4.0` therefore publishes twice from the same tag: the frozen copy **`3.4.0`**
+(the exact patch — no minor-series aliases) and a refreshed `latest`.
 
-`latest` is a real version, not an alias. mike keeps versions and aliases in a
-single namespace, so a release cannot also claim `latest` as an alias — it
-fails with `alias 'latest' already specified as a version`. The workflow
-guards against a tag that would resolve to `latest` and fails loudly.
+`main` carries unreleased work so documentation changes are visible before the
+next release. It is never the default; readers reach it from the dropdown.
+
+A push to `main` that touches **only** documentation or interactive-report
+source (`docs/`, `mkdocs.yml`, `requirements-docs.txt`, the docs
+build scripts, `assets/heatmap.html`, `assets/pages.js`,
+`assets/heatmap_boot.js`, `assets/src/`) also refreshes `latest` straight away,
+so a typo fix or a report tweak is live the same day instead of waiting for the
+next release. Such a push cannot make the docs describe pipeline behaviour the
+release does not have. The site is then built from `main`, but the Pathogen
+Sheet stays pinned to the release tag and the footer records the ref actually
+built — so `latest` still documents the released pipeline. Any push that also
+touches pipeline code updates `main` only.
+
+Every page footer stamps the version label, the ref it was built from and the
+commit, each linking back to GitHub — so a reader can always tell exactly which
+revision they are reading. The workflow composes that line and exports it as
+`DOCS_COPYRIGHT`, which `mkdocs.yml` reads via `!ENV`; Material renders
+`copyright` as raw HTML, so no theme template is overridden. The copyright text
+itself is read back out of `mkdocs.yml`, so it is defined in one place. A local
+`mkdocs build` just shows the plain copyright.
 
 Every deploy prunes entries left over from earlier versioning schemes:
 `bleeding-edge`, and any bare `X.Y` minor entry. Matching on shape rather than
@@ -39,10 +58,10 @@ and overwrites the existing directory in place. No duplicate entry is created.
 Force-moving a tag with `git push -f` alone does **not** fire a release event.
 To rebuild in that case (or any other), run the Docs workflow manually:
 
-| Input     | Value                                                  |
-| --------- | ------------------------------------------------------ |
-| `version` | `3.3.9` (blank rebuilds `latest` from `main`)          |
-| `ref`     | blank uses `v<version>`; set it to pin a commit or ref |
+| Input     | Value                                                             |
+| --------- | ----------------------------------------------------------------- |
+| `version` | `3.3.9`, `main`, or `latest` (blank = `latest`)                   |
+| `ref`     | blank uses `v<version>` for a number, the newest tag for `latest` |
 
 Because `edited` covers every release edit — including title and body — a
 cosmetic tweak also triggers a rebuild. That is harmless: the deploy is
@@ -53,26 +72,27 @@ no scripts. It is entirely machine-generated; never commit to it by hand.
 
 ## Branch model
 
-Work happens on `dev` via pull requests, then `dev` merges into `main`.
-`.github/workflows/docs-check.yml` builds and tests the site on PRs into `dev`
-and `main` without deploying, so breakage is caught in review.
+Single-branch: every pull request merges into `main`, and publishing a GitHub
+Release moves the `stable` branch onto that tag.
+`.github/workflows/docs-check.yml` builds and tests the site on PRs into `main`
+without deploying, so breakage is caught in review.
 `.github/workflows/docs.yml` does the actual deploying.
 
 ## The three tabs
 
-| Tab            | Source                                                  | Refreshes              | Published in  |
-| -------------- | ------------------------------------------------------- | ---------------------- | ------------- |
-| Documentation  | `docs/*.md`                                             | on deploy              | every version |
-| Pathogen Sheet | `assets/pathogen_sheet.csv`                             | **on every page load** | every version |
-| Demo Report    | `assets/heatmap.html` via `scripts/inline_boot_json.py` | on deploy              | `latest` only |
+| Tab            | Source                                                  | Refreshes              | Published in     |
+| -------------- | ------------------------------------------------------- | ---------------------- | ---------------- |
+| Documentation  | `docs/*.md`                                             | on deploy              | every version    |
+| Pathogen Sheet | `assets/pathogen_sheet.csv`                             | **on every page load** | every version    |
+| Demo Report    | `assets/heatmap.html` via `scripts/inline_boot_json.py` | on deploy              | `latest`, `main` |
 
 The **Pathogen Sheet** ships in every version. The CSV is fetched from GitHub
 when the page opens rather than bundled, and `scripts/write_docs_ref.py` pins
 which ref it reads — so the `3.3.9` docs show the sheet that shipped in v3.3.9
-while `latest` shows `main`. Costs nothing to publish per version.
+while `latest` shows the newest release. Costs nothing to publish per version.
 
-The **Demo Report** is `latest`-only: its ~4.5 MB dist would add megabytes to
-`gh-pages` per release, and it illustrates the report UI rather than documenting
+The **Demo Report** ships only in the two moving versions (`latest` and
+`main`): its ~4.5 MB dist would add megabytes to `gh-pages` per release, and it illustrates the report UI rather than documenting
 release-specific behaviour. In a versioned build
 `scripts/docs_release_stub.py` replaces it with a redirect, so the tab stays in
 the nav and old URLs keep working:

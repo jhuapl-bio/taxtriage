@@ -186,7 +186,7 @@ Run:
 nextflow drop -f https://github.com/jhuapl-bio/taxtriage
 ```
 
-Then re-run the pipeline. This only applies when running from the remote URL with `-latest` or `-r main`.
+Then re-run the pipeline. This only applies when running from the remote URL with `-latest` or `-r stable`/`-r main`.
 
 ---
 

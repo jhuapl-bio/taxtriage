@@ -5,18 +5,26 @@ name: Docs
 # Version scheme (managed by `mike`, which commits the *rendered site only* to
 # the gh-pages branch — no source ever lands there):
 #
-#   latest             built from main on every push. This is the default, so
-#                      the site root redirects here.
-#   3.3.9, 3.3.8, …    one entry per release, cut from the release tag. Exact
-#                      patch versions only — no minor-series aliases.
+#   latest             the newest RELEASE. Built from that release's tag, shown
+#                      in the version dropdown as "stable (vX.Y.Z)" and also
+#                      reachable at /stable/. This is the default, so the site
+#                      root redirects here. A push to main that touches ONLY
+#                      documentation or interactive-report source also refreshes
+#                      it from main — such a push cannot make the docs describe
+#                      unreleased pipeline behaviour, and waiting for the next
+#                      release to publish a typo fix is not worth it. The
+#                      Pathogen Sheet stays pinned to the release tag either
+#                      way, and the footer records the ref actually built.
+#   main               unreleased work merged to main. Shown as
+#                      "main (unreleased)"; never the default.
+#   3.3.9, 3.3.8, …    one frozen entry per release, cut from the release tag.
+#                      Exact patch versions only — no minor-series aliases.
 #
-# NOTE: `latest` is a real version here, not an alias, because it tracks main.
-# mike keeps versions and aliases in one namespace, so releases must not also
-# claim `latest`.
+# Every build stamps the ref and commit it came from into the page footer, so a
+# reader can always tell which revision they are looking at.
 #
-# Branch model: work happens on `dev` via PRs, then `dev` merges into `main`.
-# Merging to main refreshes `latest`; publishing a GitHub Release cuts a
-# numbered copy.
+# Branch model: single-branch. PRs merge into `main`; publishing a GitHub
+# Release cuts a frozen numbered copy and moves `latest`/`stable` onto it.
 
 on:
   # `edited` matters as much as `published`: retargeting a release at a newer
@@ -33,21 +41,23 @@ on:
       - "mkdocs.yml"
       - "requirements-docs.txt"
       - "scripts/write_docs_ref.py"
+      - "scripts/docs_release_stub.py"
       - "scripts/inline_boot_json.py"
       - "scripts/test_pathogen_table.js"
       - "scripts/test_built_links.py"
       - "assets/heatmap.html"
       - "assets/pages.js"
       - "assets/heatmap_boot.js"
+      - "assets/src/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to (re)deploy, e.g. 3.3.9. Blank = latest, built from main."
+        description: "Version to (re)deploy: 3.3.9, main, or latest. Blank = latest (newest tag)."
         required: false
         default: ""
       ref:
-        description: "Git ref to build from. Blank = v<version> for a version, else main."
+        description: "Git ref to build from. Blank = the ref that version implies."
         required: false
         default: ""
 
@@ -65,45 +75,130 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  # A release publishes two things from one tag: the frozen numbered copy and a
+  # refreshed `latest`. Working that out once, here, keeps the deploy job a
+  # single code path driven by its matrix.
+  plan:
     runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.plan.outputs.targets }}
     steps:
-      # Resolved before checkout so the checkout can target the tag directly.
-      # Uses only event context, so it needs no repository contents.
-      - name: Resolve version and data ref
-        id: v
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Plan deployments
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.event.release.tag_name }}
+          BEFORE: ${{ github.event.before }}
+          IN_VERSION: ${{ github.event.inputs.version }}
+          IN_REF: ${{ github.event.inputs.ref }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-            # v3.3.9 -> 3.3.9 (exact patch; no minor alias)
-            VERSION="${TAG#v}"
-            REF="$TAG"
-          else
-            VERSION="${{ github.event.inputs.version }}"
-            VERSION="${VERSION:-latest}"
-            REF="${{ github.event.inputs.ref }}"
-            if [ -z "$REF" ]; then
-              # Rebuilding a numbered version manually must build from that
-              # version's tag, not from main.
-              if [ "$VERSION" = "latest" ]; then REF="main"; else REF="v$VERSION"; fi
-            fi
-          fi
 
-          if [ "$VERSION" != "latest" ]; then
-            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
-              echo "::error::'$VERSION' is not X.Y.Z; refusing to publish docs for it."
-              exit 1
-            fi
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            echo "::error::Refusing to publish a release as 'latest'; that name tracks main."
-            exit 1
-          fi
+          newest_tag() {
+            git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1
+          }
 
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "ref=$REF"         >> "$GITHUB_OUTPUT"
-          echo "Deploying docs version '$VERSION' built from '$REF'"
+          # True when every file in this push is documentation or interactive
+          # report source — nothing that changes how the pipeline runs. Those
+          # pushes may refresh `latest` immediately instead of waiting for the
+          # next release, since they cannot make the published docs describe
+          # behaviour the release does not have.
+          docs_only() {
+            git rev-parse -q --verify "$BEFORE^{commit}" >/dev/null 2>&1 || return 1
+            local files f
+            files="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
+            [ -n "$files" ] || return 1
+            while IFS= read -r f; do
+              case "$f" in
+                docs/*|mkdocs.yml|requirements-docs.txt) ;;
+                scripts/write_docs_ref.py|scripts/inline_boot_json.py|scripts/docs_release_stub.py) ;;
+                scripts/test_pathogen_table.js|scripts/test_built_links.py) ;;
+                assets/heatmap.html|assets/heatmap_boot.js|assets/pages.js|assets/src/*) ;;
+                .github/workflows/docs.yml) ;;
+                *) echo "not docs-only: $f"; return 1 ;;
+              esac
+            done <<<"$files"
+            return 0
+          }
 
+          # One JSON object per deployment:
+          #   version  mike version directory
+          #   ref      git ref to build the site from
+          #   dataref  git ref the Pathogen Sheet CSV is read from at page load
+          #   title    dropdown label ("" = mike's default, the version itself)
+          #   aliases  extra names pointing at it, space separated
+          #   demo     whether to ship the ~4.5 MB Demo Report dist
+          TARGETS="[]"
+          add() {
+            TARGETS="$(jq -c --arg v "$1" --arg r "$2" --arg dr "$3" --arg t "$4" --arg a "$5" --argjson d "$6" \
+              '. + [{version:$v, ref:$r, dataref:$dr, title:$t, aliases:$a, demo:$d}]' <<<"$TARGETS")"
+          }
+
+          case "$EVENT" in
+            release)
+              V="${TAG#v}"
+              echo "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+' \
+                || { echo "::error::'$TAG' is not vX.Y.Z; refusing to publish docs for it."; exit 1; }
+              # Frozen copy, then the moving one. Order matters only for reading
+              # the log; each deploy is independent.
+              add "$V"      "$TAG" "$TAG" ""              ""       false
+              add "latest"  "$TAG" "$TAG" "stable ($TAG)" "stable" true
+              ;;
+            push)
+              add "main" "main" "main" "main (unreleased)" "" true
+              # A docs- or report-only push also refreshes `latest`, so a typo
+              # fix or a report tweak is live the same day. The site is built
+              # from main, but the Pathogen Sheet stays pinned to the release
+              # tag: `latest` still documents the released pipeline, and the
+              # footer stamp records that it was built from main.
+              if [ "$EVENT" = push ] && docs_only; then
+                T="$(newest_tag)"
+                if [ -n "$T" ]; then
+                  echo "docs/report-only push; refreshing latest from main (data pinned to $T)"
+                  add "latest" "main" "$T" "stable ($T)" "stable" true
+                else
+                  echo "no release tag yet; leaving latest alone"
+                fi
+              fi
+              ;;
+            *)
+              V="${IN_VERSION:-latest}"
+              case "$V" in
+                latest)
+                  REF="${IN_REF:-$(newest_tag)}"
+                  test -n "$REF" || { echo "::error::no vX.Y.Z tag exists yet"; exit 1; }
+                  add "latest" "$REF" "$REF" "stable ($(newest_tag))" "stable" true
+                  ;;
+                main)
+                  add "main" "${IN_REF:-main}" "${IN_REF:-main}" "main (unreleased)" "" true
+                  ;;
+                *)
+                  echo "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+' \
+                    || { echo "::error::'$V' is not X.Y.Z, 'main' or 'latest'."; exit 1; }
+                  add "$V" "${IN_REF:-v$V}" "${IN_REF:-v$V}" "" "" false
+                  ;;
+              esac
+              ;;
+          esac
+
+          echo "targets=$TARGETS" >> "$GITHUB_OUTPUT"
+          jq . <<<"$TARGETS"
+
+  deploy:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      # Both entries push to gh-pages; running them together would race.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.plan.outputs.targets) }}
+    name: deploy (${{ matrix.target.version }})
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -111,7 +206,7 @@ jobs:
           # rebuilds from that commit rather than from whatever the event
           # happened to point at. fetch-depth 0 also gives mike the gh-pages
           # branch and full tag history.
-          ref: ${{ steps.v.outputs.ref }}
+          ref: ${{ matrix.target.ref }}
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
@@ -128,27 +223,30 @@ jobs:
       - name: Install documentation dependencies
         run: pip install -r requirements-docs.txt
 
+      # Pins the data ref for this version and records the exact revision the
+      # footer shows.
       - name: Pin data ref for this version
         run: |
           python scripts/write_docs_ref.py \
-            --ref "${{ steps.v.outputs.ref }}" \
-            --version "${{ steps.v.outputs.version }}"
+            --ref "${{ matrix.target.dataref }}" \
+            --version "${{ matrix.target.version }}" \
+            --label "${{ matrix.target.title }}" \
+            --commit "$(git rev-parse HEAD)"
 
-      # Only the Demo Report is latest-only: copying its ~4.5 MB dist into every
-      # release would bloat gh-pages. A versioned build replaces it with a
-      # redirect, so the tab and the URL keep working.
+      # Only the moving builds carry the Demo Report: copying its ~4.5 MB dist
+      # into every release would bloat gh-pages. A frozen build replaces it with
+      # a redirect, so the tab and the URL keep working.
       #
-      # The Pathogen Sheet ships in every version, pinned above to this
+      # The Pathogen Sheet ships in every version, pinned above to that
       # version's ref, so each release documents the sheet it actually shipped.
       - name: Redirect demo tab to latest
-        if: steps.v.outputs.version != 'latest'
+        if: ${{ !matrix.target.demo }}
         run: python scripts/docs_release_stub.py
 
       # Same dist the pipeline's own Pages job produced: heatmap.html with its
       # CSS/JS folded inline and the bootstrap data embedded, as one file.
-      # Only needed for `latest`, where the real Demo Report tab lives.
       - name: Build interactive report dist
-        if: steps.v.outputs.version == 'latest'
+        if: ${{ matrix.target.demo }}
         run: |
           python scripts/inline_boot_json.py
           test -s _site/index.html
@@ -170,7 +268,7 @@ jobs:
       - name: Stamp assets for cache busting
         run: |
           set -euo pipefail
-          V="${GITHUB_SHA::12}"
+          V="$(git rev-parse HEAD | cut -c1-12)"
           {
             echo "DOCS_JS_REF=javascripts/docs_ref.js?v=$V"
             echo "DOCS_JS_TABLE=javascripts/pathogen_table.js?v=$V"
@@ -178,6 +276,18 @@ jobs:
             echo "DOCS_CSS_TABLE=stylesheets/pathogen_table.css?v=$V"
           } >> "$GITHUB_ENV"
           echo "Assets stamped with ?v=$V"
+
+          # Footer build stamp. mkdocs.yml reads DOCS_COPYRIGHT via !ENV and
+          # Material renders it as raw HTML, so no theme template is involved.
+          # The copyright text itself is read back out of mkdocs.yml rather
+          # than repeated here, so it stays defined in exactly one place.
+          BASE="$(sed -nE 's/^copyright: !ENV \[DOCS_COPYRIGHT, "(.*)"\].*/\1/p' mkdocs.yml)"
+          test -n "$BASE" || { echo "::error::could not read the copyright default from mkdocs.yml"; exit 1; }
+          SHA="$(git rev-parse HEAD)"
+          REF='${{ matrix.target.ref }}'
+          LABEL='${{ matrix.target.title || matrix.target.version }}'
+          URL="https://github.com/${GITHUB_REPOSITORY}"
+          echo "DOCS_COPYRIGHT=$BASE &middot; $LABEL &middot; built from <a href=\"$URL/tree/$REF\"><code>$REF</code></a> &middot; <a href=\"$URL/commit/$SHA\"><code>${SHA:0:7}</code></a>" >> "$GITHUB_ENV"
 
       - name: Build site
         run: mkdocs build --strict
@@ -194,13 +304,17 @@ jobs:
 
       - name: Deploy version
         run: |
-          mike deploy --push --branch "$PAGES_BRANCH" --update-aliases \
-            "${{ steps.v.outputs.version }}"
+          set -euo pipefail
+          ARGS=(deploy --push --branch "$PAGES_BRANCH" --update-aliases)
+          TITLE='${{ matrix.target.title }}'
+          if [ -n "$TITLE" ]; then ARGS+=(--title "$TITLE"); fi
+          # shellcheck disable=SC2206
+          mike "${ARGS[@]}" '${{ matrix.target.version }}' ${{ matrix.target.aliases }}
 
       # The site root redirects here. Without this the root 404s. Idempotent, so
-      # it is safe to reassert on every main push; releases never move it.
+      # it is safe to reassert whenever latest moves.
       - name: Point default at latest
-        if: steps.v.outputs.version == 'latest'
+        if: matrix.target.version == 'latest'
         run: mike set-default --push --branch "$PAGES_BRANCH" latest
 
       # Prune entries left over from earlier versioning schemes:
@@ -228,7 +342,8 @@ jobs:
           {
             echo "### Docs deployed"
             echo ""
-            echo "- **Version:** \`${{ steps.v.outputs.version }}\`"
-            echo "- **Data ref:** \`${{ steps.v.outputs.ref }}\`"
-            echo "- **URL:** https://jhuapl-bio.github.io/taxtriage/${{ steps.v.outputs.version }}/"
+            echo "- **Version:** \`${{ matrix.target.version }}\`"
+            echo "- **Shown as:** ${{ matrix.target.title || matrix.target.version }}"
+            echo "- **Built from:** \`${{ matrix.target.ref }}\` ($(git rev-parse --short HEAD))"
+            echo "- **URL:** https://jhuapl-bio.github.io/taxtriage/${{ matrix.target.version }}/"
           } >> "$GITHUB_STEP_SUMMARY"

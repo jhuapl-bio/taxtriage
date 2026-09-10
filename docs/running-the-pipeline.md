@@ -132,12 +132,12 @@ Profiles control resource allocation and container runtime. Multiple profiles ca
 
 ## Key Execution Flags
 
-| Flag      | Description                                                        |
-| --------- | ------------------------------------------------------------------ |
-| `-resume` | Resume from the last successful step (uses Nextflow's cache)       |
-| `-latest` | Pull the latest commit from the specified branch                   |
-| `-r main` | Use the `main` branch (or `stable`, or a version tag like `1.3.1`) |
-| `-bg`     | Run Nextflow in the background, detached from the terminal         |
+| Flag        | Description                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `-resume`   | Resume from the last successful step (uses Nextflow's cache)                                                                   |
+| `-latest`   | Pull the latest commit from the specified branch                                                                               |
+| `-r stable` | Revision to run. `stable` is the newest release (recommended); `main` is unreleased work; a tag like `v3.3.9` pins one forever |
+| `-bg`       | Run Nextflow in the background, detached from the terminal                                                                     |
 
 ---
 
@@ -149,7 +149,7 @@ For air-gapped environments, provide all remote resources as local files:
 nextflow run https://github.com/jhuapl-bio/taxtriage \
   --input examples/Samplesheet.csv \
   --db "./k2_viral" \
-  -r main -latest \
+  -r stable -latest \
   --skip_kraken2 \
   --outdir tmp \
   --reference_fasta ./refer.fasta \
@@ -176,7 +176,7 @@ To use a Kraken2 database already on your filesystem (e.g., a decompressed `k2_v
 nextflow run https://github.com/jhuapl-bio/taxtriage \
   --input examples/Samplesheet.csv \
   --db "./k2_viral" \
-  -r main -latest \
+  -r stable -latest \
   --outdir output_viral_local \
   -profile local,docker \
   -resume

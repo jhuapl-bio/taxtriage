@@ -149,6 +149,16 @@ async function mount(text, opts) {
   return window;
 }
 
+// Both request routes pass through a confirmation dialog: clicking "Review &
+// open issue" or "Download" only stages the request, and the widget opens the
+// issue or writes the file once the confirmation is accepted.
+function acceptConfirm(w) {
+  const go = w.document.querySelector(".pt-confirm .pt-cf-go");
+  if (!go) return false;
+  go.dispatchEvent(new w.Event("click", { bubbles: true }));
+  return true;
+}
+
 async function main() {
   const dom = new JSDOM(`<!doctype html><html><body><div class="pt-app" id="pathogen-app"></div></body></html>`, {
     url: "https://example.org/pathogen-sheet/",
@@ -607,6 +617,7 @@ async function main() {
     eq("back to two staged", drawer().querySelectorAll(".pt-rq-list li").length, 2);
 
     click(".pt-rq-open");
+    ok("confirmation shown before filing", acceptConfirm(w));
     eq("one issue opened", w.__opened.length, 1);
     const url = w.__opened[0];
     const body = decodeURIComponent(new URL(url).searchParams.get("body"));
@@ -644,6 +655,7 @@ async function main() {
     drawer()
       .querySelector(".pt-rq-open")
       .dispatchEvent(new w.Event("click", { bubbles: true }));
+    ok("confirmation shown before filing", acceptConfirm(w));
     eq("opens without pressing Add another", w.__opened.length, 1);
     const t = decodeURIComponent(new URL(w.__opened[0]).searchParams.get("title"));
     eq("singular title", t, "Add organism: Solo organism");
@@ -729,6 +741,7 @@ async function main() {
     set("general_classification", "potential");
     set("reference", "Another source 2024.");
     fire(drawer().querySelector(".pt-rq-download"), "click");
+    ok("confirmation shown before downloading", acceptConfirm(w));
 
     eq("a file was produced", w.__files.length, 1);
     eq("sensible filename", w.__files[0].name, "taxtriage-organism-request.md");
@@ -747,6 +760,7 @@ async function main() {
     const d = w.document;
     d.querySelector(".pt-toolbar .pt-request").dispatchEvent(new w.Event("click", { bubbles: true }));
     d.querySelector(".pt-rq-download").dispatchEvent(new w.Event("click", { bubbles: true }));
+    ok("no confirmation for an empty request", !acceptConfirm(w));
     eq("no empty file written", w.__files.length, 0);
     ok("explains why", !d.querySelector(".pt-rq-error").hidden);
   }
@@ -805,6 +819,7 @@ async function main() {
     // Force a conflicting value past the disabled control; the route must win.
     drawer().querySelector('[data-f="request_type"]').value = "git-tracked";
     fire(drawer().querySelector(".pt-rq-download"), "click");
+    ok("confirmation shown before downloading", acceptConfirm(w));
     const text = await w.__files[0].blob.text();
     ok("download stamps external-local", /external-local/.test(text), text.slice(0, 300));
     ok("download does not record git-tracked", !/git-tracked/.test(text));
@@ -826,6 +841,7 @@ async function main() {
     set("reference", "Ref 2024.");
     drawer().querySelector('[data-f="request_type"]').value = "external-local";
     fire(drawer().querySelector(".pt-rq-open"), "click");
+    ok("confirmation shown before filing", acceptConfirm(w));
     const body = decodeURIComponent(new w.URL(w.__opened[0]).searchParams.get("body"));
     ok("issue stamps git-tracked", /git-tracked/.test(body), body.slice(0, 300));
     ok("issue does not record external-local", !/external-local/.test(body));

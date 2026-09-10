@@ -1,0 +1,92 @@
+name: Release
+
+# Keeps the moving `stable` pointer in step with the newest release, and closes
+# the issues that release shipped.
+#
+# Branch model (single-branch):
+#   main      every PR merges here; always buildable.
+#   stable    a BRANCH that is fast-forwarded onto the commit of the newest
+#             release tag. This is what `-r stable` resolves to.
+#   vX.Y.Z    immutable tags, for pinning an exact run.
+#
+# Why a branch and not a tag: Nextflow caches pipelines under
+# ~/.nextflow/assets and only force-updates branch refs on `nextflow pull`.
+# A tag that moves underneath a cached clone leaves users on the old commit,
+# with no error to tell them so. A branch always fast-forwards.
+#
+#     nextflow run jhuapl-bio/taxtriage -r stable    # newest release
+#     nextflow run jhuapl-bio/taxtriage -r v3.4.0    # pinned forever
+#     nextflow run jhuapl-bio/taxtriage -r main      # bleeding edge
+
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to point `stable` at, e.g. v3.4.0. Blank = newest vX.Y.Z tag."
+        required: false
+        default: ""
+
+permissions:
+  contents: write # move the stable branch
+  issues: write # close and comment on shipped issues
+
+concurrency:
+  group: release-stable
+  cancel-in-progress: false
+
+jobs:
+  stable:
+    runs-on: ubuntu-latest
+    # A prerelease is explicitly not stable.
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the release tag
+        id: t
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+          fi
+          test -n "$TAG" || { echo "::error::no release tag found"; exit 1; }
+          git rev-parse -q --verify "refs/tags/$TAG" >/dev/null \
+            || { echo "::error::tag $TAG does not exist"; exit 1; }
+          SHA="$(git rev-list -n1 "$TAG")"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "stable -> $TAG ($SHA)"
+
+      # A release is always cut from main, so `stable` only ever moves forward.
+      # Refusing a non-ancestor catches a tag cut from a stray branch.
+      - name: Refuse a backwards move
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify origin/stable >/dev/null; then
+            OLD="$(git rev-parse origin/stable)"
+            if [ "$OLD" != "${{ steps.t.outputs.sha }}" ] \
+               && ! git merge-base --is-ancestor "$OLD" "${{ steps.t.outputs.sha }}"; then
+              echo "::error::${{ steps.t.outputs.tag }} is not a descendant of the current stable ($OLD)."
+              exit 1
+            fi
+          fi
+
+      - name: Move stable
+        run: git push origin "${{ steps.t.outputs.sha }}:refs/heads/stable"
+
+      - name: Summary
+        run: |
+          {
+            echo "### stable now points at \`${{ steps.t.outputs.tag }}\`"
+            echo ""
+            echo "\`\`\`"
+            echo "nextflow run jhuapl-bio/taxtriage -r stable"
+            echo "\`\`\`"
+            echo ""
+            echo "Commit: \`${{ steps.t.outputs.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

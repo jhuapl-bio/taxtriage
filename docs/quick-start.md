@@ -19,7 +19,7 @@ This command pulls test data from GitHub and runs the full pipeline. It takes ap
 
 ```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
-  -r main -latest \
+  -r stable -latest \
   -profile test,docker \
   -resume
 ```
@@ -118,7 +118,7 @@ the pipeline skips.
 nextflow run https://github.com/jhuapl-bio/taxtriage \
   --outdir tmp_viral \
   --input examples/Samplesheet.csv \
-  -r main -latest \
+  -r stable -latest \
   --db "viral" --download_db \
   -profile local,docker \
   -resume
@@ -163,7 +163,7 @@ Example command:
 ```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
   --input examples/Samplesheet.csv \
-  --db "k2_viral" -r main -latest \
+  --db "k2_viral" -r stable -latest \
   --skip_kraken2 \
   --outdir tmp \
   --reference_fasta ./refer.fasta \
