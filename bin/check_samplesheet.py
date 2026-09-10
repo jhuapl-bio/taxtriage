@@ -396,7 +396,7 @@ def sniff_format(handle):
 
 
 # Columns that belong to the pipeline infrastructure, not sample metadata
-_PIPELINE_COLS = {"fastq_1", "fastq_2", "platform", "type", "sequencing_summary", "negative", "trim", "positive",
+_PIPELINE_COLS = {"fastq_1", "fastq_2", "platform", "type", "sequencing_summary", "negative", "trim", "positive", "background",
                   "single_end", "directory", "needscompressing", "is_fasta", "is_sra", "minimap2_preset",
                   "bam", "is_bam"}
 

@@ -302,6 +302,11 @@ def create_fastq_channel(LinkedHashMap row, List resolved = null) {
 
     // Control sample columns
     meta.control = (row.control && row.control.toString().toUpperCase() == "TRUE") ? true : false
+    // `background` nominates this sample as the source for a dilution / spike-in
+    // series. It is parsed always but only ACTED ON when a simulation param is set
+    // (see workflows/taxtriage.nf), so a sheet carrying it still runs normally.
+    meta.background = (row.containsKey('background') && row.background &&
+                       row.background.toString().toUpperCase() in ["TRUE", "YES", "1", "BACKGROUND"]) ? true : false
     // Normalize spaces → underscores to match how check_samplesheet.py transforms sample names
     meta.negative = (row.containsKey('negative') && row.negative) ? row.negative.trim().replaceAll(/\s+/, '_') : null
     meta.positive = (row.containsKey('positive') && row.positive) ? row.positive.trim().replaceAll(/\s+/, '_') : null
