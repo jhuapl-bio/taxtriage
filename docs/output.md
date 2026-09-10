@@ -108,36 +108,23 @@ Aggregated report across all samples, including:
 
 The main deliverable. Example report:
 
-<img src="../images/pathogens.report.example.png" width="60%">
+<img src="https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/docs/images/odr_pdf.png" width="60%">
 
-Each table row is one detected organism with the following key columns:
+<img src="https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/docs/images/odr_report_2.png" width="60%">
 
-| Column                   | Description                                                                                                     |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| **Detected Organism**    | Organism name                                                                                                   |
-| **Specimen ID**          | NCBI Taxid                                                                                                      |
-| **Sample Type**          | body site (blood, stool, etc.)                                                                                  |
-| **% Reads**              | Percentage of total reads assigned                                                                              |
-| **# Reads Aligned**      | Reads mapped above minimum MAPQ                                                                                 |
-| **% Aligned Reads**      | Fraction of dataset aligned                                                                                     |
-| **Coverage**             | Fraction of reference genome covered                                                                            |
-| **HHS Percentile**       | Abundance rank vs. HMP healthy human dataset                                                                    |
-| **IsAnnotated**          | Present in pathogen sheet                                                                                       |
-| **Microbial Category**   | Unknown / Commensal / Primary / Opportunistic / Potential — see [Microbial Categories](microbial-categories.md) |
-| **High Consequence**     | Always shown in PDF regardless of TASS cutoff                                                                   |
-| **Gini Coefficient**     | Coverage distribution inequality (0=uneven, 1=uniform)                                                          |
-| **Mean BaseQ**           | Average base quality across aligned reads                                                                       |
-| **Mean MapQ**            | Average mapping quality of aligned reads                                                                        |
-| **Mean Coverage**        | Mean coverage across all contigs/chromosomes                                                                    |
-| **Mean Depth**           | Mean depth across all positions                                                                                 |
-| **Minhash Score**        | False-positive penalty score                                                                                    |
-| **Breadth Weight Score** | Log-based breadth of coverage component                                                                         |
-| **TASS Score**           | Final combined confidence score (0–1)                                                                           |
-| **K2 Reads**             | Number of Kraken2-assigned reads                                                                                |
-| **Siblings Score**       | Read abundance vs. related organisms in same genus                                                              |
+ Each table row is one detected organism with the following key columns:
 
-See [TASS Scoring](tass-scoring.md) for full definitions of each metric.
+| Column | Description |
+|---|---|
+| **Organism** | Detected organism with associated annotation, taxID, and taxonomic rank |
+| **TASS Score** | Confidence score for organism detection (0–100), with higher values indicating greater confidence |
+| **Classifier Reads** | Number of reads assigned to the organism by Kraken2/Centrifuge |
+| **Aligned Reads** | Number and percentage of total sample reads that align to the organism's reference genome |
+| **RPM** | Reads Per Million (RPM), a normalized abundance metric that enables comparison across samples |
+| **% Coverage** | Percentage of the organism's genome covered by aligned reads |
+| **Control Comparison** | Displays an organism's TASS score relative to control samples |
 
+See [TASS Scoring](TASS-Scoring) for full definitions of each metric.
 ### Interactive Comparison Report (`report/all.odr.html`)
 
 A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, coverage/sunburst/explore views, a per-sample-type TASS cutoff slider, species/genus roll-up views, whole-sample QC flags, and a built-in Export-to-PDF button. No server is required — the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
