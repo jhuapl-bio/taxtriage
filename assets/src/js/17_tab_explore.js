@@ -1311,7 +1311,9 @@ const _TAB_DIRTY = {
   table: false,
   map: false,
   runmeta: false,
+  trends: false,
   novelty: false,
+  insilico: false,
 };
 // Tracks whether each pane has EVER been drawn. The dirty flags above only get
 // flipped true by redraw() (inside __ttRunInit); if init throws before reaching

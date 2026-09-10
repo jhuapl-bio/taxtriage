@@ -3545,6 +3545,9 @@ function _drawTab(tab) {
     case "novelty":
       if (HAS_NOVELTY) drawNovelty();
       break;
+    case "insilico":
+      if (typeof HAS_INSILICO !== "undefined" && HAS_INSILICO && window.drawInsilico) window.drawInsilico();
+      break;
     case "table":
       populateTable();
       break;
@@ -3556,6 +3559,14 @@ function _drawTab(tab) {
       {
         const _sc = document.getElementById("runmeta-filter-scope");
         if (_sc && _sc.checked && typeof _buildRunMetaTable === "function") _buildRunMetaTable();
+      }
+      break;
+    case "map":
+      if (typeof _buildGeoComparison === "function") _buildGeoComparison();
+      break;
+    case "trends":
+      if (typeof _activeMetaSub !== "undefined" && _activeMetaSub && typeof _switchMetaSub === "function") {
+        _switchMetaSub(_activeMetaSub);
       }
       break;
   }
@@ -3594,9 +3605,11 @@ function redraw() {
   _refreshMapMarkerColors();
   if (_selectedSample || _selectedGroup) _refreshMapPanelTable();
   if (_longiBuilt) _buildLongitudinalSection();
-  // Keep the active metadata sub-tab in sync with the active filters.
-  if (activeTab === "runmeta" && _activeMetaSub) {
+  // Keep the active Trends sub-tab in sync with the active filters, and
+  // recompute the drawn-region summaries (their membership is filter-scoped).
+  if (activeTab === "trends" && _activeMetaSub) {
     if (typeof _switchMetaSub === "function") _switchMetaSub(_activeMetaSub);
   }
+  if (typeof _ttRegionRefresh === "function") _ttRegionRefresh();
   _updateCapabilityNotice();
 }

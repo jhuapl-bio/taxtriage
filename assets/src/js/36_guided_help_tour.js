@@ -235,14 +235,34 @@
     },
     {
       tab: "runmeta",
-      icon: "fa-map-location-dot",
-      title: "Metadata & Mapping",
+      icon: "fa-table-list",
+      title: "Metadata",
       fig: FIG.runmeta,
-      desc: "Per-sample run details plus mapping — type, platform and any uploaded metadata fields in one editable table, and a Mapping & Geography sub-tab that plots samples at their precise coordinates or aggregated by country / state.",
+      desc: "Per-sample run details — type, platform and any uploaded metadata fields — in one editable table. The <b>Group by</b> bar underneath is shared: whatever you pick here also drives the Mapping and Trends tabs.",
       tips: [
         "The View button on a sample jumps straight here and highlights its row.",
         "Upload a metadata CSV to enrich these fields.",
+        "Add latitude / longitude to light up Mapping; add collection_time for Trends.",
       ],
+    },
+    {
+      tab: "map",
+      icon: "fa-map-location-dot",
+      title: "Mapping",
+      fig: FIG.runmeta,
+      desc: "Samples plotted at their precise coordinates, or aggregated by country / state. Draw a lasso or a rectangle to cut out an area and get a summary for it — draw several and they are compared side by side.",
+      tips: [
+        "Regions you draw stay put: the Show regions switch hides them without deleting them.",
+        "Group by region turns your drawn areas into a metadata column the other views can use.",
+      ],
+    },
+    {
+      tab: "trends",
+      icon: "fa-chart-line",
+      title: "Trends & group analysis",
+      fig: FIG.runmeta,
+      desc: "Longitudinal change over time, host & disease breakdowns, and the group heatmap / network / cross-entry comparison — all reading the shared Group by selection.",
+      tips: ["Group by columns are defined in the Metadata tab; the bar here mirrors that selection."],
     },
     {
       sel: "#sidebar",
@@ -820,11 +840,39 @@
         tips: [],
       },
       {
-        sel: "#pane-runmeta",
-        icon: "fa-map-location-dot",
-        title: "Metadata & mapping",
-        desc: "Per-sample type/platform table plus a Mapping & Geography sub-tab that plots samples by coordinates or aggregated by country / state.",
-        tips: ["A sample's View button jumps here and highlights its row."],
+        sel: '.mg-bar-mount[data-mg-mount="meta"]',
+        icon: "fa-layer-group",
+        title: "Group by (shared)",
+        desc: "Pick one or more metadata columns to bucket samples into groups. The Mapping and Trends tabs mirror this exact selection.",
+        tips: ["Two or more columns combine as a union — one group per observed combination."],
+      },
+    ],
+    map: [
+      {
+        sel: "#mapdraw-bar",
+        icon: "fa-draw-polygon",
+        title: "Draw regions",
+        desc: "Arm the lasso or rectangle, trace an area on the map, and a summary card for that region appears underneath.",
+        tips: [
+          "Show regions hides them without deleting them.",
+          "Group by region publishes the regions as a metadata column.",
+        ],
+      },
+      {
+        sel: "#geo-cmp-level",
+        icon: "fa-earth-americas",
+        title: "Precise vs aggregated",
+        desc: "Switch between per-sample pins and a country / state choropleth of the selected metric.",
+        tips: [],
+      },
+    ],
+    trends: [
+      {
+        sel: "#meta-subtabs",
+        icon: "fa-chart-line",
+        title: "Trends sub-views",
+        desc: "Longitudinal, host & disease, group heatmap, group network and cross-entry comparison.",
+        tips: ["Sub-tabs grey out until the metadata they need is present."],
       },
     ],
   };

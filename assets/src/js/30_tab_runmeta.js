@@ -7,18 +7,35 @@
        -     _updateMetaSubTabStates() — enables/disables sub-tabs based on data.
 ═══════════════════════════════════════════════════════════════════════════ */
 
-// Activate a sub-tab pane and trigger its chart build.
-function _switchMetaSub(id) {
+/* Activate a Trends sub-tab pane and trigger its chart build.
+
+   "geo" is no longer one of the sub-tabs — Mapping is its own top-level tab
+   now — but it is still addressed through this function (by the PDF renderer,
+   the "plot these coordinates" prompts, and the filter redraw) so callers
+   don't have to know where a view lives. Asking for "geo" therefore builds the
+   map and, when `opts.activate` is set, brings the Mapping tab forward.
+
+   Only the panes inside #pane-trends take part in the active/inactive toggle;
+   the geo pane is permanently active inside its own tab.                     */
+function _switchMetaSub(id, opts) {
+  opts = opts || {};
+  if (id === "geo") {
+    if (opts.activate) {
+      const mb = document.getElementById("map-tab-btn");
+      if (mb) mb.click();
+    }
+    if (typeof _buildGeoComparison === "function") _buildGeoComparison();
+    return;
+  }
   _activeMetaSub = id;
   document
     .querySelectorAll(".meta-subtab")
     .forEach((b) => b.classList.toggle("active", b.getAttribute("data-metasub") === id));
   document
-    .querySelectorAll(".meta-subpane")
+    .querySelectorAll("#pane-trends .meta-subpane")
     .forEach((p) => p.classList.toggle("active", p.id === `meta-subpane-${id}`));
   // Trigger the relevant build now that the pane is visible
   if (id === "longi" && typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
-  if (id === "geo" && typeof _buildGeoComparison === "function") _buildGeoComparison();
   if (id === "host" && typeof _buildHostDisease === "function") _buildHostDisease();
   if (id === "ghm" && typeof _mgBuildGroupHeatmap === "function") _mgBuildGroupHeatmap();
   if (id === "net" && typeof _mgBuildNetwork === "function") _mgBuildNetwork();
@@ -39,7 +56,6 @@ function _updateMetaSubTabStates() {
 
   // Inline field lists to avoid TDZ if this is called before the const declarations
   // lower in the script (_GEO_META_FIELDS / _HOST_META_FIELDS at ~line 19970).
-  const _geoFields = ["sample_origin_country", "sample_origin_state_province_territory"];
   // Keep in step with _SITE_META_FIELDS / _HOST_META_FIELDS in
   // 33_categorical_metadata.js — inlined here for the same TDZ reason.
   const _hostFields = [
@@ -54,11 +70,10 @@ function _updateMetaSubTabStates() {
     "site_id",
   ];
 
-  // ── Mapping & Geography: ALWAYS available so users can add latitude /
-  //    longitude or country / state directly in the table above, even when
-  //    none was supplied in the samplesheet. The pane shows its own per-level
-  //    "no data yet" hint when nothing is populated.
-  const hasGeo = true;
+  // ── Mapping is ALWAYS available (its own top-level tab now) so users can
+  //    add latitude / longitude or country / state in the Metadata tab even
+  //    when none was supplied in the samplesheet. The pane shows its own
+  //    per-level "no data yet" hint when nothing is populated.
 
   // ── Host & Disease: needs host / disease / site field
   const hasHost = typeof _anyMetaValue === "function" && _anyMetaValue(_hostFields);
@@ -76,8 +91,9 @@ function _updateMetaSubTabStates() {
   } catch (e) {}
   const hasGroups = _groupCands > 0;
   const _groupWarn =
-    "This tab needs at least one categorical metadata column to group on. Add a column in the table " +
-    "above (e.g. <b>sample_type</b>, <b>site</b>, <b>environmental_site</b>) or upload a metadata CSV, then pick it " +
+    "This tab needs at least one categorical metadata column to group on. Add a column in the " +
+    '<a href="#" class="mg-goto-meta-link">Metadata tab</a> (e.g. <b>sample_type</b>, <b>site</b>, ' +
+    "<b>environmental_site</b>) or upload a metadata CSV, then pick it " +
     'in the <b>"Group by"</b> bar.';
 
   // Keep the bar's option list in step with whatever metadata is loaded now.
@@ -85,19 +101,21 @@ function _updateMetaSubTabStates() {
     if (typeof _mgSyncGroupBar === "function") _mgSyncGroupBar();
     if (typeof _mgWireGroupBar === "function") _mgWireGroupBar();
   } catch (e) {}
-  const _mgBar = document.getElementById("mg-bar");
-  if (_mgBar) _mgBar.style.display = hasGroups ? "" : "none";
+  // Every mounted copy of the bar (Metadata / Mapping / Trends) hides together.
+  document.querySelectorAll(".mg-bar-mount").forEach((el) => {
+    el.style.display = hasGroups ? "" : "none";
+  });
+
+  // Mapping lives in its own tab now, so its "no data yet" banner is updated
+  // here rather than through the sub-tab config list below.
+  const _geoWarn = document.getElementById("meta-subtab-warn-geo");
+  if (_geoWarn) _geoWarn.style.display = "none";
 
   const configs = [
     {
       id: "longi",
       ok: hasLongi,
       warn: "This tab requires a <b>collection_time</b> column in your metadata samplesheet (ISO date or M/D/YYYY).",
-    },
-    {
-      id: "geo",
-      ok: hasGeo,
-      warn: "This tab requires at least one of: <b>sample_origin_country</b> or <b>sample_origin_state_province_territory</b> in your metadata samplesheet.",
     },
     {
       id: "host",
@@ -120,10 +138,9 @@ function _updateMetaSubTabStates() {
     if (ok && !firstEnabled) firstEnabled = id;
   });
 
-  // If no active sub-tab yet, or the active one just became disabled → switch.
-  // Default to Mapping & Geography (the map) when it's available, otherwise
-  // fall back to the first enabled sub-tab.
-  const _defaultSub = (configs.find((c) => c.id === "geo" && c.ok) || {}).id || firstEnabled;
+  // If no active sub-tab yet, or the active one just became disabled → switch
+  // to the first enabled Trends sub-tab.
+  const _defaultSub = firstEnabled;
   const activeBtn = _activeMetaSub && document.querySelector(`.meta-subtab[data-metasub="${_activeMetaSub}"]`);
   if (!_activeMetaSub || (activeBtn && activeBtn.disabled)) {
     if (_defaultSub) _switchMetaSub(_defaultSub);
@@ -161,6 +178,7 @@ function _metaKeyLabel(k) {
     salinity: "Salinity (PSU)",
     collection_time: "Collection Time",
     location: "Location",
+    map_region: "Map Region",
   };
   return KNOWN[k] || k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

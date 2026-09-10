@@ -1,5 +1,5 @@
 name: Add an organism to the pathogen sheet
-description: Request a new organism, or a correction to an existing one, in assets/pathogen_sheet.csv
+description: Request an organism that assets/pathogen_sheet.csv does not carry yet
 title: "Add organism: "
 labels: ["pathogen-sheet"]
 body:
@@ -27,8 +27,12 @@ body:
         history. Requests sent privately are recorded as `external-local`, and
         `APL-derived` is reserved for entries curated by the maintainers.
 
+        Correcting an organism the sheet already carries? Use
+        [Update an organism](https://github.com/jhuapl-bio/taxtriage/issues/new?template=update_organism.yml)
+        instead, so only the changed fields are requested.
+
         **Requesting several organisms?** This form covers one. Use the
-        **Request organisms** button on the
+        **Request changes** button on the
         [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/)
         to queue any number and open a single issue with a paste-ready CSV block.
 

@@ -249,6 +249,245 @@ a.pt-btn {
   margin: 0;
 }
 
+/* Add vs update. A segmented control rather than a select: there are two
+   modes, and which one you are in changes the whole form. */
+.pt-rq-modes {
+  display: flex;
+  gap: 0;
+  margin: 0.9rem 0 0.75rem;
+}
+
+.pt-rq-mode {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.68rem;
+  color: var(--pt-muted);
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--pt-border);
+}
+
+.pt-rq-mode:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.pt-rq-mode:last-child {
+  border-left: none;
+  border-radius: 0 4px 4px 0;
+}
+
+.pt-rq-mode:hover {
+  color: var(--pt-accent);
+}
+
+.pt-rq-mode.is-on {
+  color: var(--pt-accent);
+  background: var(--md-accent-fg-color--transparent);
+  border-color: var(--pt-accent);
+}
+
+.pt-rq-target-field input {
+  font-style: italic;
+}
+
+.pt-rq-live {
+  margin: -0.35rem 0 0.6rem;
+  font-size: 0.66rem;
+  color: var(--pt-muted);
+}
+
+.pt-rq-live.is-on {
+  font-weight: 600;
+  color: var(--pt-accent);
+}
+
+.pt-rq-badge {
+  display: inline-block;
+  padding: 0 0.3rem;
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: 0.08em;
+  border: 1px solid currentcolor;
+  border-radius: 2px;
+}
+
+.pt-rq-badge-add {
+  color: #2e7d32;
+}
+
+.pt-rq-badge-update {
+  color: #ef6c00;
+}
+
+[data-md-color-scheme="slate"] .pt-rq-badge-add {
+  color: #81c784;
+}
+
+[data-md-color-scheme="slate"] .pt-rq-badge-update {
+  color: #ffb74d;
+}
+
+.pt-drawer-cta {
+  margin-top: 1.25rem;
+}
+
+/* ── confirmation ───────────────────────────────────────
+   Sits above the request drawer, since it is the last thing between the form
+   and a public issue. */
+.pt-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  padding: 2rem 1rem;
+  overflow-y: auto;
+  background: rgb(0 0 0 / 45%);
+}
+
+.pt-confirm.is-open {
+  display: block;
+}
+
+.pt-cf-card {
+  position: relative;
+  width: min(46rem, 96vw);
+  max-height: calc(100vh - 4rem);
+  margin: 0 auto;
+  padding: 1.5rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--pt-border);
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 30%);
+}
+
+.pt-cf-card h3 {
+  margin: 0 2rem 0.3rem 0;
+}
+
+.pt-cf-sum {
+  margin: 0 0 0.9rem;
+  font-size: 0.7rem;
+  color: var(--pt-muted);
+}
+
+.pt-cf-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--pt-border);
+}
+
+.pt-cf-entry {
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--pt-border);
+}
+
+.pt-cf-entry h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+}
+
+.pt-cf-taxid {
+  font-size: 0.64rem;
+  font-weight: 400;
+  color: var(--pt-muted);
+}
+
+.pt-cf-reason {
+  margin: 0 0 0.6rem;
+  font-size: 0.7rem;
+  font-style: italic;
+  color: var(--pt-muted);
+}
+
+.pt-cf-dl {
+  margin-top: 0;
+}
+
+.pt-cf-diff {
+  width: 100%;
+  font-size: 0.68rem;
+  border-collapse: collapse;
+}
+
+.pt-cf-diff th,
+.pt-cf-diff td {
+  padding: 0.25rem 0.4rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--pt-border);
+}
+
+.pt-cf-diff th {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pt-muted);
+}
+
+.pt-cf-diff td:first-child {
+  width: 11rem;
+  font-weight: 600;
+}
+
+.pt-cf-before {
+  color: var(--pt-muted);
+  text-decoration: line-through;
+  text-decoration-color: rgb(198 40 40 / 55%);
+}
+
+.pt-cf-after {
+  font-weight: 600;
+  color: #2e7d32;
+}
+
+[data-md-color-scheme="slate"] .pt-cf-after {
+  color: #81c784;
+}
+
+.pt-cf-diff em {
+  color: var(--pt-muted);
+  text-decoration: none;
+}
+
+.pt-cf-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.64rem;
+  color: var(--pt-muted);
+}
+
+.pt-cf-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  padding-top: 1rem;
+}
+
+.pt-cf-go {
+  border-color: var(--pt-accent);
+  color: var(--pt-accent);
+}
+
+.pt-cf-go:hover {
+  background: var(--md-accent-fg-color--transparent);
+}
+
+@media screen and (max-width: 44em) {
+  .pt-cf-diff td:first-child {
+    width: auto;
+  }
+
+  .pt-cf-actions {
+    flex-direction: column-reverse;
+  }
+}
+
 /* ── layout ──────────────────────────────────────────────────────────── */
 .pt-body {
   display: grid;
