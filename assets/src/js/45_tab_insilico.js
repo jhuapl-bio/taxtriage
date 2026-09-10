@@ -1160,10 +1160,10 @@
   // spike-in run can do better than that: its own LoD curves say where the score
   // separates spike from matrix. INSIL_CUTOFF lets the reader move the cutoff and
   // watch every LoD move with it.
-  var INSIL_CUTOFF = null;   // null = use the cutoff the report was built with
+  var INSIL_CUTOFF = null; // null = use the cutoff the report was built with
 
   function runCutoff(suite) {
-    return +(((suite || {}).params || {}).detection_threshold) || 0;
+    return +((suite || {}).params || {}).detection_threshold || 0;
   }
 
   function effCutoff(suite) {
@@ -1180,7 +1180,9 @@
     var series = o.series.map(function (p) {
       var reps = p.tass_reps && p.tass_reps.length ? p.tass_reps : [p.tass];
       var hits = 0;
-      reps.forEach(function (t) { if (+t >= cutoff) hits++; });
+      reps.forEach(function (t) {
+        if (+t >= cutoff) hits++;
+      });
       var rate = reps.length ? hits / reps.length : 0;
       var det = rate >= 0.5;
       // Level 0 is the blank — nothing was spiked into it, so it is NOT a spike
@@ -1193,13 +1195,17 @@
         lod = p.count;
       }
       var q = {};
-      Object.keys(p).forEach(function (k) { q[k] = p[k]; });
+      Object.keys(p).forEach(function (k) {
+        q[k] = p[k];
+      });
       q.detection_rate = Math.round(rate * 1000) / 1000;
       q.detected = det;
       return q;
     });
     var out = {};
-    Object.keys(o).forEach(function (k) { out[k] = o[k]; });
+    Object.keys(o).forEach(function (k) {
+      out[k] = o[k];
+    });
     out.series = series;
     out.lod_count = lod;
     out.blank_called = blankCalled;
@@ -1211,28 +1217,79 @@
     var curve = (rec && rec.curve) || [];
     if (!curve.length) return "";
     var f = axisFrame(1, ["0", "100"], {
-      plotH: 96, minInner: 260, yLabels: ["0%", "50%", "100%"], yTitle: true, xTitle: true,
+      plotH: 96,
+      minInner: 260,
+      yLabels: ["0%", "50%", "100%"],
+      yTitle: true,
+      xTitle: true,
     });
-    var X = function (t) { return f.padL + (t / 100) * f.innerW; };
-    var Y = function (v) { return f.yb - Math.max(0, Math.min(1, v)) * f.plotH; };
+    var X = function (t) {
+      return f.padL + (t / 100) * f.innerW;
+    };
+    var Y = function (v) {
+      return f.yb - Math.max(0, Math.min(1, v)) * f.plotH;
+    };
     var s = svgOpen(f);
-    s += yAxis(f, [0, 0.5, 1].map(function (v) { return { v: v, p: v }; }),
-               function (v) { return (v * 100).toFixed(0) + "%"; }, "F1");
+    s += yAxis(
+      f,
+      [0, 0.5, 1].map(function (v) {
+        return { v: v, p: v };
+      }),
+      function (v) {
+        return (v * 100).toFixed(0) + "%";
+      },
+      "F1",
+    );
     [0, 25, 50, 75, 100].forEach(function (t) {
-      s += '<text x="' + X(t).toFixed(1) + '" y="' + (f.yb + 13) +
-           '" text-anchor="middle" font-size="9" fill="#666">' + t + "</text>";
+      s +=
+        '<text x="' +
+        X(t).toFixed(1) +
+        '" y="' +
+        (f.yb + 13) +
+        '" text-anchor="middle" font-size="9" fill="#666">' +
+        t +
+        "</text>";
     });
-    s += '<text x="' + (f.padL + f.innerW / 2) + '" y="' + (f.yb + 26) +
-         '" text-anchor="middle" font-size="8.5" fill="#999">TASS cutoff</text>';
-    s += '<polyline fill="none" stroke="' + ACCENT + '" stroke-width="1.8" points="' +
-         curve.map(function (r) { return X(r.threshold).toFixed(1) + "," + Y(r.f1).toFixed(1); }).join(" ") +
-         '"/>';
+    s +=
+      '<text x="' +
+      (f.padL + f.innerW / 2) +
+      '" y="' +
+      (f.yb + 26) +
+      '" text-anchor="middle" font-size="8.5" fill="#999">TASS cutoff</text>';
+    s +=
+      '<polyline fill="none" stroke="' +
+      ACCENT +
+      '" stroke-width="1.8" points="' +
+      curve
+        .map(function (r) {
+          return X(r.threshold).toFixed(1) + "," + Y(r.f1).toFixed(1);
+        })
+        .join(" ") +
+      '"/>';
     function rule(t, color, label) {
       if (t == null) return "";
-      return '<line x1="' + X(t).toFixed(1) + '" y1="' + f.padT + '" x2="' + X(t).toFixed(1) +
-             '" y2="' + f.yb + '" stroke="' + color + '" stroke-width="1.4" stroke-dasharray="3 3"/>' +
-             '<text x="' + (X(t) + 3).toFixed(1) + '" y="' + (f.padT + 9) +
-             '" font-size="8" fill="' + color + '">' + esc(label) + "</text>";
+      return (
+        '<line x1="' +
+        X(t).toFixed(1) +
+        '" y1="' +
+        f.padT +
+        '" x2="' +
+        X(t).toFixed(1) +
+        '" y2="' +
+        f.yb +
+        '" stroke="' +
+        color +
+        '" stroke-width="1.4" stroke-dasharray="3 3"/>' +
+        '<text x="' +
+        (X(t) + 3).toFixed(1) +
+        '" y="' +
+        (f.padT + 9) +
+        '" font-size="8" fill="' +
+        color +
+        '">' +
+        esc(label) +
+        "</text>"
+      );
     }
     s += rule(runCutoff(suite), MUTED, "run");
     s += rule(rec.threshold, GOOD, "best");
@@ -1247,22 +1304,36 @@
     var rec = group.recommended_cutoff;
     var card = el("div", {
       class: "chart-wrap",
-      style: "position:relative;border:1px solid #e6e1f5;border-radius:8px;padding:.7em .8em;background:#faf9ff;margin:.4em 0 1em",
+      style:
+        "position:relative;border:1px solid #e6e1f5;border-radius:8px;padding:.7em .8em;background:#faf9ff;margin:.4em 0 1em",
     });
-    card.appendChild(el("div", { class: "chart-title", style: "font-size:.9em;font-weight:600;color:#333" },
-      ["Detection cutoff"]));
+    card.appendChild(
+      el("div", { class: "chart-title", style: "font-size:.9em;font-weight:600;color:#333" }, ["Detection cutoff"]),
+    );
 
-    var grid = el("div", { style: "display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.8em;align-items:start" });
+    var grid = el("div", {
+      style: "display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.8em;align-items:start",
+    });
 
     var left = el("div", {});
     var cur = effCutoff(suite);
     var lab = el("div", { style: "font-size:.82em;color:#333;margin-bottom:.3em" });
     lab.innerHTML =
-      "In force: <b id=\"insil-cutoff-val\" style=\"color:" + ACCENT + "\">" + cur.toFixed(1) + "</b> TASS" +
+      'In force: <b id="insil-cutoff-val" style="color:' +
+      ACCENT +
+      '">' +
+      cur.toFixed(1) +
+      "</b> TASS" +
       (INSIL_CUTOFF == null ? " <span style='color:" + MUTED + "'>(as built)</span>" : "");
     left.appendChild(lab);
-    var slider = el("input", { type: "range", min: "0", max: "100", step: "0.5",
-                               value: String(cur), style: "width:100%" });
+    var slider = el("input", {
+      type: "range",
+      min: "0",
+      max: "100",
+      step: "0.5",
+      value: String(cur),
+      style: "width:100%",
+    });
     slider.addEventListener("input", function () {
       INSIL_CUTOFF = +slider.value;
       var v = document.getElementById("insil-cutoff-val");
@@ -1279,39 +1350,82 @@
       b.addEventListener("click", fn);
       return b;
     }
-    btns.appendChild(mkBtn("Reset to run cutoff",
-      "The cutoff the report was built with (best_cutoffs.subkey.best_threshold)",
-      function () { INSIL_CUTOFF = null; window.drawInsilico(); }));
+    btns.appendChild(
+      mkBtn(
+        "Reset to run cutoff",
+        "The cutoff the report was built with (best_cutoffs.subkey.best_threshold)",
+        function () {
+          INSIL_CUTOFF = null;
+          window.drawInsilico();
+        },
+      ),
+    );
     if (rec) {
-      btns.appendChild(mkBtn("Use recommended (" + rec.threshold.toFixed(1) + ")",
-        "The cutoff these LoD curves score best at",
-        function () { INSIL_CUTOFF = rec.threshold; window.drawInsilico(); }));
+      btns.appendChild(
+        mkBtn(
+          "Use recommended (" + rec.threshold.toFixed(1) + ")",
+          "The cutoff these LoD curves score best at",
+          function () {
+            INSIL_CUTOFF = rec.threshold;
+            window.drawInsilico();
+          },
+        ),
+      );
     }
     left.appendChild(btns);
-    left.appendChild(el("div", { style: "font-size:.72em;color:" + MUTED + ";margin-top:.4em" }, [
-      "Moving this recomputes every organism's detection and limit of detection from the " +
-      "per-replicate TASS values. The dataset table and the three run-metric charts above are " +
-      "fixed at the build cutoff.",
-    ]));
+    left.appendChild(
+      el("div", { style: "font-size:.72em;color:" + MUTED + ";margin-top:.4em" }, [
+        "Moving this recomputes every organism's detection and limit of detection from the " +
+          "per-replicate TASS values. The dataset table and the three run-metric charts above are " +
+          "fixed at the build cutoff.",
+      ]),
+    );
     grid.appendChild(left);
 
     var right = el("div", {});
     if (rec) {
-      right.appendChild(el("div", { style: "font-size:.82em;color:#333;margin-bottom:.2em", html:
-        "Recommended by the LoD curves: <b style='color:" + GOOD + "'>" + rec.threshold.toFixed(1) + "</b>" +
-        " &nbsp;<span style='color:" + MUTED + ";font-size:.9em'>F1 " + rec.f1.toFixed(2) +
-        " · P " + rec.precision.toFixed(2) + " · R " + rec.recall.toFixed(2) +
-        " · TP " + rec.tp + " / FP " + rec.fp + " / FN " + rec.fn + "</span>" }));
+      right.appendChild(
+        el("div", {
+          style: "font-size:.82em;color:#333;margin-bottom:.2em",
+          html:
+            "Recommended by the LoD curves: <b style='color:" +
+            GOOD +
+            "'>" +
+            rec.threshold.toFixed(1) +
+            "</b>" +
+            " &nbsp;<span style='color:" +
+            MUTED +
+            ";font-size:.9em'>F1 " +
+            rec.f1.toFixed(2) +
+            " · P " +
+            rec.precision.toFixed(2) +
+            " · R " +
+            rec.recall.toFixed(2) +
+            " · TP " +
+            rec.tp +
+            " / FP " +
+            rec.fp +
+            " / FN " +
+            rec.fn +
+            "</span>",
+        }),
+      );
       right.appendChild(el("div", { class: "insil-scroll", html: cutoffCurveChart(rec, suite) }));
-      right.appendChild(el("div", { style: "font-size:.72em;color:" + MUTED + ";margin-top:.2em" }, [
-        "Spiked organism called where it was spiked = TP; missed = FN; called in the level-0 " +
-        "blank, or a call that is neither spiked nor matrix = FP. Ties resolved to the middle of " +
-        "the widest tied run" + (rec.plateau ? " (" + rec.plateau[0] + "–" + rec.plateau[1] + ")" : "") + ".",
-      ]));
+      right.appendChild(
+        el("div", { style: "font-size:.72em;color:" + MUTED + ";margin-top:.2em" }, [
+          "Spiked organism called where it was spiked = TP; missed = FN; called in the level-0 " +
+            "blank, or a call that is neither spiked nor matrix = FP. Ties resolved to the middle of " +
+            "the widest tied run" +
+            (rec.plateau ? " (" + rec.plateau[0] + "–" + rec.plateau[1] + ")" : "") +
+            ".",
+        ]),
+      );
     } else {
-      right.appendChild(el("div", { style: "font-size:.8em;color:" + MUTED }, [
-        "No recommendation: this needs a spike-in series with a level-0 background control.",
-      ]));
+      right.appendChild(
+        el("div", { style: "font-size:.8em;color:" + MUTED }, [
+          "No recommendation: this needs a spike-in series with a level-0 background control.",
+        ]),
+      );
     }
     grid.appendChild(right);
     card.appendChild(grid);
@@ -1651,14 +1765,20 @@
           '<span style="opacity:.8">hover any ' +
           (isSpike(group) ? "spike level" : "depth") +
           " for full statistics</span>" +
-          ' &nbsp;&nbsp;<span style="color:' + ACCENT + '">detection at TASS &ge; ' + _cut.toFixed(1) +
-          (INSIL_CUTOFF == null ? "" : " (adjusted)") + "</span>",
+          ' &nbsp;&nbsp;<span style="color:' +
+          ACCENT +
+          '">detection at TASS &ge; ' +
+          _cut.toFixed(1) +
+          (INSIL_CUTOFF == null ? "" : " (adjusted)") +
+          "</span>",
       }),
     );
 
     // Apply the live cutoff before anything is drawn, so detection dots, LoD badges
     // and the per-organism charts all move together with the slider.
-    var orgs = rollupOrganisms(group).map(function (o) { return applyCutoff(o, _cut); });
+    var orgs = rollupOrganisms(group).map(function (o) {
+      return applyCutoff(o, _cut);
+    });
     if (!orgs.length) {
       wrap.appendChild(el("div", { style: "color:" + MUTED }, ["No simulated organisms recovered."]));
       return wrap;
@@ -1750,11 +1870,15 @@
     DATA.forEach(function (r) {
       var sn = r["Specimen ID"];
       if (!sn || isDatasetId(sn)) return;
-      if (sn === bg) return;                        // the background itself is not a sample under test
+      if (sn === bg) return; // the background itself is not a sample under test
       if (!by[sn]) by[sn] = [];
       by[sn].push(r);
     });
-    return Object.keys(by).sort().map(function (sn) { return { sample: sn, rows: by[sn] }; });
+    return Object.keys(by)
+      .sort()
+      .map(function (sn) {
+        return { sample: sn, rows: by[sn] };
+      });
   }
 
   function renderSamplePanels(group, suite) {
@@ -1765,84 +1889,170 @@
 
     var cutoff = effCutoff(suite);
     var matrix = {};
-    profile.forEach(function (r) { matrix[String(r.taxid)] = r; });
+    profile.forEach(function (r) {
+      matrix[String(r.taxid)] = r;
+    });
     var spikedByTid = {};
     (group.organisms || []).forEach(function (o) {
       applyCutoff(o, cutoff).series && (spikedByTid[String(o.taxid)] = applyCutoff(o, cutoff));
     });
 
     var wrap = el("div", { style: "margin-top:1em" });
-    wrap.appendChild(el("div", { style: "font-weight:600;color:#333;margin:.2em 0 .5em;font-size:.95em" }, [
-      "Real samples vs this background",
-    ]));
+    wrap.appendChild(
+      el("div", { style: "font-weight:600;color:#333;margin:.2em 0 .5em;font-size:.95em" }, [
+        "Real samples vs this background",
+      ]),
+    );
 
     // (a) the matrix itself
     var box = el("div", { style: "position:relative;overflow-x:auto;margin-bottom:.9em" });
     var t = el("table", { style: "border-collapse:collapse;width:100%;font-size:.84em;min-width:520px" });
     var unit = group.read_unit || "reads";
-    var heads = ["Sample", "Organisms called", "Also in background (matrix)", "Unique to sample", "Spiked organisms seen"];
-    var thead = el("thead"), hr = el("tr");
+    var heads = [
+      "Sample",
+      "Organisms called",
+      "Also in background (matrix)",
+      "Unique to sample",
+      "Spiked organisms seen",
+    ];
+    var thead = el("thead"),
+      hr = el("tr");
     heads.forEach(function (h) {
-      hr.appendChild(el("th", { style: "text-align:left;padding:.4em .6em;border-bottom:2px solid " + ACCENT +
-                                       ";white-space:nowrap;color:#333" }, [h]));
+      hr.appendChild(
+        el(
+          "th",
+          {
+            style:
+              "text-align:left;padding:.4em .6em;border-bottom:2px solid " + ACCENT + ";white-space:nowrap;color:#333",
+          },
+          [h],
+        ),
+      );
     });
-    thead.appendChild(hr); t.appendChild(thead);
+    thead.appendChild(hr);
+    t.appendChild(thead);
     var tb = el("tbody");
     if (!samples.length) {
-      tb.appendChild(el("tr", {}, [el("td", { colspan: String(heads.length),
-        style: "padding:.5em .6em;color:" + MUTED }, ["No non-background samples in this report."])]));
+      tb.appendChild(
+        el("tr", {}, [
+          el("td", { colspan: String(heads.length), style: "padding:.5em .6em;color:" + MUTED }, [
+            "No non-background samples in this report.",
+          ]),
+        ]),
+      );
     }
     samples.forEach(function (s2, i) {
-      var called = s2.rows.filter(function (r) { return (+r["TASS Score"] || 0) >= cutoff; });
+      var called = s2.rows.filter(function (r) {
+        return (+r["TASS Score"] || 0) >= cutoff;
+      });
       var tids = {};
-      called.forEach(function (r) { tids[String(r["Taxonomic ID #"])] = r; });
+      called.forEach(function (r) {
+        tids[String(r["Taxonomic ID #"])] = r;
+      });
       var keys = Object.keys(tids);
-      var shared = keys.filter(function (k) { return matrix[k]; });
-      var uniq = keys.filter(function (k) { return !matrix[k]; });
-      var spikedSeen = keys.filter(function (k) { return spikedByTid[k]; });
+      var shared = keys.filter(function (k) {
+        return matrix[k];
+      });
+      var uniq = keys.filter(function (k) {
+        return !matrix[k];
+      });
+      var spikedSeen = keys.filter(function (k) {
+        return spikedByTid[k];
+      });
       var tr = el("tr", { class: "insil-row", style: i % 2 ? "background:#faf9ff" : "" });
-      tr.setAttribute("data-tt", encodeURIComponent(tipBody(s2.sample,
-        "at cutoff " + cutoff.toFixed(1) + " · matrix = the level-0 background control", [
-          ["Organisms called", String(keys.length)],
-          ["Shared with matrix", String(shared.length)],
-          ["Unique to this sample", String(uniq.length)],
-          ["Spiked organisms present", spikedSeen.length
-            ? spikedSeen.map(function (k) { return spikedByTid[k].name; }).join(", ") : "none"],
-        ])));
-      [s2.sample, String(keys.length), String(shared.length), String(uniq.length),
-       spikedSeen.length ? spikedSeen.map(function (k) { return spikedByTid[k].name; }).join(", ") : "—"
+      tr.setAttribute(
+        "data-tt",
+        encodeURIComponent(
+          tipBody(s2.sample, "at cutoff " + cutoff.toFixed(1) + " · matrix = the level-0 background control", [
+            ["Organisms called", String(keys.length)],
+            ["Shared with matrix", String(shared.length)],
+            ["Unique to this sample", String(uniq.length)],
+            [
+              "Spiked organisms present",
+              spikedSeen.length
+                ? spikedSeen
+                    .map(function (k) {
+                      return spikedByTid[k].name;
+                    })
+                    .join(", ")
+                : "none",
+            ],
+          ]),
+        ),
+      );
+      [
+        s2.sample,
+        String(keys.length),
+        String(shared.length),
+        String(uniq.length),
+        spikedSeen.length
+          ? spikedSeen
+              .map(function (k) {
+                return spikedByTid[k].name;
+              })
+              .join(", ")
+          : "—",
       ].forEach(function (c) {
         tr.appendChild(el("td", { style: "padding:.35em .6em;border-bottom:1px solid #eee;white-space:nowrap" }, [c]));
       });
       tb.appendChild(tr);
     });
-    t.appendChild(tb); box.appendChild(t); wrap.appendChild(box);
+    t.appendChild(tb);
+    box.appendChild(t);
+    wrap.appendChild(box);
 
     // (b) every spiked organism, per sample, against the LoD
     var spikedList = Object.keys(spikedByTid);
     if (samples.length && spikedList.length) {
-      wrap.appendChild(el("div", { style: "font-weight:600;color:#333;margin:.2em 0 .4em;font-size:.9em" }, [
-        "Spiked organisms in the real samples, against the limit of detection",
-      ]));
+      wrap.appendChild(
+        el("div", { style: "font-weight:600;color:#333;margin:.2em 0 .4em;font-size:.9em" }, [
+          "Spiked organisms in the real samples, against the limit of detection",
+        ]),
+      );
       var box2 = el("div", { style: "position:relative;overflow-x:auto" });
       var t2 = el("table", { style: "border-collapse:collapse;width:100%;font-size:.84em;min-width:600px" });
-      var h2 = ["Sample", "Spiked organism", "Reads here (" + unit + ")", "TASS", "LoD (" + unit + " spiked)", "Verdict"];
-      var th2 = el("thead"), hr2 = el("tr");
+      var h2 = [
+        "Sample",
+        "Spiked organism",
+        "Reads here (" + unit + ")",
+        "TASS",
+        "LoD (" + unit + " spiked)",
+        "Verdict",
+      ];
+      var th2 = el("thead"),
+        hr2 = el("tr");
       h2.forEach(function (h) {
-        hr2.appendChild(el("th", { style: "text-align:left;padding:.4em .6em;border-bottom:2px solid " + ACCENT +
-                                          ";white-space:nowrap;color:#333" }, [h]));
+        hr2.appendChild(
+          el(
+            "th",
+            {
+              style:
+                "text-align:left;padding:.4em .6em;border-bottom:2px solid " +
+                ACCENT +
+                ";white-space:nowrap;color:#333",
+            },
+            [h],
+          ),
+        );
       });
-      th2.appendChild(hr2); t2.appendChild(th2);
-      var tb2 = el("tbody"), n = 0;
+      th2.appendChild(hr2);
+      t2.appendChild(th2);
+      var tb2 = el("tbody"),
+        n = 0;
       samples.forEach(function (s2) {
         var paired = (group.read_unit || "reads") === "read pairs";
         spikedList.forEach(function (tid) {
           var o = spikedByTid[tid];
-          var row = s2.rows.find(function (r) { return String(r["Taxonomic ID #"]) === tid; });
+          var row = s2.rows.find(function (r) {
+            return String(r["Taxonomic ID #"]) === tid;
+          });
           var reads = row ? Math.round((+row["# Reads Aligned"] || 0) / (paired ? 2 : 1)) : 0;
           var tass = row ? +row["TASS Score"] || 0 : 0;
           // Where the series says this many reads sits on the spike axis.
-          var equiv = null, pts = (o.series || []).slice().sort(function (a, b) { return a.count - b.count; });
+          var equiv = null,
+            pts = (o.series || []).slice().sort(function (a, b) {
+              return a.count - b.count;
+            });
           for (var i = 0; i < pts.length - 1 && equiv === null; i++) {
             if (reads >= pts[i].observed_reads && reads <= pts[i + 1].observed_reads) {
               var dy = pts[i + 1].observed_reads - pts[i].observed_reads;
@@ -1851,58 +2061,128 @@
             }
           }
           if (equiv === null && pts.length) {
-            var lo = pts[0], hi = pts[pts.length - 1];
-            equiv = reads <= lo.observed_reads
-              ? (lo.observed_reads ? lo.count * (reads / lo.observed_reads) : 0)
-              : (hi.observed_reads ? hi.count * (reads / hi.observed_reads) : 0);
+            var lo = pts[0],
+              hi = pts[pts.length - 1];
+            equiv =
+              reads <= lo.observed_reads
+                ? lo.observed_reads
+                  ? lo.count * (reads / lo.observed_reads)
+                  : 0
+                : hi.observed_reads
+                ? hi.count * (reads / hi.observed_reads)
+                : 0;
           }
           var v, color;
-          if (!row || reads <= 0) { v = "not detected"; color = MUTED; }
-          else if (o.lod_count == null) { v = "no LoD at this cutoff"; color = WARN; }
-          else if (tass < cutoff) { v = "below cutoff"; color = BAD; }
-          else if (equiv != null && equiv >= o.lod_count) {
-            v = "above LoD" + (o.lod_count ? " (" + (equiv / o.lod_count).toFixed(1) + "×)" : ""); color = GOOD;
-          } else { v = "below LoD"; color = BAD; }
+          if (!row || reads <= 0) {
+            v = "not detected";
+            color = MUTED;
+          } else if (o.lod_count == null) {
+            v = "no LoD at this cutoff";
+            color = WARN;
+          } else if (tass < cutoff) {
+            v = "below cutoff";
+            color = BAD;
+          } else if (equiv != null && equiv >= o.lod_count) {
+            v = "above LoD" + (o.lod_count ? " (" + (equiv / o.lod_count).toFixed(1) + "×)" : "");
+            color = GOOD;
+          } else {
+            v = "below LoD";
+            color = BAD;
+          }
           var tr = el("tr", { class: "insil-row", style: n % 2 ? "background:#faf9ff" : "" });
           n++;
-          tr.setAttribute("data-tt", encodeURIComponent(tipBody(o.name, s2.sample + " · cutoff " + cutoff.toFixed(1), [
-            ["Reads here", fmt(reads) + " " + unit],
-            ["TASS", tass ? tass.toFixed(1) : "—"],
-            ["Equivalent spike level", equiv == null ? "—" : fmt(Math.round(equiv)) + " " + unit],
-            ["Limit of detection", o.lod_count == null ? "not reached in the series" : fmt(o.lod_count) + " " + unit],
-          ])));
-          [s2.sample, o.name, fmt(reads), tass ? tass.toFixed(1) : "—",
-           o.lod_count == null ? "—" : fmt(o.lod_count)].forEach(function (c) {
-            tr.appendChild(el("td", { style: "padding:.35em .6em;border-bottom:1px solid #eee;white-space:nowrap" }, [c]));
+          tr.setAttribute(
+            "data-tt",
+            encodeURIComponent(
+              tipBody(o.name, s2.sample + " · cutoff " + cutoff.toFixed(1), [
+                ["Reads here", fmt(reads) + " " + unit],
+                ["TASS", tass ? tass.toFixed(1) : "—"],
+                ["Equivalent spike level", equiv == null ? "—" : fmt(Math.round(equiv)) + " " + unit],
+                [
+                  "Limit of detection",
+                  o.lod_count == null ? "not reached in the series" : fmt(o.lod_count) + " " + unit,
+                ],
+              ]),
+            ),
+          );
+          [
+            s2.sample,
+            o.name,
+            fmt(reads),
+            tass ? tass.toFixed(1) : "—",
+            o.lod_count == null ? "—" : fmt(o.lod_count),
+          ].forEach(function (c) {
+            tr.appendChild(
+              el("td", { style: "padding:.35em .6em;border-bottom:1px solid #eee;white-space:nowrap" }, [c]),
+            );
           });
-          tr.appendChild(el("td", { style: "padding:.35em .6em;border-bottom:1px solid #eee;white-space:nowrap;font-weight:600;color:" + color }, [v]));
+          tr.appendChild(
+            el(
+              "td",
+              {
+                style:
+                  "padding:.35em .6em;border-bottom:1px solid #eee;white-space:nowrap;font-weight:600;color:" + color,
+              },
+              [v],
+            ),
+          );
           tb2.appendChild(tr);
         });
       });
-      t2.appendChild(tb2); box2.appendChild(t2); wrap.appendChild(box2);
+      t2.appendChild(tb2);
+      box2.appendChild(t2);
+      wrap.appendChild(box2);
     }
 
     // (c) the matrix contents
     if (profile.length) {
       var det = el("details", { style: "margin-top:.7em" });
-      det.appendChild(el("summary", { style: "cursor:pointer;font-size:.85em;color:" + ACCENT + ";font-weight:600" }, [
-        "Background matrix — " + profile.length + " organism(s) in the level-0 control",
-      ]));
+      det.appendChild(
+        el("summary", { style: "cursor:pointer;font-size:.85em;color:" + ACCENT + ";font-weight:600" }, [
+          "Background matrix — " + profile.length + " organism(s) in the level-0 control",
+        ]),
+      );
       var box3 = el("div", { style: "position:relative;overflow-x:auto;margin-top:.4em" });
       var t3 = el("table", { style: "border-collapse:collapse;width:100%;font-size:.82em;min-width:420px" });
-      t3.appendChild(el("thead", { html: "<tr>" +
-        ["Organism", "Taxid", "Reads (" + unit + ")", "TASS"].map(function (h) {
-          return '<th style="text-align:left;padding:.35em .6em;border-bottom:2px solid ' + ACCENT +
-                 ';white-space:nowrap;color:#333">' + esc(h) + "</th>";
-        }).join("") + "</tr>" }));
+      t3.appendChild(
+        el("thead", {
+          html:
+            "<tr>" +
+            ["Organism", "Taxid", "Reads (" + unit + ")", "TASS"]
+              .map(function (h) {
+                return (
+                  '<th style="text-align:left;padding:.35em .6em;border-bottom:2px solid ' +
+                  ACCENT +
+                  ';white-space:nowrap;color:#333">' +
+                  esc(h) +
+                  "</th>"
+                );
+              })
+              .join("") +
+            "</tr>",
+        }),
+      );
       var tb3 = el("tbody");
       profile.forEach(function (r, i) {
-        tb3.appendChild(el("tr", { style: i % 2 ? "background:#faf9ff" : "", html:
-          [r.name, r.taxid, fmt(r.reads), (+r.tass).toFixed(1)].map(function (c) {
-            return '<td style="padding:.3em .6em;border-bottom:1px solid #eee;white-space:nowrap">' + esc(String(c)) + "</td>";
-          }).join("") }));
+        tb3.appendChild(
+          el("tr", {
+            style: i % 2 ? "background:#faf9ff" : "",
+            html: [r.name, r.taxid, fmt(r.reads), (+r.tass).toFixed(1)]
+              .map(function (c) {
+                return (
+                  '<td style="padding:.3em .6em;border-bottom:1px solid #eee;white-space:nowrap">' +
+                  esc(String(c)) +
+                  "</td>"
+                );
+              })
+              .join(""),
+          }),
+        );
       });
-      t3.appendChild(tb3); box3.appendChild(t3); det.appendChild(box3); wrap.appendChild(det);
+      t3.appendChild(tb3);
+      box3.appendChild(t3);
+      det.appendChild(box3);
+      wrap.appendChild(det);
     }
     return wrap;
   }
