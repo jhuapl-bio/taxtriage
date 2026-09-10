@@ -17,6 +17,7 @@ process SPIKE_INTO_BACKGROUND {
     tuple val(meta), path(reads)          // the background sample's cleaned reads
     path(spikein_tsv)                     // normalised sheet from PARSE_SPIKEIN
     path(pools, stageAs: "pools/*")       // every accession's simulated pool
+    path(taxid_maps, stageAs: "taxids/*") // accession -> taxid + organism name
     val(mode)
     val(seed)
 
@@ -91,8 +92,11 @@ process SPIKE_INTO_BACKGROUND {
         fi
     done
 
+    cat taxids/*.taxid.tsv > spikein_taxids.tsv 2>/dev/null || : > spikein_taxids.tsv
+
     spike_into_background.py \\
         --spikein ${spikein_tsv} \\
+        --taxid-map spikein_taxids.tsv \\
         --parent ${prefix} \\
         --mode ${mode} \\
         --seed ${seed} \\

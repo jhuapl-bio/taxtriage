@@ -117,7 +117,24 @@ def main():
     ap.add_argument("--background-reads", type=int, default=0,
                     help="Record count of the background these payloads are mixed into")
     ap.add_argument("--background-name", default="", help="Recorded in the manifest")
+    ap.add_argument("--taxid-map", default=None,
+                    help="TSV of accession<TAB>taxid<TAB>organism from FETCH_SPIKEIN_REFS. "
+                         "Lets the report tie a spiked organism to a detection by taxid.")
+    ap.add_argument("--no-control", action="store_true",
+                    help="Do not emit the level-0 background-only control dataset.")
     args = ap.parse_args()
+
+    # accession -> (taxid, organism)
+    taxinfo = {}
+    if args.taxid_map and os.path.exists(args.taxid_map):
+        with open(args.taxid_map) as fh:
+            for line in fh:
+                f = line.rstrip("\n").split("\t")
+                if f and f[0].strip():
+                    taxinfo[f[0].strip()] = (
+                        (f[1].strip() if len(f) > 1 else ""),
+                        (f[2].strip() if len(f) > 2 else ""),
+                    )
 
     os.makedirs(args.outdir, exist_ok=True)
 
@@ -156,6 +173,13 @@ def main():
 
     # ── plan every dataset ───────────────────────────────────────────────────
     datasets = []
+    # Level 0 = the background with NOTHING spiked in: the negative control for the
+    # whole series. Everything detected in it is matrix, which is what makes a
+    # false positive definable (a call that only appears once we spike) and gives
+    # the real samples a like-for-like baseline to be compared against.
+    if not args.no_control:
+        datasets.append({"id": f"{args.parent}_ss_{args.mode}_c0_r1", "level_count": 0,
+                         "level_key": "background", "replicate": 1, "members": []})
     for lc in sorted(levels):
         e = levels[lc]
         for rep in range(1, e["reps"] + 1):
@@ -214,9 +238,9 @@ def main():
     # level_count is the c<N> in the dataset id (the series x position); target vs
     # actual are the dataset's TOTAL requested and delivered spike, so they compare
     # like for like exactly as they do for a depth series.
-    cols = ["dataset_id", "parent_id", "kind", "platform", "mode", "level_key",
-            "level_count", "target_count", "actual_count", "replicate", "seed",
-            "spiked_count", "background_reads", "total_master_reads",
+    cols = ["dataset_id", "parent_id", "kind", "is_control", "platform", "mode",
+            "level_key", "level_count", "target_count", "actual_count", "replicate",
+            "seed", "spiked_count", "background_reads", "total_master_reads",
             "background_name", "spike_detail"]
     with open(args.manifest, "w") as fh:
         fh.write("\t".join(cols) + "\n")
@@ -228,11 +252,14 @@ def main():
                 got = len(per_acc[acc][d["id"]])
                 actual += got
                 requested += count
-                detail.append({"accession": acc, "requested": count, "spiked": got, "name": name})
+                tid, org = taxinfo.get(acc, ("", ""))
+                detail.append({"accession": acc, "requested": count, "spiked": got,
+                               "name": name or org, "taxid": tid})
             row = {
                 "dataset_id": d["id"],
                 "parent_id": args.parent,
                 "kind": "spikein",
+                "is_control": "1" if d["level_count"] == 0 else "0",
                 "platform": "paired" if args.paired else "single",
                 "mode": args.mode,
                 "level_key": d["level_key"],

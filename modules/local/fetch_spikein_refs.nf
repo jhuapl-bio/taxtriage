@@ -21,6 +21,10 @@ process FETCH_SPIKEIN_REFS {
 
     output:
     tuple val(accession), path("refs/*.fasta"), emit: reference
+    // accession -> taxid + organism name. The report needs the TAXID to tie a
+    // spiked organism to a detection; matching on the sheet's optional free-text
+    // name silently fails whenever that column is blank.
+    path("taxids/*.taxid.tsv")                , emit: taxid
     path "versions.yml"                       , emit: versions
 
     when:
@@ -31,8 +35,9 @@ process FETCH_SPIKEIN_REFS {
     def api_key = params.ncbi_api_key ? "-api_key ${params.ncbi_api_key}" : ""
     """
     set -o pipefail
-    mkdir -p refs
+    mkdir -p refs taxids
     OUT=refs/${safe}.fasta
+    TAXOUT=taxids/${safe}.taxid.tsv
 
     # (0) A path the user handed us directly.
     if [ -f "${accession}" ]; then
@@ -45,6 +50,9 @@ process FETCH_SPIKEIN_REFS {
     # (1) assembly_summary -> FTP directory -> <basename>_genomic.fna.gz
     if [ ! -s \$OUT ] && [ -s "${assembly_summary}" ] && [ "${assembly_summary}" != "NO_FILE" ]; then
         FTP=\$(awk -F'\\t' -v acc="${accession}" '\$1 == acc {print \$20; exit}' ${assembly_summary} || true)
+            # assembly_summary columns: 6 = taxid, 7 = species_taxid, 8 = organism_name
+            awk -F'\\t' -v acc="${accession}" '\$1 == acc {printf "%s\\t%s\\t%s\\n", acc, \$6, \$8; exit}' \\
+                ${assembly_summary} > \$TAXOUT || true
         if [ -n "\$FTP" ] && [ "\$FTP" != "na" ]; then
             BASE=\$(basename "\$FTP")
             HTTP=\$(echo "\$FTP" | sed 's|^ftp://|https://|')
@@ -79,6 +87,31 @@ process FETCH_SPIKEIN_REFS {
                 -o \$OUT || true
         fi
     fi
+
+    # Fall back to Entrez for the taxid when assembly_summary did not supply it.
+    if [ ! -s \$TAXOUT ]; then
+        TID=""
+        ORG=""
+        if command -v esearch >/dev/null 2>&1; then
+            TID=\$(esearch -db nuccore -query "${accession}" 2>/dev/null \\
+                   | esummary 2>/dev/null \\
+                   | xtract -pattern DocumentSummary -element TaxId 2>/dev/null | head -1 || true)
+            ORG=\$(esearch -db nuccore -query "${accession}" 2>/dev/null \\
+                   | esummary 2>/dev/null \\
+                   | xtract -pattern DocumentSummary -element Organism 2>/dev/null | head -1 || true)
+        fi
+        if [ -z "\$TID" ]; then
+            TID=\$(curl -sSL --retry 2 \\
+                "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=nuccore&id=${accession}&retmode=json" 2>/dev/null \\
+                | tr ',' '\\n' | grep -m1 '"taxid"' | tr -dc '0-9' || true)
+        fi
+        if [ -z "\$ORG" ]; then
+            # Last resort: the description on the FASTA header we just fetched.
+            ORG=\$(head -1 \$OUT 2>/dev/null | sed 's/^>[^ ]* //' | cut -d',' -f1 || true)
+        fi
+        printf '%s\\t%s\\t%s\\n' "${accession}" "\${TID:-}" "\${ORG:-}" > \$TAXOUT
+    fi
+    echo "[spikein-refs] ${accession}: taxid/org -> \$(cat \$TAXOUT)" >&2
 
     if [ ! -s \$OUT ] || ! grep -q '^>' \$OUT; then
         echo "ERROR: could not fetch a reference for spike-in accession '${accession}'." >&2

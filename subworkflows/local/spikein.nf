@@ -50,6 +50,9 @@ workflow SPIKEIN {
 
     FETCH_SPIKEIN_REFS(ch_accessions.combine(ch_assembly_summary))
     ch_versions = ch_versions.mix(FETCH_SPIKEIN_REFS.out.versions.first())
+    // accession -> taxid + organism, so the report can tie a spiked organism to a
+    // detection by taxid rather than by the sheet's optional free-text name.
+    ch_taxid_maps = FETCH_SPIKEIN_REFS.out.taxid.collect()
 
     // ── 3. One simulated pool per accession ─────────────────────────────────
     // The pool must cover the largest single request for that accession, times a
@@ -127,6 +130,7 @@ workflow SPIKEIN {
         ch_tagged_bg,
         ch_spikein_tsv,
         ch_all_pools,
+        ch_taxid_maps,
         mode,
         seed
     )

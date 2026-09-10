@@ -11,6 +11,175 @@ Two simulators are supported and can be run either separately or together:
 
 When both are enabled, each produces a separate insilico sample per non control sample, and the report makes one metrics table per simulator.
 
+## Choosing an experiment
+
+Everything on this page is one of two questions, and it is worth being clear which
+one you are asking before picking flags — they have different truth sets, different
+axes, and different statistics in the report.
+
+| You want to know | Vary | Mode | Truth set |
+| --- | --- | --- | --- |
+| How deep must I sequence to see what is in my samples? | sequencing **depth** | `--generate_iss` (+ `--sim_subsample`) | the organisms recovered at full depth |
+| …the same, for a defined community rather than whatever the samples happen to have | depth | `--sim_abundance` + `--sim_subsample` | the community you defined |
+| How deep must I sequence **this real matrix**? | depth | `--background_reads` + a series | the organisms recovered at full depth |
+| How much organism must be **present** before we call it? | organism **load** | `--spikein_sheet` | exactly what the sheet says was spiked |
+
+The first three are **dilution series**: one pool of reads, sampled at decreasing
+depths. The last is a **spike-in series**: the background is held at full depth and
+the amount of each organism mixed into it is varied. Both land in the same In-Silico
+report tab, which relabels itself for whichever it is showing.
+
+### 1. A dilution series of whatever the samples have
+
+The default. Reads are simulated from each sample's own Kraken2 top hits, so the
+community mirrors what that sample actually contained, then subsampled into a depth
+series:
+
+```bash
+nextflow run jhuapl-bio/taxtriage \
+    --input samplesheet.csv --db /path/to/kraken2_db --outdir results \
+    --generate_iss --sim_nreads 100000 \
+    --sim_subsample --sim_subsample_mode randomized \
+    --sim_series_counts '20,100,400,800,1000,20000' --sim_series_replicates 2
+```
+
+Every organism the samples carry is reported, because in this design every organism
+is part of the truth.
+
+### 2. A dilution series of a community you define
+
+Same thing, but the composition comes from you rather than from the classifier —
+useful when you want the same community across runs, or organisms the samples do not
+contain:
+
+```bash
+    --generate_iss --sim_abundance defined_community.tsv \
+    --sim_subsample --sim_series_counts '100,1000,10000'
+```
+
+`defined_community.tsv` is `taxid<TAB>abundance`.
+
+### 3. A dilution series of a real matrix
+
+No simulation of the community at all: a real FASTQ is classified once and then
+subsampled into the series, so error profiles, host content and contaminants are
+whatever the sequencer actually produced.
+
+```bash
+    --background_reads matrix_R1.fastq.gz --background_reads2 matrix_R2.fastq.gz \
+    --sim_series_counts '1000,10000,100000' --sim_series_replicates 3
+```
+
+### 4. A spike-in series into a fixed matrix
+
+The limit-of-detection experiment: the matrix stays at full depth, and defined
+numbers of reads from each organism under test are mixed into it. See
+[Spike-in series](#spike-in-series-fixed-background) below.
+
+```bash
+    --generate_iss \
+    --background_reads matrix_R1.fastq.gz --background_reads2 matrix_R2.fastq.gz \
+    --spikein_sheet spikein.csv
+```
+
+### 5. Running more than one in a single run
+
+Scenarios 1 and 4 coexist: they act on different parents, so a single run can carry
+both a sample-derived dilution series **and** a spike-in series against the matrix,
+and the tab shows one group per parent × platform.
+
+```bash
+    --generate_iss --sim_subsample --sim_series_counts '1000,10000' \
+    --background_reads matrix_R1.fastq.gz --background_reads2 matrix_R2.fastq.gz \
+    --spikein_sheet spikein.csv
+```
+
+!!! warning "Scenarios 3 and 4 are mutually exclusive for the same background"
+    Both emit datasets named `<background>_background_ss_…`, so running them together
+    would collide. When `--spikein_sheet` is set it takes precedence and the plain
+    depth series for that background is skipped. To get both, run them as two passes
+    (below) or give each its own background.
+
+### 6. A dilution series *of* spiked material
+
+There is **no single flag** that spikes organisms in and then dilutes the mixture
+across depths. Depending on what you are actually after, one of these gets you there:
+
+**You want an LoD.** You almost certainly want scenario 4 rather than a dilution of
+spiked material. Varying the spike level at a fixed depth answers "how much must be
+present", which is the LoD question; diluting a spiked mixture changes load and depth
+together and confounds the two.
+
+**You want several loads across several depths.** Run it as two passes. The first
+pass builds the spiked FASTQ; the second treats it as an ordinary matrix and dilutes
+it:
+
+```bash
+# pass 1 — spike, and keep the mixed FASTQs
+nextflow run jhuapl-bio/taxtriage \
+    --input samplesheet.csv --outdir results_spike \
+    --generate_iss \
+    --background_reads matrix_R1.fastq.gz --background_reads2 matrix_R2.fastq.gz \
+    --spikein_sheet spikein.csv \
+    --sim_keep_subsampled_fastq
+
+# pass 2 — dilute one spiked level across a depth series
+nextflow run jhuapl-bio/taxtriage \
+    --input samplesheet.csv --outdir results_dilute \
+    --background_reads results_spike/simulation/<bg>_background/spikein/fastq/datasets/<bg>_background_ss_randomized_c600_r1.spikein_R1.fastq.gz \
+    --background_reads2 results_spike/simulation/<bg>_background/spikein/fastq/datasets/<bg>_background_ss_randomized_c600_r1.spikein_R2.fastq.gz \
+    --sim_series_counts '1000,10000,100000' --sim_series_replicates 3
+```
+
+`--sim_keep_subsampled_fastq` is what publishes the mixed FASTQs; without it they
+exist only in the work directory. Note that the second pass has no spike sheet, so
+its truth set reverts to "whatever is recovered at full depth" — the spiked organisms
+are simply part of that matrix now.
+
+**You want a defined community diluted, with no real background.** That is scenario
+2: put the organisms you would have spiked into a `--sim_abundance` file and dilute
+the simulated pool. You lose the real matrix, and gain exact control of composition.
+
+## Subsampling: spike-in / dilution series datasets
+
+`--sim_subsample` takes the master pool — synthetic (scenarios 1–2) or real
+(scenario 3) — and cuts it into datasets at each read count in the series. Each
+dataset enters the pipeline as its own sample, named
+`<parent>_ss_<mode>_c<count>_r<replicate>`, and is scored exactly like any other.
+
+| Parameter | Effect |
+| --- | --- |
+| `--sim_subsample` | Enable the series. |
+| `--sim_subsample_mode` | `randomized` — every dataset sampled independently. `consistent` — nested prefixes, so each dataset is a superset of the smaller ones (isolates the effect of depth from the effect of *which* reads). |
+| `--sim_series_counts` | Explicit list, e.g. `'100,500,1000,5000'`. |
+| `--sim_series_start` / `--sim_series_step` / `--sim_series_n` | Generator alternative: evenly spaced counts. |
+| `--sim_series_replicates` | Datasets per count (randomized mode), so the report can show spread rather than a single draw. |
+| `--sim_subsample_seed` | Reproducibility. |
+| `--sim_keep_subsampled_fastq` | Publish the FASTQs. Off by default: only the read-index files and manifest are kept, and any dataset can be rebuilt with `bin/reconstruct_insilico_reads.py`. |
+
+For paired-end input an index refers to a read **pair**, so a count of 1000 means
+1000 pairs — the report labels the unit accordingly.
+
+## Natural background dilution series (real reads)
+
+`--background_reads` (and `--background_reads2` for paired input) adds a real FASTQ
+to the run as an ordinary sample, so it is host-filtered, classified and
+reference-prepped **once**; every dataset in its series then shares those references
+rather than re-resolving them. Its datasets are named
+`<background>_background_ss_<mode>_c<count>_r<replicate>` and appear in the In-Silico
+tab under a **Natural background (real reads)** chip.
+
+| Parameter | Effect |
+| --- | --- |
+| `--background_reads` | Background R1 / single-end FASTQ. Setting it enables the feature. |
+| `--background_reads2` | Background R2 for paired-end input; omit for single-end. |
+| `--background_platform` | `ILLUMINA` / `OXFORD` / `PACBIO`. Defaults to ILLUMINA when paired, else OXFORD. |
+| `--background_name` | Sample id for the background, and the prefix of its dataset names. Default `background`. |
+| `--background_from_sheet` | Take backgrounds from the samplesheet's `background` column instead — useful when the matrix is already in the run as a negative control. The column is inert unless a simulation param is set. |
+
+The series knobs are the same ones scenario 1 uses (`--sim_subsample_mode`,
+`--sim_series_*`, `--sim_series_replicates`, `--sim_subsample_seed`).
+
 ## Parameters
 
 ### Simulation Control
@@ -308,6 +477,9 @@ The fold values show `#x` for TASS fold-change and `#x rd` for read count fold-c
 
 ## Example Usage
 
+These are single-simulator invocations. For choosing between a dilution series, a
+spike-in series, or both, start at [Choosing an experiment](#choosing-an-experiment).
+
 ### ISS Only (Illumina)
 
 ```bash
@@ -364,6 +536,8 @@ nextflow run jhuapl-bio/taxtriage \
 The custom abundance file should be a two-column TSV: `taxid<TAB>abundance`.
 
 ## Spike-in series (fixed background)
+
+_Scenario 4 in [Choosing an experiment](#choosing-an-experiment)._
 
 The dilution series varies **sequencing depth**: how deep must I sequence to still
 catch this organism? A spike-in series asks the other half of the limit-of-detection
