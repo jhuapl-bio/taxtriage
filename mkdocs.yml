@@ -142,11 +142,12 @@ extra_css:
 
 extra:
   # Renders the version dropdown in the header. mike writes versions.json to
-  # the root of the gh-pages branch; the theme reads it at runtime. `latest` is
-  # the newest release, listed there as "stable (vX.Y.Z)".
+  # the root of the gh-pages branch; the theme reads it at runtime. `stable` is
+  # the newest release, listed there as "stable (X.Y.Z)"; `latest` is kept as
+  # an alias of it so old URLs still resolve.
   version:
     provider: mike
-    default: latest
+    default: stable
 
   social:
     - icon: fontawesome/brands/github

@@ -5,18 +5,19 @@ name: Docs
 # Version scheme (managed by `mike`, which commits the *rendered site only* to
 # the gh-pages branch — no source ever lands there):
 #
-#   latest             the newest RELEASE. Built from that release's tag, shown
-#                      in the version dropdown as "stable (vX.Y.Z)" and also
-#                      reachable at /stable/. This is the default, so the site
-#                      root redirects here. A push to main that touches ONLY
+#   stable             the newest RELEASE. Built from that release's tag and
+#                      shown in the version dropdown as "stable (X.Y.Z)". This
+#                      is the default, so the site root redirects here. `latest`
+#                      is kept as an alias of it, so every old /latest/ URL
+#                      still resolves. A push to main that touches ONLY
 #                      documentation or interactive-report source also refreshes
 #                      it from main — such a push cannot make the docs describe
 #                      unreleased pipeline behaviour, and waiting for the next
 #                      release to publish a typo fix is not worth it. The
 #                      Pathogen Sheet stays pinned to the release tag either
 #                      way, and the footer records the ref actually built.
-#   main               unreleased work merged to main. Shown as
-#                      "main (unreleased)"; never the default.
+#   main               unreleased work merged to main. Shown in the dropdown as
+#                      "development"; never the default.
 #   3.3.9, 3.3.8, …    one frozen entry per release, cut from the release tag.
 #                      Exact patch versions only — no minor-series aliases.
 #
@@ -53,7 +54,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to (re)deploy: 3.3.9, main, or latest. Blank = latest (newest tag)."
+        description: "Version to (re)deploy: 3.3.9, main, or stable. Blank = stable (newest tag)."
         required: false
         default: ""
       ref:
@@ -146,39 +147,39 @@ jobs:
               # Frozen copy, then the moving one. Order matters only for reading
               # the log; each deploy is independent.
               add "$V"      "$TAG" "$TAG" ""              ""       false
-              add "latest"  "$TAG" "$TAG" "stable ($TAG)" "stable" true
+              add "stable"  "$TAG" "$TAG" "stable ($V)"   "latest" true
               ;;
             push)
-              add "main" "main" "main" "main (unreleased)" "" true
-              # A docs- or report-only push also refreshes `latest`, so a typo
+              add "main" "main" "main" "development" "" true
+              # A docs- or report-only push also refreshes `stable`, so a typo
               # fix or a report tweak is live the same day. The site is built
               # from main, but the Pathogen Sheet stays pinned to the release
-              # tag: `latest` still documents the released pipeline, and the
+              # tag: `stable` still documents the released pipeline, and the
               # footer stamp records that it was built from main.
               if [ "$EVENT" = push ] && docs_only; then
                 T="$(newest_tag)"
                 if [ -n "$T" ]; then
-                  echo "docs/report-only push; refreshing latest from main (data pinned to $T)"
-                  add "latest" "main" "$T" "stable ($T)" "stable" true
+                  echo "docs/report-only push; refreshing stable from main (data pinned to $T)"
+                  add "stable" "main" "$T" "stable (${T#v})" "latest" true
                 else
-                  echo "no release tag yet; leaving latest alone"
+                  echo "no release tag yet; leaving stable alone"
                 fi
               fi
               ;;
             *)
-              V="${IN_VERSION:-latest}"
+              V="${IN_VERSION:-stable}"
               case "$V" in
-                latest)
+                stable|latest)
                   REF="${IN_REF:-$(newest_tag)}"
                   test -n "$REF" || { echo "::error::no vX.Y.Z tag exists yet"; exit 1; }
-                  add "latest" "$REF" "$REF" "stable ($(newest_tag))" "stable" true
+                  add "stable" "$REF" "$REF" "stable (${REF#v})" "latest" true
                   ;;
                 main)
-                  add "main" "${IN_REF:-main}" "${IN_REF:-main}" "main (unreleased)" "" true
+                  add "main" "${IN_REF:-main}" "${IN_REF:-main}" "development" "" true
                   ;;
                 *)
                   echo "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+' \
-                    || { echo "::error::'$V' is not X.Y.Z, 'main' or 'latest'."; exit 1; }
+                    || { echo "::error::'$V' is not X.Y.Z, 'main' or 'stable'."; exit 1; }
                   add "$V" "${IN_REF:-v$V}" "${IN_REF:-v$V}" "" "" false
                   ;;
               esac
@@ -302,6 +303,23 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # mike keeps versions and aliases in one namespace, so `latest` cannot
+      # become an alias of `stable` while a *version* named `latest` still
+      # exists on gh-pages — the deploy would fail with "alias 'latest' already
+      # specified as a version". A bare `latest` line in `mike list` is exactly
+      # that leftover from the previous scheme; once it is an alias the line
+      # reads "stable [latest]" and this does nothing.
+      - name: Retire the legacy `latest` version
+        if: matrix.target.version == 'stable'
+        run: |
+          set -euo pipefail
+          if mike list --branch "$PAGES_BRANCH" 2>/dev/null | grep -qx 'latest'; then
+            echo "Deleting the old standalone 'latest' version; it becomes an alias of 'stable'."
+            mike delete --push --branch "$PAGES_BRANCH" latest
+          else
+            echo "No standalone 'latest' version; nothing to retire."
+          fi
+
       - name: Deploy version
         run: |
           set -euo pipefail
@@ -312,10 +330,10 @@ jobs:
           mike "${ARGS[@]}" '${{ matrix.target.version }}' ${{ matrix.target.aliases }}
 
       # The site root redirects here. Without this the root 404s. Idempotent, so
-      # it is safe to reassert whenever latest moves.
-      - name: Point default at latest
-        if: matrix.target.version == 'latest'
-        run: mike set-default --push --branch "$PAGES_BRANCH" latest
+      # it is safe to reassert whenever stable moves.
+      - name: Point default at stable
+        if: matrix.target.version == 'stable'
+        run: mike set-default --push --branch "$PAGES_BRANCH" stable
 
       # Prune entries left over from earlier versioning schemes:
       #   bleeding-edge  predates the switch to `latest`

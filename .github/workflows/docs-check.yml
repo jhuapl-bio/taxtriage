@@ -6,7 +6,7 @@ name: Docs check
 #
 # Both shapes are built:
 #   latest   the full site, including the real Demo Report tab
-#   release  a versioned build, where Demo Report redirects to latest
+#   release  a versioned build, where Demo Report redirects to stable
 #
 # Building both matters: the release shape is only exercised when a release is
 # published, which is exactly when you least want to discover it is broken.
@@ -139,8 +139,8 @@ jobs:
         if: matrix.variant == 'release'
         run: |
           set -euo pipefail
-          grep -q "url=../../latest/demo-report/" site/demo-report/index.html \
-            || { echo "::error::demo-report should redirect to latest"; exit 1; }
+          grep -q "url=../../stable/demo-report/" site/demo-report/index.html \
+            || { echo "::error::demo-report should redirect to stable"; exit 1; }
           test ! -e site/demo/index.html \
             || { echo "::error::release build should not ship the report dist"; exit 1; }
           # The pathogen sheet is a real page in every version, pinned to its
@@ -151,4 +151,4 @@ jobs:
             || { echo "::error::pathogen-sheet should be the real table, not a redirect"; exit 1; }
           ! grep -qE 'http-equiv="?refresh"?' site/pathogen-sheet/index.html \
             || { echo "::error::pathogen-sheet should not redirect"; exit 1; }
-          echo "Demo redirects to latest; pathogen sheet ships version-pinned."
+          echo "Demo redirects to stable; pathogen sheet ships version-pinned."

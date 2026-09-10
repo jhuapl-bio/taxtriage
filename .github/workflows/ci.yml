@@ -15,10 +15,9 @@ env:
 jobs:
   test:
     name: Run pipeline with test data
-    # Only run on push if this is the nf-core dev branch (merged PRs)
     # Skip push events: pull requests and releases already cover every change,
-    # and running both would duplicate each merge. Behaviour is unchanged from
-    # the previous nf-core repository gate, which never matched here either.
+    # and running both would duplicate each merge. Every change reaches `main`
+    # through a PR, so the PR run is the one that gates a merge.
     if: "${{ github.event_name != 'push' }}"
     runs-on: ubuntu-latest
     strategy:

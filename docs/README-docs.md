@@ -12,28 +12,37 @@ pull requests, so docs and code review together.
 
 | Version             | Built from             | Trigger                             |
 | ------------------- | ---------------------- | ----------------------------------- |
-| `latest`            | the newest release tag | publishing **or editing** a Release |
+| `stable`            | the newest release tag | publishing **or editing** a Release |
 | `main`              | `main`                 | every push to `main`                |
 | `3.3.9`, `3.3.8`, … | that release's tag     | publishing **or editing** a Release |
 
-`latest` is the newest release and is the default, so the site root redirects
-there. It is labelled **`stable (vX.Y.Z)`** in the version dropdown and is also
-reachable at `/stable/`, matching `nextflow run ... -r stable`. Releasing
-`v3.4.0` therefore publishes twice from the same tag: the frozen copy **`3.4.0`**
-(the exact patch — no minor-series aliases) and a refreshed `latest`.
+`stable` is the newest release and is the default, so the site root redirects
+there. It lives at `/stable/`, is labelled **`stable (X.Y.Z)`** in the version
+dropdown (`stable (3.3.10)`), and matches the revision `nextflow run ... -r stable` resolves to.
+`latest` is kept as an **alias** of it, so every old `/latest/...` URL still
+works. Releasing `v3.4.0` therefore publishes twice from the same tag: the
+frozen copy **`3.4.0`** (the exact patch — no minor-series aliases) and a
+refreshed `stable`.
+
+The first deploy after this change deletes the old standalone `latest`
+_version_: mike keeps versions and aliases in one namespace, so `latest` cannot
+be an alias while a version of that name exists. The workflow does this
+automatically, and skips it once `mike list` shows `stable [latest]`.
 
 `main` carries unreleased work so documentation changes are visible before the
-next release. It is never the default; readers reach it from the dropdown.
+next release. It is listed as **`development`** and is never the default;
+readers reach it from the dropdown. So the dropdown reads, newest first:
+`stable (3.3.10)`, `development`, `3.3.10`, `3.3.9`, …
 
 A push to `main` that touches **only** documentation or interactive-report
 source (`docs/`, `mkdocs.yml`, `requirements-docs.txt`, the docs
 build scripts, `assets/heatmap.html`, `assets/pages.js`,
-`assets/heatmap_boot.js`, `assets/src/`) also refreshes `latest` straight away,
+`assets/heatmap_boot.js`, `assets/src/`) also refreshes `stable` straight away,
 so a typo fix or a report tweak is live the same day instead of waiting for the
 next release. Such a push cannot make the docs describe pipeline behaviour the
 release does not have. The site is then built from `main`, but the Pathogen
 Sheet stays pinned to the release tag and the footer records the ref actually
-built — so `latest` still documents the released pipeline. Any push that also
+built — so `stable` still documents the released pipeline. Any push that also
 touches pipeline code updates `main` only.
 
 Every page footer stamps the version label, the ref it was built from and the
@@ -60,8 +69,8 @@ To rebuild in that case (or any other), run the Docs workflow manually:
 
 | Input     | Value                                                             |
 | --------- | ----------------------------------------------------------------- |
-| `version` | `3.3.9`, `main`, or `latest` (blank = `latest`)                   |
-| `ref`     | blank uses `v<version>` for a number, the newest tag for `latest` |
+| `version` | `3.3.9`, `main`, or `stable` (blank = `stable`)                   |
+| `ref`     | blank uses `v<version>` for a number, the newest tag for `stable` |
 
 Because `edited` covers every release edit — including title and body — a
 cosmetic tweak also triggers a rebuild. That is harmless: the deploy is
@@ -84,24 +93,24 @@ without deploying, so breakage is caught in review.
 | -------------- | ------------------------------------------------------- | ---------------------- | ---------------- |
 | Documentation  | `docs/*.md`                                             | on deploy              | every version    |
 | Pathogen Sheet | `assets/pathogen_sheet.csv`                             | **on every page load** | every version    |
-| Demo Report    | `assets/heatmap.html` via `scripts/inline_boot_json.py` | on deploy              | `latest`, `main` |
+| Demo Report    | `assets/heatmap.html` via `scripts/inline_boot_json.py` | on deploy              | `stable`, `main` |
 
 The **Pathogen Sheet** ships in every version. The CSV is fetched from GitHub
 when the page opens rather than bundled, and `scripts/write_docs_ref.py` pins
 which ref it reads — so the `3.3.9` docs show the sheet that shipped in v3.3.9
-while `latest` shows the newest release. Costs nothing to publish per version.
+while `stable` shows the newest release. Costs nothing to publish per version.
 
-The **Demo Report** ships only in the two moving versions (`latest` and
+The **Demo Report** ships only in the two moving versions (`stable` and
 `main`): its ~4.5 MB dist would add megabytes to `gh-pages` per release, and it illustrates the report UI rather than documenting
 release-specific behaviour. In a versioned build
 `scripts/docs_release_stub.py` replaces it with a redirect, so the tab stays in
 the nav and old URLs keep working:
 
 ```
-/taxtriage/3.3.9/demo-report/  ->  /taxtriage/latest/demo-report/
+/taxtriage/3.3.9/demo-report/  ->  /taxtriage/stable/demo-report/
 ```
 
-The redirect is relative (`../../latest/<slug>/`), so it survives a move to a
+The redirect is relative (`../../stable/<slug>/`), so it survives a move to a
 custom domain. A release directory is ~8 MB rather than ~13 MB.
 
 The demo dist and the pinned-ref file are generated at build time and
@@ -198,7 +207,7 @@ themselves. Override the input with `PATHOGEN_CSV=/path/to/sheet.csv`.
   If a change is deployed but not visible, check for a stale asset before
   assuming the deploy failed.
 - **The request entry points are version-gated.** It appears only when
-  the docs version is not a numbered `X.Y.Z` release — so `latest`, PR previews
+  the docs version is not a numbered `X.Y.Z` release — so `stable`, PR previews
   and local `mkdocs serve` show it, frozen releases do not. Gating lives in
   `pathogen_table.js` (`IS_CURRENT`), not in the build, so there is one place to
   change it. It targets `.github/ISSUE_TEMPLATE/add_organism.yml`, whose fields

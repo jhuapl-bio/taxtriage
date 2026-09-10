@@ -217,7 +217,7 @@
     var ups = entries.filter(isUpdate);
 
     var lines = [
-      "Assembled from the [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/).",
+      "Assembled from the [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/stable/pathogen-sheet/).",
       "Taxonomic lineage is omitted — it is derived from the tax ID.",
       "",
     ];

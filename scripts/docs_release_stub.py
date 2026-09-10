@@ -1,31 +1,32 @@
 #!/usr/bin/env python3
 """
-Point the Demo Report tab at `latest` in a versioned (release) documentation build.
+Point the Demo Report tab at `stable` in a versioned (release) documentation build.
 
 The demo is a ~4.5 MB self-contained dist rebuilt from assets/heatmap.html.
 Copying it into every version would add megabytes per release to the gh-pages
 branch, and it illustrates the report UI rather than documenting release-specific
-behaviour, so only `latest` carries the real thing.
+behaviour, so only the moving versions carry the real thing.
 
 In a versioned build it is replaced by a small page that redirects to its
-`latest` equivalent — the tab stays in the nav and the URL keeps working:
+`stable` equivalent — the tab stays in the nav and the URL keeps working:
 
-    /taxtriage/3.3.9/demo-report/  ->  /taxtriage/latest/demo-report/
+    /taxtriage/3.3.9/demo-report/  ->  /taxtriage/stable/demo-report/
 
 The Pathogen Sheet is deliberately NOT handled here. It is published in every
 version and pinned by scripts/write_docs_ref.py to that version's git ref, so
-the 3.3.9 docs show the sheet that shipped in v3.3.9 while `latest` shows main.
+the 3.3.9 docs show the sheet that shipped in v3.3.9 while `stable` shows the
+newest release.
 It costs nothing to ship, since the CSV is fetched at page load rather than
 bundled.
 
-The redirect is relative (`../../<latest>/<slug>/`) so it survives a move to a
+The redirect is relative (`../../<stable>/<slug>/`) so it survives a move to a
 custom domain. Two levels up because mike serves each build under a version
 directory that `mkdocs build` itself does not create.
 
 Usage:
     python scripts/docs_release_stub.py                 # rewrite the pages
     python scripts/docs_release_stub.py --check         # verify only
-    python scripts/docs_release_stub.py --latest v2     # non-default alias name
+    python scripts/docs_release_stub.py --latest v2     # non-default target name
 """
 
 from __future__ import annotations
@@ -72,7 +73,7 @@ def main() -> int:
     here = Path(__file__).resolve().parent.parent
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="verify without modifying anything")
-    ap.add_argument("--latest", default="latest", help="name of the version that hosts the live tabs")
+    ap.add_argument("--latest", default="stable", help="name of the version that hosts the live tabs")
     ap.add_argument("--docs", type=Path, default=here / "docs")
     ap.add_argument("--config", type=Path, default=here / "mkdocs.yml")
     args = ap.parse_args()
