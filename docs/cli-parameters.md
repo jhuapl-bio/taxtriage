@@ -420,8 +420,9 @@ Writes the interactive report's tables to spreadsheets during the run, so nobody
 | Parameter                       | Description                                                                                                                                                                                                                                                                                    |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--export_data`                 | Turn the export on. `true` uses `--export_data_formats`; passing a format list directly (`--export_data xlsx,wide`) works too. Default: `false`.                                                                                                                                                |
-| `--export_data_formats <list>`  | Comma-separated shapes. `xlsx` — one workbook, a sheet per table plus an Export Info provenance sheet. `wide` — every table joined on Specimen ID × Organism into one table, written as both `.xlsx` and `.csv`. `csv` — one CSV per table. `stacked` — every table in one CSV with a `Dataset` column. Default: `xlsx`. |
+| `--export_data_formats <list>`  | Comma-separated shapes. `xlsx` — one workbook, a sheet per table plus an Export Info provenance sheet. `wide` — every table joined on Specimen ID × Organism into one table, written as both `.xlsx` and `.csv`. `csv` — one CSV per table. `stacked` — every table in one CSV with a `Dataset` column. `pivot` — detections crosstabbed against a metadata field (see below). Default: `xlsx`. |
 | `--export_data_datasets <list>` | Which tables to export, comma-separated, or `all`. Default: every table the run carries data for.                                                                                                                                                                                              |
+| `--export_data_columns <spec>`  | Narrow the columns of individual tables: `<dataset>:<col>,<col>[;<dataset>:...]`, e.g. `"detections:Specimen ID,Detected Organism,TASS Score;coverage:Breadth %"`. Tables you do not name keep every column. Mirrors the per-table column picker in the report. |
 | `--export_data_prefix <name>`   | File-name prefix. Default: `taxtriage`.                                                                                                                                                                                                                                                        |
 | `--export_data_level <level>`   | Keep only `Strain`, `Species` or `Genus`. The report holds a row per organism at all three, so picking one level keeps a spreadsheet from counting the same reads three times. Default: every level (each row carries its own `Level` column).                                                   |
 | `--export_data_min_tass <n>`    | Drop detections below this TASS score **from the export only**. Independent of `--mintass`, which hard-filters the report itself.                                                                                                                                                               |
@@ -431,6 +432,7 @@ Writes the interactive report's tables to spreadsheets during the run, so nobody
 | Id                                                                    | Tab                  | Contents                                                                     |
 | --------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------- |
 | `detections`                                                          | Summary / Table      | Every detection with all TASS, coverage and taxonomy columns, plus `TASS Cutoff` and `Passes Cutoff` |
+| `detections_meta`                                                     | Summary / Table      | The same rows with every run-metadata column joined on — long format, ready to pivot     |
 | `sample_summary`                                                      | Summary              | One row per specimen: detection counts, aligned reads, strongest hit          |
 | `organism_summary`                                                    | Explore              | Run-wide per-organism rollup: prevalence, TASS / coverage spread, ANI grouping |
 | `coverage`, `contigs`                                                 | Coverage / Histogram | Per specimen × organism breadth and depth; per aligned contig                 |
@@ -440,7 +442,29 @@ Writes the interactive report's tables to spreadsheets during the run, so nobody
 | `geo`                                                                 | Map                  | Coordinates and place fields                                                  |
 | `insilico_datasets`, `insilico_lod`                                   | In-Silico            | Per subsample dataset scoring; per-organism dilution series and LoD           |
 
-Run `export_data.py --list-datasets` for the live catalog.
+Run `export_data.py --list-datasets` for the live catalog, and `export_data.py -i <report> --list-columns all` for each table's column names (the strings `--export_data_columns` expects).
+
+### Pivot: counting detections against metadata
+
+`--export_data_formats pivot` crosses the detections with a run-metadata field, which is how you answer "how many hits to this organism came from each collection site / host type / run". It writes both a `.csv` and an `.xlsx` (with the axes recorded on the Export Info sheet).
+
+| Parameter                          | Description                                                                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--export_data_pivot <field>`      | The metadata field for the column axis — `location`, `host_disease`, `sample_origin_country`, `sequencing_platform`, `run_id`, or any column from an uploaded metadata file. Unset gives a plain rollup with totals only. |
+| `--export_data_pivot_rows <dim>`   | Row axis: `organism` (default), `organism_taxid`, `genus`, `category`, `domain`, `sample`, `sample_type`.                                                               |
+| `--export_data_pivot_measure <m>`  | Cell value: `detections` (default), `specimens`, `organisms`, `reads`, `mean_tass`, `max_tass`.                                                                         |
+| `--export_data_pivot_shape <s>`    | `wide` (default) — one column per metadata value, the crosstab you read in a spreadsheet. `long` — one row per pair (`Organism, Field, Measure, Value`), tidy for R / pandas / plotting. |
+
+```bash
+# hits per organism per collection site, as a crosstab
+nextflow run . --export_data xlsx,pivot --export_data_pivot location --export_data_level Strain
+
+# the same counted by specimen, in tidy long form
+export_data.py -i results/report/all.odr.html -o export/ --formats pivot \
+    --pivot-field host_disease --pivot-measure specimens --pivot-shape long
+```
+
+`export_data.py -i <report> --list-fields` prints the metadata fields a given run carries, with how many distinct values each has. Samples with nothing recorded for the chosen field are grouped under `(not recorded)` rather than dropped, so the totals still add up.
 
 ### Re-exporting an existing report
 

@@ -3126,40 +3126,31 @@
 
       <div id="sidebar-resizer" title="Drag to resize panel"></div>
       <div id="sidebar">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.2em">
-          <h3 style="margin: 0">Filters</h3>
-          <div style="display: inline-flex; align-items: center; gap: 0.4em">
-            <button
-              type="button"
-              id="sidebar-help-btn"
-              class="sidebar-help-btn"
-              title="Right-panel help — walk through the filters, search, cutoff and sample colours"
-              aria-label="Right-panel help walkthrough"
-            >
-              <i class="fas fa-circle-question"></i>
-            </button>
-            <button
-              type="button"
-              id="report-pdf-btn"
-              class="export-control"
-              title="Export Report PDF"
-              data-tip="&lt;b&gt;Export Report PDF&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Exports the current filtered report to a printable layout — respects all active sidebar filters, the selected plot, and table settings.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;How to save&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Clicking opens your browser's &lt;b&gt;Print dialog&lt;/b&gt;. Set the destination to &lt;b&gt;Save as PDF&lt;/b&gt;.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Tips&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;• Orientation: &lt;b&gt;Landscape&lt;/b&gt;&lt;br&gt;• Disable &lt;i&gt;Headers and footers&lt;/i&gt;&lt;br&gt;• All charts, detections table, and current tab view are included&lt;/span&gt;"
-            >
-              <i class="fas fa-file-download"></i>
-            </button>
-            <span style="font-size: 0.72em; color: #555; white-space: nowrap">Export Report</span>
-            <button
-              type="button"
-              id="export-data-btn"
-              class="export-control"
-              title="Export Data — combine tables from one or more tabs into a single CSV or Excel file"
-              data-tip="&lt;b&gt;Export Data&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Pulls the underlying tables from any combination of tabs — detections, per-sample summary, cross-sample organisms, coverage, VF/AMR, novelty, run metadata, in-silico — into ONE file.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Output shapes&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;• Excel workbook, one sheet per table&lt;br&gt;• Single joined sheet / CSV keyed on Specimen ID &amp;times; Organism&lt;br&gt;• All tables stacked into one CSV with a Dataset column&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Notes&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Exports the full dataset, not just the page you are looking at. &amp;quot;Apply current filters&amp;quot; honours the sidebar filters, TASS cutoff and hidden samples. Shortcut: &lt;code&gt;Ctrl/&amp;#8984;+Shift+E&lt;/code&gt;.&lt;br&gt;The same tables are written automatically by the pipeline with &lt;code&gt;--export_data&lt;/code&gt;.&lt;/span&gt;"
-            >
-              <i class="fas fa-file-export"></i>
-            </button>
-            <span style="font-size: 0.72em; color: #555; white-space: nowrap">Export Data</span>
-          </div>
+        <!-- Sidebar header. The Export control sits on its OWN row rather than
+             beside the "Filters" heading: at the panel's minimum width an icon
+             plus a nowrap label on the same line pushed the sidebar wider than
+             its box and gave the whole panel a horizontal scrollbar. -->
+        <div id="sidebar-head">
+          <h3>Filters</h3>
+          <button
+            type="button"
+            id="sidebar-help-btn"
+            class="sidebar-help-btn"
+            title="Right-panel help — walk through the filters, search, cutoff and sample colours"
+            aria-label="Right-panel help walkthrough"
+          >
+            <i class="fas fa-circle-question"></i>
+          </button>
         </div>
+        <button
+          type="button"
+          id="export-btn"
+          class="sidebar-export-btn"
+          title="Export — report PDF, or the data tables from one or more tabs"
+          data-tip="&lt;b&gt;Export&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;One dialog, two kinds of output. Pick the type at the top of the popup.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Data tables&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;The underlying tables from any combination of tabs — detections, per-sample summary, cross-sample organisms, coverage, VF/AMR, novelty, run metadata, in-silico — as one Excel workbook, one joined sheet, a stacked CSV, or a &lt;b&gt;pivot&lt;/b&gt; of organisms against a metadata field (hits per collection site, host type, run …) in wide or long layout.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Report PDF&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;The current filtered report as a printable layout. Opens your browser's Print dialog — set the destination to &lt;b&gt;Save as PDF&lt;/b&gt;.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Shortcut: &lt;code&gt;Ctrl/&amp;#8984;+Shift+E&lt;/code&gt;. The data tables are also written by the pipeline with &lt;code&gt;--export_data&lt;/code&gt;.&lt;/span&gt;"
+        >
+          <i class="fas fa-file-export"></i> <span>Export…</span>
+        </button>
         <label
           >Search (Sample / Organism)
           <button

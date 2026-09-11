@@ -6839,12 +6839,161 @@ body.tt-map-maximised-body #banner {
   height: 100% !important;
 }
 
-/* ── Export Data: multi-tab combined export picker (47_export_data.js) ────── */
+/* ── Sidebar header + Export button (47_export_data.js) ───────────────────────
+   The Export control gets its OWN row under the "Filters" heading. Sharing the
+   heading's row meant an icon button plus a `white-space: nowrap` label had to
+   fit beside the <h3> in a 180px-minimum panel; it didn't, and the whole right
+   panel picked up a horizontal scrollbar. A full-width block button can't
+   overflow, and `min-width: 0` on the pieces keeps it that way at any width. */
+#sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  min-width: 0;
+  margin-bottom: 0.3em;
+}
+#sidebar-head h3 {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#sidebar-head .sidebar-help-btn {
+  flex: 0 0 auto;
+}
+.sidebar-export-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45em;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0 0 0.55em;
+  padding: 0.38em 0.5em;
+  border: 1px solid #bcd2ec;
+  border-radius: 5px;
+  background: linear-gradient(#fff, #f3f8ff);
+  color: #1565c0;
+  font-size: 0.82em;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sidebar-export-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-export-btn:hover {
+  background: #e8f1ff;
+  border-color: #1565c0;
+}
+.sidebar-export-btn:focus-visible {
+  outline: 2px solid #1565c0;
+  outline-offset: 1px;
+}
+/* Nothing in the right panel should ever scroll sideways. Two long-standing
+   offenders needed fixing alongside the Export row: the "Hide All / Remove All"
+   button pair (inline flex-shrink:0, so it could not give ground in a narrow
+   panel) and the metadata-columns hint, whose longest field name
+   (sample_origin_state_province_territory) is a single unbreakable word. */
+#sidebar {
+  overflow-x: hidden;
+}
+#sidebar span,
+#sidebar label,
+#sidebar p,
+#sidebar li {
+  overflow-wrap: break-word;
+}
+#toggle-all-samples-btn,
+#remove-all-samples-btn {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Their padding is set inline, so trimming it needs !important. Without this
+     the pair is ~7px wider than a default-width sidebar. */
+  padding-left: 0.3em !important;
+  padding-right: 0.3em !important;
+}
+/* Their wrapper carries an inline flex-shrink:0, which stops the buttons above
+   from ever being compressed. Let it give way in a narrow panel. Ignored by
+   browsers without :has(), where the padding trim above already suffices. */
+#sidebar span:has(> #remove-all-samples-btn) {
+  flex-shrink: 1 !important;
+  min-width: 0;
+}
+
+/* ── The Export popup: type switch, dataset picker, pivot ─────────────────── */
 .data-export-modal {
-  width: min(94vw, 660px);
+  width: min(94vw, 680px);
   display: flex;
   flex-direction: column;
   max-height: 88vh;
+}
+.data-export-modal.pdf-mode {
+  width: min(94vw, 460px);
+}
+.tt-export-types {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5em;
+  padding: 0.7em 1.1em;
+  border-bottom: 1px solid #e4ebf5;
+  background: #f8fbff;
+}
+.tt-export-type {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 0 0.55em;
+  padding: 0.5em 0.65em;
+  border: 1px solid #d3e0f2;
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  color: #44526b;
+}
+.tt-export-type i {
+  grid-row: 1 / span 2;
+  font-size: 1.15em;
+  color: #90a4c4;
+}
+.tt-export-type-main {
+  font-weight: 700;
+  font-size: 0.86em;
+  color: #24324a;
+}
+.tt-export-type-sub {
+  font-size: 0.74em;
+  color: #7b8aa3;
+}
+.tt-export-type:hover {
+  border-color: #90b4e0;
+  background: #f4f9ff;
+}
+.tt-export-type.active {
+  border-color: #1565c0;
+  background: #e8f1ff;
+  box-shadow: inset 0 0 0 1px #1565c0;
+}
+.tt-export-type.active i,
+.tt-export-type.active .tt-export-type-main {
+  color: #1565c0;
+}
+.tt-export-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.tt-export-pane[hidden] {
+  display: none !important;
 }
 .data-export-intro {
   padding: 0.7em 1.1em 0;
@@ -6858,6 +7007,7 @@ body.tt-map-maximised-body #banner {
   padding: 0.6em 1.1em 0.5em;
   font-size: 0.8em;
   border-bottom: 1px solid #e4ebf5;
+  flex-wrap: wrap;
 }
 .data-export-toolbar button {
   border: 1px solid #c5d5e8;
@@ -6884,7 +7034,7 @@ body.tt-map-maximised-body #banner {
   overflow-y: auto;
   padding: 0.5em 1.1em;
   flex: 1 1 auto;
-  min-height: 120px;
+  min-height: 110px;
 }
 .data-export-group {
   margin-bottom: 0.7em;
@@ -6932,13 +7082,120 @@ body.tt-map-maximised-body #banner {
   color: #6b7a92;
   font-size: 0.9em;
 }
-.data-export-count {
+.data-export-meta {
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2em;
+  padding-top: 0.1em;
+}
+.data-export-count {
   color: #1565c0;
   font-variant-numeric: tabular-nums;
   font-size: 0.9em;
   white-space: nowrap;
-  padding-top: 0.1em;
+}
+/* Per-dataset column picker chip. Lives inside the item's <label>, so it must
+   read as a control in its own right rather than part of the checkbox target. */
+.data-export-cols {
+  border: 1px solid #d3e0f2;
+  background: #fff;
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  font-size: 0.78em;
+  color: #6b7a92;
+  cursor: pointer;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.data-export-cols:hover {
+  border-color: #1565c0;
+  color: #1565c0;
+  background: #f2f8ff;
+}
+.data-export-cols.narrowed {
+  border-color: #1565c0;
+  background: #e8f1ff;
+  color: #1565c0;
+  font-weight: 700;
+}
+.data-export-cols i {
+  font-size: 0.9em;
+}
+
+/* ── Column picker (layered over the Export popup) ────────────────────────── */
+.tt-cols-overlay {
+  z-index: 1320;
+}
+.tt-cols-modal {
+  width: min(92vw, 420px);
+  display: flex;
+  flex-direction: column;
+  max-height: 86vh;
+}
+.tt-cols-body {
+  padding: 0.8em 1.1em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  min-height: 0;
+}
+.tt-cols-intro {
+  font-size: 0.8em;
+  color: #667;
+  line-height: 1.4;
+}
+#tt-cols-filter {
+  border: 1px solid #c5d5e8;
+  border-radius: 5px;
+  padding: 0.35em 0.5em;
+  font-size: 0.85em;
+  background: #fff;
+}
+#tt-cols-list {
+  border: 1px solid #c5d5e8;
+  border-radius: 5px;
+  padding: 0.2em;
+  font-size: 0.84em;
+  background: #fff;
+  min-height: 160px;
+  flex: 1 1 auto;
+}
+#tt-cols-list option {
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+}
+#tt-cols-list option[hidden] {
+  display: none;
+}
+.tt-cols-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  flex-wrap: wrap;
+  font-size: 0.8em;
+}
+.tt-cols-tools button {
+  border: 1px solid #c5d5e8;
+  background: #fff;
+  border-radius: 5px;
+  padding: 0.25em 0.6em;
+  cursor: pointer;
+  color: #1565c0;
+  font-size: 0.95em;
+}
+.tt-cols-tools button:hover {
+  background: #eef5ff;
+}
+#tt-cols-count {
+  margin-left: auto;
+  color: #7b8aa3;
+  font-variant-numeric: tabular-nums;
+}
+#tt-cols-count.warn {
+  color: #a1560a;
+  font-weight: 700;
 }
 .data-export-empty {
   color: #7b8aa3;
@@ -6954,21 +7211,104 @@ body.tt-map-maximised-body #banner {
   border-top: 1px solid #e4ebf5;
   font-size: 0.82em;
 }
-.data-export-opts label {
+.data-export-opts label,
+.tt-pivot-grid label {
   display: flex;
   flex-direction: column;
   gap: 0.25em;
   color: #445;
   font-weight: 600;
+  min-width: 0;
 }
 .data-export-opts select,
-.data-export-opts input {
+.data-export-opts input,
+.tt-pivot-grid select {
   border: 1px solid #c5d5e8;
   border-radius: 5px;
   padding: 0.35em 0.45em;
   font-size: 0.95em;
   background: #fff;
   min-width: 0;
+  max-width: 100%;
+}
+/* Pivot mode: the table picker plays no part, so it steps aside and the pivot
+   controls + preview get the room instead. */
+.data-export-modal.pivot-mode .data-export-list,
+.data-export-modal.pivot-mode .data-export-toolbar,
+.data-export-modal.pivot-mode .data-export-intro {
+  display: none;
+}
+.data-export-modal.pivot-mode .data-export-opts {
+  border-top: none;
+}
+.tt-pivot-opts {
+  padding: 0.15em 1.1em 0.6em;
+  overflow-y: auto;
+}
+.tt-pivot-opts[hidden] {
+  display: none !important;
+}
+.tt-pivot-hd {
+  font-size: 0.78em;
+  font-weight: 700;
+  color: #1565c0;
+  margin-bottom: 0.45em;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.tt-pivot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.55em;
+  font-size: 0.82em;
+}
+.tt-pivot-preview {
+  margin-top: 0.6em;
+  border: 1px solid #e0e8f4;
+  border-radius: 6px;
+  background: #fbfdff;
+  padding: 0.5em 0.6em;
+  overflow-x: auto;
+  font-size: 0.76em;
+}
+.tt-pivot-preview-hd {
+  color: #1565c0;
+  font-weight: 700;
+  margin-bottom: 0.35em;
+}
+.tt-pivot-preview table {
+  border-collapse: collapse;
+  width: auto;
+}
+.tt-pivot-preview th,
+.tt-pivot-preview td {
+  border: 1px solid #e4ebf5;
+  padding: 0.2em 0.45em;
+  text-align: left;
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tt-pivot-preview th {
+  background: #eef4fd;
+  color: #33425c;
+  font-weight: 700;
+}
+.tt-pivot-preview td {
+  font-variant-numeric: tabular-nums;
+  color: #44526b;
+}
+.tt-pivot-more {
+  color: #90a4c4;
+}
+.tt-pivot-more-rows {
+  color: #8a97ad;
+  margin-top: 0.3em;
+}
+.tt-pivot-preview .warn {
+  color: #a1560a;
 }
 .data-export-note {
   padding: 0 1.1em 0.6em;
@@ -6977,6 +7317,41 @@ body.tt-map-maximised-body #banner {
 }
 .data-export-note.warn {
   color: #a1560a;
+}
+.tt-pdf-body {
+  padding: 1em 1.1em;
+  color: #334;
+  line-height: 1.45;
+  font-size: 0.88em;
+}
+.tt-pdf-body p {
+  margin: 0 0 0.7em;
+}
+.tt-pdf-sub {
+  color: #667;
+  font-size: 0.92em;
+}
+.tt-pdf-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 0.92em;
+  color: #334;
+  font-weight: 600;
+  margin-bottom: 0.4em;
+}
+.tt-pdf-legend select {
+  margin-left: auto;
+  font-size: 0.95em;
+  padding: 2px 6px;
+  border: 1px solid #c5d5e8;
+  border-radius: 5px;
+  background: #fff;
+}
+.tt-pdf-foot {
+  margin: 0;
+  color: #8a93a3;
+  font-size: 0.82em;
 }
 #data-export-toast {
   position: fixed;
@@ -6992,7 +7367,9 @@ body.tt-map-maximised-body #banner {
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
   z-index: 1400;
 }
 #data-export-toast.show {
@@ -7004,6 +7381,9 @@ body.tt-map-maximised-body #banner {
 }
 @media (max-width: 620px) {
   .data-export-opts {
+    grid-template-columns: 1fr;
+  }
+  .tt-export-types {
     grid-template-columns: 1fr;
   }
 }

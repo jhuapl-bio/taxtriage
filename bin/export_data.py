@@ -138,7 +138,7 @@ def _key_union(rows):
 class Table(object):
     """One exportable dataset: ordered columns plus dict rows."""
 
-    __slots__ = ("columns", "rows")
+    __slots__ = ("columns", "rows", "pivot_meta")
 
     def __init__(self, columns, rows):
         self.columns = list(columns) if columns else _key_union(rows)
@@ -253,6 +253,24 @@ def _bd_detections(ctx):
         row["Passes Cutoff"] = "Yes" if _passes(r, ctx) else "No"
         rows.append(row)
     return Table(cols + extra, rows)
+
+
+def _bd_detections_meta(ctx):
+    """Detections with each sample's run metadata joined on, one row per
+    detection. The long shape you hand to a pivot table, R or pandas to ask
+    "how many hits to this organism came from each site / host?"."""
+    base = _bd_detections(ctx)
+    fields = [f for f, _n in _meta_fields(ctx)]
+    labels = [pretty_field(f) for f in fields]
+    rows = []
+    for src, row in zip(ctx["records"], base.rows):
+        meta = ctx["meta_index"].get(str(src.get("Specimen ID") or "")) or {}
+        out = OrderedDict(row)
+        for f, label in zip(fields, labels):
+            v = meta.get(f)
+            out[label] = "" if v is None else v
+        rows.append(out)
+    return Table(list(base.columns) + labels, rows)
 
 
 def _bd_sample_summary(ctx):
@@ -695,12 +713,236 @@ def _bd_insilico_lod(ctx):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Metadata join + pivot / crosstab
+#
+# Mirrors the same section of assets/src/js/47_export_data.js. "How many hits to
+# Influenza A came from each collection site / host type?" needs the detection
+# counts (records) and the site (run metadata) in one table; neither feed answers
+# it alone.
+# ──────────────────────────────────────────────────────────────────────────────
+
+#: Pipeline bookkeeping that would only add noise to a metadata pivot.
+META_SKIP = {
+    "sample_name", "weights", "best_cutoffs", "best_cutoffs_by_domain",
+    "best_cutoffs_source", "missing_positive_controls", "missing_insilico_controls",
+    "missing_insilico_by_type", "negative_controls_used", "positive_controls_used",
+    "insilico_controls_used", "insilico_simulator_types", "num_keys", "num_subkeys",
+    "num_toplevelkeys", "num_species_groups", "commit_id", "workflow_revision",
+}
+
+
+def _meta_index(payload):
+    """sample -> merged scalar metadata (RUN_META first, then SAMPLE_META)."""
+    idx = {}
+
+    def put(sample, obj):
+        if not sample:
+            return
+        cur = idx.setdefault(str(sample), OrderedDict())
+        for k, v in (obj or {}).items():
+            if k in META_SKIP or v is None or v == "":
+                continue
+            if isinstance(v, dict):
+                continue
+            if isinstance(v, (list, tuple)):
+                if any(isinstance(x, (dict, list, tuple)) for x in v):
+                    continue
+                v = "; ".join("" if x is None else str(x) for x in v)
+            # RUN_META wins: it is what the report's Metadata tab edits.
+            cur.setdefault(k, v)
+
+    for m in (payload.get("run_metadata_records") or []):
+        put(m.get("sample_name") or m.get("sample_id"), m)
+    for sname, meta in (payload.get("sample_meta") or {}).items():
+        put(sname, meta)
+    return idx
+
+
+def pretty_field(k):
+    out = re.sub(r"[_\-]+", " ", str(k)).title()
+    return out.replace("Id", "ID").replace("Tass", "TASS")
+
+
+#: Numeric measurements that make fine metadata COLUMNS but useless pivot axes
+#: (a crosstab keyed on total_reads has one column per sample).
+PIVOT_FIELD_SKIP = {
+    "total_reads", "aligned_reads", "total_organism_reads", "latitude", "longitude",
+    "minmapq", "mapq_breadth_power", "mapq_gini_power", "control_fold_threshold",
+    "min_conf_applied", "depth", "salinity",
+}
+
+
+def _meta_fields(ctx, for_pivot=False):
+    """Metadata fields carried by this run, most-varied first.
+
+    for_pivot drops continuous numerics — explicitly listed ones, plus any field
+    whose values are all numeric and mostly distinct, which would give a crosstab
+    a column per sample.
+    """
+    counts = defaultdict(set)
+    for meta in ctx["meta_index"].values():
+        for k, v in meta.items():
+            if v is None or str(v).strip() == "":
+                continue
+            counts[k].add(str(v))
+    fields = []
+    n_samples = max(1, len(ctx["meta_index"]))
+    for k, vals in counts.items():
+        if not vals:
+            continue
+        if for_pivot:
+            if k in PIVOT_FIELD_SKIP:
+                continue
+            numeric = all(_num(v) is not None for v in vals)
+            if numeric and len(vals) > 8 and len(vals) > 0.6 * n_samples:
+                continue
+        fields.append((k, len(vals)))
+    fields.sort(key=lambda kv: (-(kv[1] > 1), pretty_field(kv[0])))
+    return fields
+
+
+#: Row axes for the pivot. Ids match TT_PIVOT_ROWS in the JS module.
+PIVOT_ROWS = OrderedDict([
+    ("organism", ("Detected Organism", lambda r: r.get("Detected Organism") or "")),
+    ("organism_taxid", ("Organism + Taxid",
+                        lambda r: (r.get("Detected Organism") or "")
+                        + (" (%s)" % r["Taxonomic ID #"] if r.get("Taxonomic ID #") else ""))),
+    ("genus", ("Genus", lambda r: r.get("Genus Name") or r.get("Genus") or "")),
+    ("category", ("Microbial Category", lambda r: r.get("Microbial Category") or "Unknown")),
+    ("domain", ("Domain", lambda r: r.get("Domain") or r.get("Kingdom") or "Unknown")),
+    ("sample", ("Specimen ID", lambda r: r.get("Specimen ID") or "")),
+    ("sample_type", ("Sample Type", lambda r: r.get("Sample Type") or "")),
+])
+
+#: Measures. Ids match TT_PIVOT_MEASURES in the JS module.
+PIVOT_MEASURES = OrderedDict([
+    ("detections", "# Detections"),
+    ("specimens", "# Specimens"),
+    ("organisms", "# Distinct Organisms"),
+    ("reads", "Total Reads Aligned"),
+    ("mean_tass", "Mean TASS"),
+    ("max_tass", "Max TASS"),
+])
+
+NOT_RECORDED = "(not recorded)"
+
+
+def _cell():
+    return {"n": 0, "specimens": set(), "organisms": set(), "reads": 0.0,
+            "tass_sum": 0.0, "tass_n": 0, "tass_max": None}
+
+
+def _accumulate(cell, r):
+    cell["n"] += 1
+    if r.get("Specimen ID"):
+        cell["specimens"].add(str(r["Specimen ID"]))
+    org = str(r.get("Taxonomic ID #") or r.get("Detected Organism") or "")
+    if org:
+        cell["organisms"].add(org)
+    cell["reads"] += _num(r.get("# Reads Aligned")) or 0.0
+    t = _num(r.get("TASS Score"))
+    if t is not None:
+        cell["tass_sum"] += t
+        cell["tass_n"] += 1
+        cell["tass_max"] = t if cell["tass_max"] is None else max(cell["tass_max"], t)
+
+
+def _cell_value(cell, measure):
+    if not cell:
+        return "" if measure in ("mean_tass", "max_tass") else 0
+    if measure == "specimens":
+        return len(cell["specimens"])
+    if measure == "organisms":
+        return len(cell["organisms"])
+    if measure == "reads":
+        return int(cell["reads"])
+    if measure == "mean_tass":
+        return _round(cell["tass_sum"] / cell["tass_n"], 2) if cell["tass_n"] else ""
+    if measure == "max_tass":
+        return "" if cell["tass_max"] is None else _round(cell["tass_max"], 2)
+    return cell["n"]
+
+
+def build_pivot(ctx, row_dim="organism", field="", measure="detections", shape="wide"):
+    """Crosstab the detections against a run-metadata field.
+
+    shape "wide" -> one row per row-axis value, one column per metadata value
+    shape "long" -> one row per (row value, metadata value) pair, tidy format
+    field ""     -> no column axis; a plain rollup with just the totals column
+    """
+    dim_label, dim_of = PIVOT_ROWS.get(row_dim, PIVOT_ROWS["organism"])
+    measure = measure if measure in PIVOT_MEASURES else "detections"
+    measure_label = PIVOT_MEASURES[measure]
+    field_label = pretty_field(field) if field else ""
+
+    grid = OrderedDict()      # row key -> {col key: cell}
+    row_totals = OrderedDict()
+    col_counts = defaultdict(int)
+
+    for r in ctx["records"]:
+        rk = str(dim_of(r) or "").strip()
+        if not rk:
+            continue
+        ck = ""
+        if field:
+            v = (ctx["meta_index"].get(str(r.get("Specimen ID") or "")) or {}).get(field)
+            ck = NOT_RECORDED if v is None or str(v).strip() == "" else str(v).strip()
+        by_col = grid.setdefault(rk, OrderedDict())
+        _accumulate(by_col.setdefault(ck, _cell()), r)
+        _accumulate(row_totals.setdefault(rk, _cell()), r)
+        col_counts[ck] += 1
+
+    # Columns: most-populated first, gaps last.
+    cols = sorted(col_counts, key=lambda c: (c == NOT_RECORDED, -col_counts[c], c))
+    # Rows: biggest value of the chosen measure first.
+    def _row_sort(rk):
+        v = _cell_value(row_totals.get(rk), measure)
+        return (-(v if isinstance(v, (int, float)) else -1), str(rk))
+    row_keys = sorted(grid, key=_row_sort)
+
+    total_col = "Total (%s)" % measure_label
+    if shape == "long":
+        columns = [dim_label, field_label or "Group", "Measure", "Value"]
+        rows = []
+        for rk in row_keys:
+            by_col = grid[rk]
+            for ck in (cols if field else [""]):
+                cell = by_col.get(ck)
+                if not cell:
+                    continue
+                rows.append(OrderedDict([
+                    (dim_label, rk),
+                    (field_label or "Group", ck if field else "All"),
+                    ("Measure", measure_label),
+                    ("Value", _cell_value(cell, measure)),
+                ]))
+    else:
+        columns = [dim_label] + (cols if field else []) + [total_col]
+        rows = []
+        for rk in row_keys:
+            by_col = grid[rk]
+            row = OrderedDict([(dim_label, rk)])
+            if field:
+                for ck in cols:
+                    row[ck] = _cell_value(by_col.get(ck), measure)
+            row[total_col] = _cell_value(row_totals.get(rk), measure)
+            rows.append(row)
+
+    table = Table(columns, rows)
+    table.pivot_meta = {"dim": dim_label, "field": field, "field_label": field_label,
+                        "measure": measure_label, "shape": shape, "n_cols": len(cols)}
+    return table
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # The catalog  (ids + labels MUST match TT_EXPORT_DATASETS in the JS module)
 # ──────────────────────────────────────────────────────────────────────────────
 
 DATASETS = [
     dict(id="detections", label="Detections", tab="Summary / Table",
          join=JOIN_SAMPLE_ORG, default=True, build=_bd_detections),
+    dict(id="detections_meta", label="Detections + Metadata", tab="Summary / Table",
+         join=JOIN_SAMPLE_ORG, default=False, build=_bd_detections_meta),
     dict(id="sample_summary", label="Sample Summary", tab="Summary",
          join=JOIN_SAMPLE, default=True, build=_bd_sample_summary),
     dict(id="organism_summary", label="Cross-Sample Organisms", tab="Explore",
@@ -767,6 +1009,7 @@ def make_context(payload, min_tass=None, level=None, passing_only=False,
         "run_metadata": payload.get("run_metadata_records") or [],
         "novelty": payload.get("novelty") or {"samples": {}},
         "insilico": payload.get("insilico_suite") or None,
+        "meta_index": _meta_index(payload),
         "thresholds": thresholds,
         "default_threshold": default_threshold,
         "filtered": filtered,
@@ -775,7 +1018,59 @@ def make_context(payload, min_tass=None, level=None, passing_only=False,
     }
 
 
-def build_tables(ctx, dataset_ids=None, drop_empty=True):
+def parse_column_spec(spec):
+    """Parse a per-dataset column selection.
+
+        "detections:Specimen ID,Detected Organism,TASS Score;coverage:Breadth %"
+
+    -> {"detections": [...], "coverage": ["Breadth %"]}
+
+    Datasets are separated by ";", the dataset id from its columns by the FIRST
+    ":", columns from each other by ",". A dataset with no entry keeps every
+    column. Mirrors the per-dataset column picker in the report's Export popup.
+    """
+    out = {}
+    for chunk in (spec or "").split(";"):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if ":" not in chunk:
+            print(f"[export_data] WARNING: ignoring column spec '{chunk}' "
+                  "(expected <dataset>:<column>,<column>)", file=sys.stderr)
+            continue
+        did, cols = chunk.split(":", 1)
+        did = did.strip()
+        names = [c.strip() for c in cols.split(",") if c.strip()]
+        if did and names:
+            out[did] = names
+    return out
+
+
+def apply_columns(table, wanted, label=""):
+    """Narrow a table to `wanted`, keeping the table's own column order.
+
+    Only the column LIST is narrowed, never the row dicts: wide_join() keys on
+    "Specimen ID" / "Taxonomic ID #" by name and has to keep working even when
+    those are dropped from the printed output. Names that match nothing are
+    reported rather than silently ignored -- a typo in a spec is otherwise
+    invisible until someone opens the spreadsheet.
+    """
+    if not wanted:
+        return table
+    keep = set(wanted)
+    cols = [c for c in table.columns if c in keep]
+    missing = [c for c in wanted if c not in set(table.columns)]
+    if missing:
+        print(f"[export_data] WARNING: {label or 'dataset'} has no column(s): "
+              f"{', '.join(missing)}", file=sys.stderr)
+    if not cols:
+        print(f"[export_data] WARNING: column selection for {label or 'dataset'} "
+              "matched nothing; keeping every column", file=sys.stderr)
+        return table
+    return Table(cols, table.rows)
+
+
+def build_tables(ctx, dataset_ids=None, drop_empty=True, columns=None):
     """Build each requested dataset. Returns an OrderedDict id -> Table.
 
     A dataset the run carries no data for is dropped rather than written as an
@@ -797,6 +1092,8 @@ def build_tables(ctx, dataset_ids=None, drop_empty=True):
             continue
         if drop_empty and not len(table):
             continue
+        if columns and columns.get(did):
+            table = apply_columns(table, columns[did], spec["label"])
         out[did] = table
     return out
 
@@ -886,10 +1183,16 @@ def manifest_table(tables, ctx, opts):
         ["Recommended TASS cutoff", ctx["default_threshold"]],
         ["Per-sample cutoffs", "; ".join(f"{k}={v}" for k, v in sorted(ctx["thresholds"].items())) or "none"],
         [],
-        ["Datasets included", "Tab", "Rows"],
+        ["Datasets included", "Tab", "Rows", "Columns"],
     ]
     for did, table in tables.items():
-        rows.append([_BY_ID[did]["label"], _BY_ID[did]["tab"], len(table)])
+        rows.append([_BY_ID[did]["label"], _BY_ID[did]["tab"], len(table), len(table.columns)])
+    narrowed = {d: c for d, c in (opts.get("columns") or {}).items() if d in tables}
+    if narrowed:
+        rows.append([])
+        rows.append(["Columns kept"])
+        for did, cols in narrowed.items():
+            rows.append([_BY_ID[did]["label"], ", ".join(cols)])
     # A Table needs dict rows; this sheet is free-form, so hand back the AoA
     # directly and let the writers special-case it.
     return rows
@@ -947,7 +1250,8 @@ def _write_xlsx(sheets, path):
 def write_exports(payload, outdir, formats=("xlsx",), datasets=None, prefix="taxtriage",
                   min_tass=None, level=None, passing_only=False,
                   high_consequence_only=False, samples=None, delimiter=",",
-                  source=""):
+                  source="", pivot_field=None, pivot_rows="organism",
+                  pivot_measure="detections", pivot_shape="wide", columns=None):
     """Build and write the combined export. Returns the list of paths written.
 
     formats (any combination):
@@ -955,24 +1259,58 @@ def write_exports(payload, outdir, formats=("xlsx",), datasets=None, prefix="tax
       wide     the Sample x Organism join — .xlsx sheet and .csv
       csv      one CSV per dataset
       stacked  every dataset in one CSV with a leading Dataset column
+      pivot    detections crosstabbed against a run-metadata field (see
+               build_pivot); pivot_field / pivot_rows / pivot_measure /
+               pivot_shape choose the axes, the measure and wide vs long
     """
     os.makedirs(outdir, exist_ok=True)
     ctx = make_context(payload, min_tass=min_tass, level=level,
                        passing_only=passing_only,
                        high_consequence_only=high_consequence_only,
                        samples=samples)
-    tables = build_tables(ctx, datasets)
-    if not tables:
+    tables = build_tables(ctx, datasets, columns=columns)
+    # The pivot is built from the records + metadata, not from the dataset list,
+    # so it is the one shape that still has something to write when every
+    # dataset came back empty.
+    if "pivot" in [f.strip().lower() for f in formats if f]:
+        tables = tables or OrderedDict()
+    if not tables and "pivot" not in [f.strip().lower() for f in formats if f]:
         print("[export_data] nothing to export (no dataset produced rows)", file=sys.stderr)
         return []
 
     opts = dict(min_tass=min_tass, level=level, passing_only=passing_only,
                 high_consequence_only=high_consequence_only, samples=samples,
-                source=source)
+                source=source, columns=columns)
     info = manifest_table(tables, ctx, opts)
     formats = [f.strip().lower() for f in formats if f and f.strip()]
     written = []
     ext = "tsv" if delimiter == "\t" else "csv"
+
+    if "pivot" in formats:
+        table = build_pivot(ctx, row_dim=pivot_rows, field=pivot_field or "",
+                            measure=pivot_measure, shape=pivot_shape)
+        pm = table.pivot_meta
+        name = "%s.pivot.%s%s" % (
+            prefix,
+            re.sub(r"[^a-z0-9]+", "-", pm["dim"].lower()).strip("-"),
+            ("-by-" + re.sub(r"[^a-z0-9]+", "-", str(pivot_field).lower()).strip("-")) if pivot_field else "",
+        )
+        if not len(table):
+            print("[export_data] pivot: no rows with the current filters", file=sys.stderr)
+        else:
+            written.append(_write_csv(table, os.path.join(outdir, f"{name}.{ext}"), delimiter))
+            written.append(_write_xlsx(
+                [("Export Info", info + [[], ["Pivot"], ["Rows", pm["dim"]],
+                                         ["Columns", pm["field_label"] or "(none - totals only)"],
+                                         ["Measure", pm["measure"]],
+                                         ["Layout", "Long (one row per pair)" if pm["shape"] == "long"
+                                          else "Wide (one column per value)"],
+                                         ["Size", "%d rows x %d columns" % (len(table), len(table.columns))]]),
+                 ("Pivot", table.aoa())],
+                os.path.join(outdir, f"{name}.xlsx")))
+            print(f"[export_data] pivot: {pm['measure']} by "
+                  f"{pm['field_label'] or 'total'} — {len(table)} rows x {len(table.columns)} columns "
+                  f"({pm['shape']} format)")
 
     if "xlsx" in formats:
         sheets = [("Export Info", info)]
@@ -1089,7 +1427,8 @@ def parse_args(argv=None):
                     help="Comma-separated: xlsx (one sheet per dataset), wide "
                          "(Sample x Organism join, written as both .xlsx and .csv), "
                          "csv (one file per dataset), stacked (all datasets in one "
-                         "CSV with a Dataset column). Default: xlsx.")
+                         "CSV with a Dataset column), pivot (detections crosstabbed "
+                         "against a metadata field -- see --pivot-*). Default: xlsx.")
     ap.add_argument("--datasets", default=None,
                     help="Comma-separated dataset ids to include, or 'all'. "
                          "Default: every dataset the run carries data for.")
@@ -1107,6 +1446,35 @@ def parse_args(argv=None):
                     help="Keep only high-consequence organisms.")
     ap.add_argument("--samples", default=None,
                     help="Comma-separated Specimen IDs to restrict the export to.")
+    ap.add_argument("--columns", default=None, metavar="SPEC",
+                    help="Narrow the columns of one or more tables: "
+                         "'<dataset>:<col>,<col>[;<dataset>:<col>,...]', e.g. "
+                         "\"detections:Specimen ID,Detected Organism,TASS Score\". "
+                         "Tables you do not name keep every column. --list-columns "
+                         "prints what a table offers.")
+    ap.add_argument("--list-columns", default=None, metavar="DATASET",
+                    help="Print the column names of one dataset (or 'all') and exit "
+                         "(needs -i).")
+    ap.add_argument("--pivot-field", default=None, metavar="FIELD",
+                    help="With --formats pivot: the run-metadata field to use as the column "
+                         "axis (e.g. location, host_disease, sample_origin_country, run_id). "
+                         "Omit for a plain rollup with totals only. --list-fields shows what "
+                         "this report carries.")
+    ap.add_argument("--pivot-rows", default="organism",
+                    help="With --formats pivot: the row axis. One of "
+                         "organism, organism_taxid, genus, category, domain, sample, "
+                         "sample_type. Default: organism.")
+    ap.add_argument("--pivot-measure", default="detections",
+                    help="With --formats pivot: what each cell counts. One of "
+                         "detections, specimens, organisms, reads, mean_tass, max_tass. "
+                         "Default: detections.")
+    ap.add_argument("--pivot-shape", default="wide", choices=["wide", "long"],
+                    help="With --formats pivot: 'wide' = one column per metadata value "
+                         "(a crosstab); 'long' = one row per pair (tidy, for R / pandas). "
+                         "Default: wide.")
+    ap.add_argument("--list-fields", action="store_true",
+                    help="Print the run-metadata fields available as a pivot axis and exit "
+                         "(needs -i).")
     ap.add_argument("--delimiter", default=",",
                     help="Delimiter for CSV output: ',' (default), '\\t', ';' or '|'.")
     return ap.parse_args(argv)
@@ -1126,6 +1494,31 @@ def main(argv=None):
         ap_err = "[export_data] ERROR: -i/--input is required (or use --list-datasets)"
         raise SystemExit(ap_err)
     payload = load_payload(args.input)
+    if args.list_fields:
+        ctx = make_context(payload)
+        fields = _meta_fields(ctx, for_pivot=True)
+        if not fields:
+            print("(this report carries no run metadata)")
+            return 0
+        width = max(len(f) for f, _ in fields)
+        for f, n in fields:
+            print(f"{f:<{width}}  {n:>4} distinct value(s)   {pretty_field(f)}")
+        return 0
+    if args.list_columns:
+        ctx = make_context(payload)
+        want = ([d["id"] for d in DATASETS] if args.list_columns.strip().lower() == "all"
+                else [args.list_columns.strip()])
+        for did in want:
+            if did not in _BY_ID:
+                print(f"[export_data] unknown dataset '{did}' (known: "
+                      f"{', '.join(DATASET_IDS)})", file=sys.stderr)
+                continue
+            table = build_tables(ctx, [did], drop_empty=False).get(did)
+            print(f"{did} ({len(table.columns) if table else 0} columns):")
+            for c in (table.columns if table else []):
+                print(f"  {c}")
+        return 0
+
     datasets = None
     if args.datasets and args.datasets.strip().lower() != "all":
         datasets = [d.strip() for d in args.datasets.split(",") if d.strip()]
@@ -1145,6 +1538,11 @@ def main(argv=None):
         samples=[s.strip() for s in args.samples.split(",")] if args.samples else None,
         delimiter=delimiter,
         source=os.path.basename(args.input),
+        pivot_field=args.pivot_field,
+        pivot_rows=args.pivot_rows,
+        pivot_measure=args.pivot_measure,
+        pivot_shape=args.pivot_shape,
+        columns=parse_column_spec(args.columns),
     )
     return 0
 

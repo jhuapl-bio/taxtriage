@@ -135,7 +135,7 @@ Samples flagged by a QC rule (`--report_flag_*`, or rules added in the report it
 
 ### Combined Data Export (`report/export_data/`) — Optional
 
-Written only with `--export_data`. Holds the interactive report's tables as spreadsheets — detections, per-sample summary, cross-sample organism rollup, coverage, VF/AMR, novelty, run metadata, geography and in-silico — so the data is usable without opening the HTML. The shape depends on `--export_data_formats`: a single `taxtriage.combined.xlsx` (a sheet per table), `taxtriage.wide.xlsx` / `.csv` (everything joined on Specimen ID × Organism), one CSV per table, and/or `taxtriage.stacked.csv`. See [CLI Parameters → Combined Data Export](cli-parameters.md#combined-data-export).
+Written only with `--export_data`. Holds the interactive report's tables as spreadsheets — detections, per-sample summary, cross-sample organism rollup, coverage, VF/AMR, novelty, run metadata, geography and in-silico — so the data is usable without opening the HTML. The shape depends on `--export_data_formats`: a single `taxtriage.combined.xlsx` (a sheet per table), `taxtriage.wide.xlsx` / `.csv` (everything joined on Specimen ID × Organism), one CSV per table, `taxtriage.stacked.csv`, and/or `taxtriage.pivot.*` (detections crosstabbed against a metadata field). See [CLI Parameters → Combined Data Export](cli-parameters.md#combined-data-export).
 
 ### Microbial Sheet (`report/<sample>.odr.txt`)
 

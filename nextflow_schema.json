@@ -1432,9 +1432,9 @@
                 "export_data_formats": {
                     "type": "string",
                     "default": "xlsx",
-                    "pattern": "^(xlsx|wide|csv|stacked)(,(xlsx|wide|csv|stacked))*$",
+                    "pattern": "^(xlsx|wide|csv|stacked|pivot)(,(xlsx|wide|csv|stacked|pivot))*$",
                     "description": "Output shapes for --export_data, comma-separated.",
-                    "hint": "xlsx = one workbook with a sheet per table plus an Export Info provenance sheet; wide = every table joined on Specimen ID x Organism into a single table (written as both .xlsx and .csv); csv = one CSV per table; stacked = every table in one CSV with a leading Dataset column.",
+                    "hint": "xlsx = one workbook with a sheet per table plus an Export Info provenance sheet; wide = every table joined on Specimen ID x Organism into a single table (written as both .xlsx and .csv); csv = one CSV per table; stacked = every table in one CSV with a leading Dataset column; pivot = detections crosstabbed against a run-metadata field (see the export_data_pivot_* parameters).",
                     "fa_icon": "fas fa-table"
                 },
                 "export_data_datasets": {
@@ -1455,6 +1455,40 @@
                     "description": "Restrict the export to one taxonomic level.",
                     "hint": "The report carries a row per organism at Strain, Species AND Genus. Picking one level keeps a spreadsheet from counting the same reads three times. Leave unset to export every level - each row carries its own Level column.",
                     "fa_icon": "fas fa-layer-group"
+                },
+                "export_data_columns": {
+                    "type": ["string", "null"],
+                    "description": "Narrow the columns of individual tables: '<dataset>:<col>,<col>[;<dataset>:...]'.",
+                    "hint": "So an export carries only the fields that matter — e.g. \"detections:Specimen ID,Detected Organism,TASS Score;coverage:Breadth %\". Tables you do not name keep every column. `export_data.py -i <report> --list-columns all` prints what each table offers. Mirrors the per-table column picker in the report's Export popup.",
+                    "fa_icon": "fas fa-table-columns"
+                },
+                "export_data_pivot": {
+                    "type": ["string", "null"],
+                    "description": "With `pivot` in --export_data_formats: the run-metadata field to cross the detections against.",
+                    "hint": "Answers \"how many hits to organism X came from each site / host / run\" — e.g. location, host_disease, sample_origin_country, sequencing_platform, run_id. Leave unset for a plain rollup with totals only. `export_data.py -i <report> --list-fields` lists the fields a given run carries.",
+                    "fa_icon": "fas fa-table-cells"
+                },
+                "export_data_pivot_rows": {
+                    "type": "string",
+                    "default": "organism",
+                    "enum": ["organism", "organism_taxid", "genus", "category", "domain", "sample", "sample_type"],
+                    "description": "Row axis of the pivot.",
+                    "fa_icon": "fas fa-bars"
+                },
+                "export_data_pivot_measure": {
+                    "type": "string",
+                    "default": "detections",
+                    "enum": ["detections", "specimens", "organisms", "reads", "mean_tass", "max_tass"],
+                    "description": "What each pivot cell counts.",
+                    "fa_icon": "fas fa-calculator"
+                },
+                "export_data_pivot_shape": {
+                    "type": "string",
+                    "default": "wide",
+                    "enum": ["wide", "long"],
+                    "description": "Pivot layout: wide (one column per metadata value) or long (one row per pair).",
+                    "hint": "Wide reads like a crosstab in a spreadsheet; long is the tidy shape R, pandas and most plotting libraries want.",
+                    "fa_icon": "fas fa-table-columns"
                 },
                 "export_data_min_tass": {
                     "type": ["number", "null"],

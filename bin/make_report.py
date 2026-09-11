@@ -153,6 +153,38 @@ def parse_args(argv=None):
         help="File-name prefix for --export_data output (default: taxtriage).",
     )
     parser.add_argument(
+        "--export_data_columns", default=None, metavar="SPEC",
+        help="Narrow the columns of one or more exported tables: "
+             "'<dataset>:<col>,<col>[;<dataset>:<col>,...]', e.g. "
+             "\"detections:Specimen ID,Detected Organism,TASS Score\". Tables not "
+             "named keep every column. `export_data.py -i <report> --list-columns all` "
+             "prints what each table offers.",
+    )
+    parser.add_argument(
+        "--export_data_pivot", default=None, metavar="FIELD",
+        help="With 'pivot' in --export_data_formats: the run-metadata field to cross the "
+             "detections against (e.g. location, host_disease, sample_origin_country). "
+             "Answers 'how many hits to organism X came from each site / host'. Omit for "
+             "a plain rollup with totals only. `export_data.py -i <report> --list-fields` "
+             "lists what a run carries.",
+    )
+    parser.add_argument(
+        "--export_data_pivot_rows", default="organism", metavar="DIM",
+        choices=["organism", "organism_taxid", "genus", "category", "domain", "sample", "sample_type"],
+        help="Row axis of the pivot (default: organism).",
+    )
+    parser.add_argument(
+        "--export_data_pivot_measure", default="detections", metavar="MEASURE",
+        choices=["detections", "specimens", "organisms", "reads", "mean_tass", "max_tass"],
+        help="What each pivot cell counts (default: detections).",
+    )
+    parser.add_argument(
+        "--export_data_pivot_shape", default="wide", metavar="SHAPE",
+        choices=["wide", "long"],
+        help="'wide' = one column per metadata value (a crosstab); 'long' = one row per "
+             "pair, tidy for R / pandas / plotting. Default: wide.",
+    )
+    parser.add_argument(
         "--export_data_level", default=None, metavar="LEVEL",
         choices=["Strain", "Species", "Genus"],
         help="Restrict --export_data to one taxonomic level. The report carries a row "
@@ -2706,7 +2738,7 @@ def main():
     # payload that was just embedded in the HTML -- so the spreadsheet and the
     # report can never disagree about what a run contained.
     if args.export_data:
-        from export_data import write_exports
+        from export_data import write_exports, parse_column_spec
 
         _ds = None
         if args.export_data_datasets and args.export_data_datasets.strip().lower() != "all":
@@ -2719,6 +2751,11 @@ def main():
             min_tass=args.export_data_min_tass,
             level=args.export_data_level,
             source=os.path.basename(args.output),
+            pivot_field=args.export_data_pivot,
+            pivot_rows=args.export_data_pivot_rows,
+            pivot_measure=args.export_data_pivot_measure,
+            pivot_shape=args.export_data_pivot_shape,
+            columns=parse_column_spec(args.export_data_columns),
         )
 
 

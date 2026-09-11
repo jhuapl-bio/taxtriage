@@ -1428,68 +1428,11 @@ function _initExportEnhancer() {
   _EXPORT_STATE.observer.observe(document.body, { childList: true, subtree: true });
 }
 
-function _ensureReportPdfModal() {
-  let overlay = document.getElementById("report-pdf-overlay");
-  if (overlay) return overlay;
-  overlay = document.createElement("div");
-  overlay.id = "report-pdf-overlay";
-  overlay.className = "export-modal-overlay";
-  overlay.innerHTML = `
-          <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="report-pdf-title">
-            <header>
-              <i class="fas fa-file-pdf"></i>
-              <span id="report-pdf-title">Export Report PDF</span>
-              <button type="button" id="report-pdf-close" title="Close">x</button>
-            </header>
-            <div style="padding:1em 1.05em;color:#334;line-height:1.45;font-size:.88em">
-              <p style="margin:0 0 .65em">
-                This will prepare every report tab using the current filters, sample visibility, chart controls, and table state.
-              </p>
-              <p style="margin:0 0 .8em;color:#667;font-size:.86em">
-                Your browser print dialog will open next. Select <b>Save as PDF</b> as the destination to write the report.
-              </p>
-              <label
-                style="display:flex;align-items:center;gap:.5em;font-size:.85em;color:#334;font-weight:600;margin-bottom:.4em"
-              >
-                Sample-color &amp; TASS-cutoff legend
-                <select id="report-pdf-legend-place" style="margin-left:auto;font-size:.95em;padding:2px 6px">
-                  <option value="cover" selected>On cover page</option>
-                  <option value="footer">Repeat on every page</option>
-                  <option value="off">Don't include</option>
-                </select>
-              </label>
-              <p style="margin:0;color:#8a93a3;font-size:.78em">
-                The legend maps each plot color to its sample and records the applied TASS cutoffs.
-              </p>
-            </div>
-            <div class="export-modal-actions">
-              <button type="button" id="report-pdf-cancel">Cancel</button>
-              <button type="button" class="primary" id="report-pdf-confirm">
-                <i class="fas fa-print"></i> Prepare PDF
-              </button>
-            </div>
-          </div>`;
-  document.body.appendChild(overlay);
-  const close = () => (overlay.style.display = "none");
-  overlay.querySelector("#report-pdf-close").addEventListener("click", close);
-  overlay.querySelector("#report-pdf-cancel").addEventListener("click", close);
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) close();
-  });
-  overlay.querySelector("#report-pdf-confirm").addEventListener("click", () => {
-    overlay.style.display = "none";
-    _exportReportPdf().catch((err) => {
-      _hidePdfProgress();
-      alert("PDF export failed: " + (err && err.message ? err.message : err));
-    });
-  });
-  return overlay;
-}
-
-function _openReportPdfModal() {
-  const overlay = _ensureReportPdfModal();
-  overlay.style.display = "flex";
-}
+/* The Report-PDF dialog used to live here as its own modal. It is now one pane
+   of the single Export popup built in 47_export_data.js (_ttEnsureExportModal),
+   so the sidebar carries ONE Export button instead of two. _openReportPdfModal()
+   is defined there and opens that popup on its PDF pane; _exportReportPdf()
+   below still reads #report-pdf-legend-place, which that pane provides. */
 
 function _visibleReportTabs() {
   return Array.from(document.querySelectorAll(".tab-btn[data-tab]"))

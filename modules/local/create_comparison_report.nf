@@ -254,6 +254,13 @@ process CREATE_COMPARISON_REPORT {
         if (params.export_data_prefix)   export_bits << "--export_data_prefix ${params.export_data_prefix}"
         if (params.export_data_level)    export_bits << "--export_data_level ${params.export_data_level}"
         if (params.export_data_min_tass != null) export_bits << "--export_data_min_tass ${params.export_data_min_tass}"
+        // Pivot axes. Only meaningful when 'pivot' is one of the formats, but
+        // harmless otherwise -- make_report.py ignores them then.
+        if (params.export_data_columns)       export_bits << "--export_data_columns '${params.export_data_columns}'"
+        if (params.export_data_pivot)         export_bits << "--export_data_pivot '${params.export_data_pivot}'"
+        if (params.export_data_pivot_rows)    export_bits << "--export_data_pivot_rows ${params.export_data_pivot_rows}"
+        if (params.export_data_pivot_measure) export_bits << "--export_data_pivot_measure ${params.export_data_pivot_measure}"
+        if (params.export_data_pivot_shape)   export_bits << "--export_data_pivot_shape ${params.export_data_pivot_shape}"
     }
     def export_arg = export_bits.join(' ')
 
