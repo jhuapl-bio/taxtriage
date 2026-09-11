@@ -112,19 +112,20 @@ The main deliverable. Example report:
 
 <img src="https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/docs/images/odr_report_2.png" width="60%">
 
- Each table row is one detected organism with the following key columns:
+Each table row is one detected organism with the following key columns:
 
-| Column | Description |
-|---|---|
-| **Organism** | Detected organism with associated annotation, taxID, and taxonomic rank |
-| **TASS Score** | Confidence score for organism detection (0–100), with higher values indicating greater confidence |
-| **Classifier Reads** | Number of reads assigned to the organism by Kraken2/Centrifuge |
-| **Aligned Reads** | Number and percentage of total sample reads that align to the organism's reference genome |
-| **RPM** | Reads Per Million (RPM), a normalized abundance metric that enables comparison across samples |
-| **% Coverage** | Percentage of the organism's genome covered by aligned reads |
-| **Control Comparison** | Displays an organism's TASS score relative to control samples |
+| Column                 | Description                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------- |
+| **Organism**           | Detected organism with associated annotation, taxID, and taxonomic rank                           |
+| **TASS Score**         | Confidence score for organism detection (0–100), with higher values indicating greater confidence |
+| **Classifier Reads**   | Number of reads assigned to the organism by Kraken2/Centrifuge                                    |
+| **Aligned Reads**      | Number and percentage of total sample reads that align to the organism's reference genome         |
+| **RPM**                | Reads Per Million (RPM), a normalized abundance metric that enables comparison across samples     |
+| **% Coverage**         | Percentage of the organism's genome covered by aligned reads                                      |
+| **Control Comparison** | Displays an organism's TASS score relative to control samples                                     |
 
 See [TASS Scoring](TASS-Scoring) for full definitions of each metric.
+
 ### Interactive Comparison Report (`report/all.odr.html`)
 
 A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, coverage/sunburst/explore views, a per-sample-type TASS cutoff slider, species/genus roll-up views, whole-sample QC flags, and a built-in Export-to-PDF button. No server is required — the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
