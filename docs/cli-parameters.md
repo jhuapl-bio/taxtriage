@@ -246,11 +246,37 @@ The [Taxid Resolution Order](#taxid-resolution-order) above runs **accession →
 
 ## Host Removal
 
-| Parameter                          | Description                                                                                                |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `--genome <key>`                   | Auto-download an iGenomes reference for host removal (e.g., `GRCh37`, `BDGP6`, `GRCz10`).                  |
-| `--remove_reference_file <path>`   | FASTA file — reads aligned to these accessions are removed.                                                |
-| `--include_singletons_hostremoval` | Retain singleton reads during paired-end host removal. Default: `FALSE`. Ignored for MEGAHIT/diamond runs. |
+| Parameter                          | Description                                                                                                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--genome <key>`                   | Host reference for de-hosting. Either an iGenomes key (`GRCh37`, `BDGP6`, `GRCz10`, …) or one of the named host targets below (e.g. `--genome mosquito-any`). |
+| `--host_reference_dir <path>`      | Where host-target genomes fetched from NCBI are cached. Default: `<outdir>/host_references`.                                                                  |
+| `--remove_reference_file <path>`   | FASTA file — reads aligned to these accessions are removed. Takes priority over `--genome`.                                                                   |
+| `--include_singletons_hostremoval` | Retain singleton reads during paired-end host removal. Default: `FALSE`. Ignored for MEGAHIT/diamond runs.                                                    |
+
+### Named host targets
+
+Defined in `conf/hosts.config`, selected with `--genome <name>`. Each target carries the
+RefSeq assemblies to align against and the taxids that go with them; the genomes are
+fetched from NCBI the first time a target is used and cached in `--host_reference_dir`,
+so later runs re-use the download.
+
+| Target         | Taxids                 | RefSeq assemblies                                                          |
+| -------------- | ---------------------- | -------------------------------------------------------------------------- |
+| `human`        | 9606                   | `GCF_000001405.40`                                                         |
+| `aedes`        | 7159, 7160             | `GCF_002204515.2`, `GCF_035046485.1`                                       |
+| `anopheles`    | 7165                   | `GCF_943734735.2`                                                          |
+| `culex`        | 7176                   | `GCF_015732765.1`                                                          |
+| `mosquito-any` | 7159, 7160, 7165, 7176 | `GCF_002204515.2`, `GCF_035046485.1`, `GCF_943734735.2`, `GCF_015732765.1` |
+| `ixodes`       | 6945                   | `GCF_016920785.2`                                                          |
+| `tick-any`     | 6945                   | `GCF_016920785.2`                                                          |
+
+Because read-level removal is never complete, a target's taxids are also merged into
+`--remove_taxids` (dropped from the classification report) and
+`--report_flag_exclude_taxids` (never counted as a detection). Pass either parameter as
+an empty string to opt out of that merge for it.
+
+To add a host, add an entry to `conf/hosts.config` with `taxids`, `accessions` and a
+`description` — no code change is needed.
 
 ---
 

@@ -35,11 +35,56 @@ class WorkflowTaxtriage {
     //
     public static void initialise(params, log) {
         genomeExistsError(params, log)
+        mergeHostTaxids(params, log)
 
         // if (!params.fasta) {
         //     log.error "Genome fasta file not specified with e.g. '--fasta genome.fa' or via a detectable config file."
         //     System.exit(1)
         // }
+    }
+
+    //
+    // Named host targets (conf/hosts.config) declare the taxids that go with the
+    // genomes they de-host against.  Read removal is never perfect, so those
+    // taxids are also merged into:
+    //   --remove_taxids                 -> dropped from the classification report
+    //   --report_flag_exclude_taxids    -> never counted as a detection
+    // so a handful of surviving host reads cannot show up as an organism call.
+    //
+    // A value the user explicitly set to an empty string is left alone: that is
+    // how you opt out ("count host like any other organism").
+    //
+    public static void mergeHostTaxids(params, log) {
+        if (!params.genome || !params.genomes || !params.genomes.containsKey(params.genome)) {
+            return
+        }
+        def entry = params.genomes[params.genome]
+        if (!entry || !entry.taxids) {
+            return
+        }
+        def host_taxids = entry.taxids.toString().split(/[\s,]+/).findAll { it }
+        if (!host_taxids) {
+            return
+        }
+
+        def merge = { current ->
+            def existing = (current == null) ? [] : current.toString().split(/[\s,]+/).findAll { it }
+            return (existing + host_taxids).unique().join(' ')
+        }
+
+        if (!(params.remove_taxids instanceof String && params.remove_taxids.trim() == '')) {
+            params.remove_taxids = merge(params.remove_taxids)
+        }
+        if (!(params.report_flag_exclude_taxids instanceof String && params.report_flag_exclude_taxids.trim() == '')) {
+            // null here means "the report's own default (9606)"; make that explicit
+            // before adding the host taxids so human is not silently dropped.
+            def base = (params.report_flag_exclude_taxids == null) ? '9606' : params.report_flag_exclude_taxids
+            params.report_flag_exclude_taxids = merge(base)
+        }
+
+        log.info "Host target '${params.genome}': taxids ${host_taxids.join(', ')} merged into " +
+                 "--remove_taxids ('${params.remove_taxids}') and " +
+                 "--report_flag_exclude_taxids ('${params.report_flag_exclude_taxids}')."
     }
 
     //

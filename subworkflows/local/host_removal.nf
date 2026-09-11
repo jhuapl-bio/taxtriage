@@ -27,6 +27,7 @@ include { SAMTOOLS_INDEX as FILTERED_SAMTOOLS_INDEX } from '../../modules/nf-cor
 include { SAMTOOLS_STATS as FILTERED_STATS } from '../../modules/nf-core/samtools/stats/main'
 include { CHECK_GZIPPED_READS } from '../../modules/local/check_reads_exist'
 include { DOWNLOAD_DB as FILTER_DB_DOWNLOAD } from '../../modules/local/download_db'
+include { FETCH_HOST_REFS } from '../../modules/local/fetch_host_refs'
 
 workflow HOST_REMOVAL {
     take:
@@ -55,19 +56,42 @@ workflow HOST_REMOVAL {
             ],
 
         ]
+        // Resolve the de-hosting reference, in priority order:
+        //   1. --remove_reference_file : a local FASTA the user supplied
+        //   2. --genome <key> with a `fasta` path (the iGenomes entries)
+        //   3. --genome <key> with `accessions` (the named host targets in
+        //      conf/hosts.config, e.g. human / mosquito-any / tick-any) - the
+        //      genomes are pulled from NCBI once and cached by FETCH_HOST_REFS.
+        // Everything downstream consumes `ch_host_fasta`, a value channel, so the
+        // fetched and the pre-existing routes behave identically.
+        def genome_entry = (params.genome && params.genomes) ? params.genomes[params.genome] : null
+        ch_host_fasta = Channel.empty()
+        def run_reference_removal = false
+
         if (params.remove_reference_file){
-            ch_reference_fasta_removal =  file(params.remove_reference_file, checkIfExists: true)
-        } else if (params.genome) {
-            ch_reference_fasta_removal = params.genomes[params.genome]['fasta']
+            ch_host_fasta = Channel.value(file(params.remove_reference_file, checkIfExists: true))
+            run_reference_removal = true
+        } else if (genome_entry && genome_entry.fasta) {
+            ch_host_fasta = Channel.value(file(genome_entry.fasta))
+            run_reference_removal = true
+        } else if (genome_entry && genome_entry.accessions) {
+            def host_cache = params.host_reference_dir ?: "${params.outdir}/host_references"
+            def host_label = genome_entry.description ?: params.genome
+            println "Host target '${params.genome}' (${host_label}) will be de-hosted against ${genome_entry.accessions}; genomes cached in ${host_cache}"
+            FETCH_HOST_REFS(
+                Channel.of([ params.genome, genome_entry.accessions, file(params.assembly ?: "$projectDir/assets/NO_FILE") ])
+            )
+            ch_host_fasta = FETCH_HOST_REFS.out.fasta.map { target, fasta -> fasta }.first()
+            run_reference_removal = true
         }
 
-        if (params.remove_reference_file || params.genome){
+        if (run_reference_removal){
             // Run minimap2 module on all LONGREAD platforms reads and the same on ILLUMINA reads
             // if ch_aligned_for_filter.shorteads is not empty
             // Run minimap2 on all for host removal - as host removal outperforms bowtie2 for host false negative rate https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/
 
             FILTER_MINIMAP2(
-                ch_reads.map{ meta, reads -> return [meta, reads, ch_reference_fasta_removal] },
+                ch_reads.combine(ch_host_fasta),
                 true,
                 true,
                 true
@@ -109,7 +133,7 @@ workflow HOST_REMOVAL {
             ch_bai_files = ch_bam_hosts.join(FILTERED_SAMTOOLS_INDEX.out.bai)
             FILTERED_STATS(
                 ch_bai_files,
-                [ [], ch_reference_fasta_removal  ]
+                ch_host_fasta.map { fasta -> [ [], fasta ] }
             )
             ch_filtered_stats = FILTERED_STATS.out.stats.collect{it[1]}.ifEmpty([])
         } else if (params.filter_kraken2){
