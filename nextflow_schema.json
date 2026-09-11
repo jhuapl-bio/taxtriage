@@ -708,9 +708,17 @@
                 },
                 "genome": {
                     "type": "string",
-                    "description": "Name of iGenomes reference.",
+                    "description": "Name of an iGenomes reference, or of a named host target used for de-hosting.",
                     "fa_icon": "fas fa-book",
-                    "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`. \n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details."
+                    "help_text": "Two kinds of key are accepted.\n\n**iGenomes keys** (`GRCh38`, `GRCm38`, ...) resolve to a FASTA under `--igenomes_base`, exactly as before. See the [nf-core website docs](https://nf-co.re/usage/reference_genomes).\n\n**Named host targets** (defined in `conf/hosts.config`) resolve to one or more RefSeq assembly accessions, which the pipeline fetches from NCBI on first use and caches in `--host_reference_dir`. Their taxids are also merged into `--remove_taxids` and `--report_flag_exclude_taxids`, so surviving host reads are kept out of the report. Available targets: `human` (9606), `aedes` (7159, 7160), `anopheles` (7165), `culex` (7176), `mosquito-any` (Aedes + Anopheles + Culex), `ixodes` (6945), `tick-any` (Ixodes). Example: `--genome mosquito-any`.\n\n`--remove_reference_file` takes priority over both."
+                },
+                "host_reference_dir": {
+                    "type": ["string", "null"],
+                    "format": "directory-path",
+                    "fa_icon": "fas fa-folder",
+                    "description": "Directory used to cache host-target genomes fetched from NCBI for --genome. Defaults to <outdir>/host_references.",
+                    "help_text": "Host genomes are large; point this at a shared location so repeated runs (and other pipelines) re-use the same download instead of re-fetching it.",
+                    "default": null
                 },
                 "igenomes_base": {
                     "type": "string",

@@ -240,7 +240,7 @@ jobs:
       #
       # The Pathogen Sheet ships in every version, pinned above to that
       # version's ref, so each release documents the sheet it actually shipped.
-      - name: Redirect demo tab to latest
+      - name: Redirect demo tab to stable
         if: ${{ !matrix.target.demo }}
         run: python scripts/docs_release_stub.py
 
