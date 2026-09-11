@@ -306,14 +306,25 @@ jobs:
       # mike keeps versions and aliases in one namespace, so `latest` cannot
       # become an alias of `stable` while a *version* named `latest` still
       # exists on gh-pages — the deploy would fail with "alias 'latest' already
-      # specified as a version". A bare `latest` line in `mike list` is exactly
-      # that leftover from the previous scheme; once it is an alias the line
-      # reads "stable [latest]" and this does nothing.
+      # specified as a version". The previous scheme left exactly that behind:
+      # a `latest` version titled "stable (vX.Y.Z)" that carries `stable` as an
+      # alias, i.e. the two names swapped. Deleting the version drops its
+      # aliases with it, so this one call clears both halves of the swap.
+      #
+      # The check reads mike's own versions.json rather than grepping the
+      # `mike list` text: a titled version prints as `"stable (v3.3.10)"
+      # (latest)`, which a line-anchored grep for `latest` silently misses —
+      # which is how the deploy started failing. Aliases named `latest` are
+      # deliberately not matched; once the migration has happened the list
+      # reads `stable [latest]` and this step does nothing.
       - name: Retire the legacy `latest` version
         if: matrix.target.version == 'stable'
         run: |
           set -euo pipefail
-          if mike list --branch "$PAGES_BRANCH" 2>/dev/null | grep -qx 'latest'; then
+          VERSIONS="$(mike list --branch "$PAGES_BRANCH" --json 2>/dev/null \
+            || git show "origin/$PAGES_BRANCH:versions.json" 2>/dev/null \
+            || echo '[]')"
+          if jq -e 'any(.[]; .version == "latest")' >/dev/null <<<"$VERSIONS"; then
             echo "Deleting the old standalone 'latest' version; it becomes an alias of 'stable'."
             mike delete --push --branch "$PAGES_BRANCH" latest
           else
