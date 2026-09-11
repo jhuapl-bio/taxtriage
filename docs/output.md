@@ -32,6 +32,7 @@ These are the outputs you should review first after a successful run:
 │   ├── all.odr.xlsx                      # Combined annotated workbook (incl. VF/AMR + Metadata)
 │   ├── <sample>.odr.txt                  # Per-sample microbial sheet
 │   ├── <sample>.odr.xlsx                 # Per-sample annotated workbook
+│   ├── export_data/                      # Combined data export (--export_data): report tables as xlsx/csv
 │   ├── multiqc_report.html               # MultiQC report
 │   └── combined_krona_kreports.html      # Krona plot
 │
@@ -131,6 +132,10 @@ See [TASS Scoring](TASS-Scoring) for full definitions of each metric.
 A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, coverage/sunburst/explore views, a per-sample-type TASS cutoff slider, species/genus roll-up views, whole-sample QC flags, and a built-in Export-to-PDF button. No server is required — the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
 
 Samples flagged by a QC rule (`--report_flag_*`, or rules added in the report itself) are marked here, not removed: the file still carries every sample's data, so clearing a rule brings a hidden sample straight back. See [Interactive Report → Sample QC flags](interactive-report.md#sample-qc-flags).
+
+### Combined Data Export (`report/export_data/`) — Optional
+
+Written only with `--export_data`. Holds the interactive report's tables as spreadsheets — detections, per-sample summary, cross-sample organism rollup, coverage, VF/AMR, novelty, run metadata, geography and in-silico — so the data is usable without opening the HTML. The shape depends on `--export_data_formats`: a single `taxtriage.combined.xlsx` (a sheet per table), `taxtriage.wide.xlsx` / `.csv` (everything joined on Specimen ID × Organism), one CSV per table, and/or `taxtriage.stacked.csv`. See [CLI Parameters → Combined Data Export](cli-parameters.md#combined-data-export).
 
 ### Microbial Sheet (`report/<sample>.odr.txt`)
 

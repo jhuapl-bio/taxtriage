@@ -1416,6 +1416,53 @@
                     "fa_icon": "fas fa-file-code"
                 }
             }
+        },
+        "data_export": {
+            "title": "Combined data export",
+            "type": "object",
+            "fa_icon": "fas fa-file-export",
+            "description": "Write the report's tables - detections, per-sample summary, cross-sample organism rollup, coverage, VF/AMR, novelty, run metadata, in-silico - to spreadsheets during the run, instead of exporting them one table at a time from the HTML report.",
+            "properties": {
+                "export_data": {
+                    "type": ["boolean", "string"],
+                    "description": "Also write a combined multi-tab data export to <outdir>/report/export_data/.",
+                    "hint": "The HTML report's Export Data panel pulls tables from several tabs into one spreadsheet; this does the same thing during the run, so nobody has to open the report to get the data. Pass true to use --export_data_formats, or pass the format list directly (e.g. --export_data xlsx,wide).",
+                    "fa_icon": "fas fa-file-export"
+                },
+                "export_data_formats": {
+                    "type": "string",
+                    "default": "xlsx",
+                    "pattern": "^(xlsx|wide|csv|stacked)(,(xlsx|wide|csv|stacked))*$",
+                    "description": "Output shapes for --export_data, comma-separated.",
+                    "hint": "xlsx = one workbook with a sheet per table plus an Export Info provenance sheet; wide = every table joined on Specimen ID x Organism into a single table (written as both .xlsx and .csv); csv = one CSV per table; stacked = every table in one CSV with a leading Dataset column.",
+                    "fa_icon": "fas fa-table"
+                },
+                "export_data_datasets": {
+                    "type": ["string", "null"],
+                    "description": "Which tables to export, comma-separated, or 'all'. Default: every table the run carries data for.",
+                    "hint": "Ids: detections, sample_summary, organism_summary, coverage, contigs, vfamr_hits, vfamr_genus, vfamr_amr, novelty_summary, novelty_candidates, run_metadata, sample_metadata, geo, insilico_datasets, insilico_lod. Run `export_data.py --list-datasets` for the catalog.",
+                    "fa_icon": "fas fa-list-check"
+                },
+                "export_data_prefix": {
+                    "type": "string",
+                    "default": "taxtriage",
+                    "description": "File-name prefix for the exported files.",
+                    "fa_icon": "fas fa-tag"
+                },
+                "export_data_level": {
+                    "type": ["string", "null"],
+                    "enum": ["Strain", "Species", "Genus", null],
+                    "description": "Restrict the export to one taxonomic level.",
+                    "hint": "The report carries a row per organism at Strain, Species AND Genus. Picking one level keeps a spreadsheet from counting the same reads three times. Leave unset to export every level - each row carries its own Level column.",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "export_data_min_tass": {
+                    "type": ["number", "null"],
+                    "description": "Drop detections scoring below this TASS value from the export only.",
+                    "hint": "Independent of --mintass, which hard-filters the report itself. Leave unset to export every detection; each detection row also carries its recommended TASS Cutoff and a Passes Cutoff verdict.",
+                    "fa_icon": "fas fa-filter"
+                }
+            }
         }
     },
     "allOf": [
@@ -1462,6 +1509,9 @@
         },
         {
             "$ref": "#/definitions/report_sample_flags"
+        },
+        {
+            "$ref": "#/definitions/data_export"
         }
     ]
 }

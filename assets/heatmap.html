@@ -3148,6 +3148,16 @@
               <i class="fas fa-file-download"></i>
             </button>
             <span style="font-size: 0.72em; color: #555; white-space: nowrap">Export Report</span>
+            <button
+              type="button"
+              id="export-data-btn"
+              class="export-control"
+              title="Export Data — combine tables from one or more tabs into a single CSV or Excel file"
+              data-tip="&lt;b&gt;Export Data&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Pulls the underlying tables from any combination of tabs — detections, per-sample summary, cross-sample organisms, coverage, VF/AMR, novelty, run metadata, in-silico — into ONE file.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Output shapes&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;• Excel workbook, one sheet per table&lt;br&gt;• Single joined sheet / CSV keyed on Specimen ID &amp;times; Organism&lt;br&gt;• All tables stacked into one CSV with a Dataset column&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Notes&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Exports the full dataset, not just the page you are looking at. &amp;quot;Apply current filters&amp;quot; honours the sidebar filters, TASS cutoff and hidden samples. Shortcut: &lt;code&gt;Ctrl/&amp;#8984;+Shift+E&lt;/code&gt;.&lt;br&gt;The same tables are written automatically by the pipeline with &lt;code&gt;--export_data&lt;/code&gt;.&lt;/span&gt;"
+            >
+              <i class="fas fa-file-export"></i>
+            </button>
+            <span style="font-size: 0.72em; color: #555; white-space: nowrap">Export Data</span>
           </div>
         </div>
         <label
@@ -4229,6 +4239,7 @@
     <script src="src/js/45_map_export.js"></script>
     <script src="src/js/45_tab_insilico.js"></script>
     <script src="src/js/46_insilico_compare.js"></script>
+    <script src="src/js/47_export_data.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

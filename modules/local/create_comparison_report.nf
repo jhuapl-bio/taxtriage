@@ -77,6 +77,10 @@ process CREATE_COMPARISON_REPORT {
     output:
         path "versions.yml"           , emit: versions
         path("*odr.html")                 , optional: true, emit: html
+        // Combined multi-tab data export (params.export_data). Same tables as the
+        // report's "Export Data" panel, written straight to disk so no one has to
+        // open the HTML to get a spreadsheet.
+        path("export_data/*")             , optional: true, emit: export_data
 
     when:
     task.ext.when == null || task.ext.when
@@ -233,6 +237,26 @@ process CREATE_COMPARISON_REPORT {
         insil_params_arg = "--insilico_params ${insilico_params}"
     }
 
+    // ── Combined multi-tab data export ────────────────────────────────────────
+    // params.export_data = true (or a format list) -> make_report.py also writes
+    // the detections / sample summary / cross-sample organisms / coverage /
+    // VF-AMR / novelty / run metadata / in-silico tables into export_data/, which
+    // is published to <outdir>/report/export_data/.
+    def export_bits = []
+    if (params.export_data) {
+        // `true` means "use the default formats"; a string is taken as the format list.
+        def fmts = (params.export_data instanceof Boolean)
+            ? (params.export_data_formats ?: 'xlsx')
+            : params.export_data.toString()
+        export_bits << "--export_data export_data"
+        export_bits << "--export_data_formats ${fmts}"
+        if (params.export_data_datasets) export_bits << "--export_data_datasets '${params.export_data_datasets}'"
+        if (params.export_data_prefix)   export_bits << "--export_data_prefix ${params.export_data_prefix}"
+        if (params.export_data_level)    export_bits << "--export_data_level ${params.export_data_level}"
+        if (params.export_data_min_tass != null) export_bits << "--export_data_min_tass ${params.export_data_min_tass}"
+    }
+    def export_arg = export_bits.join(' ')
+
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
@@ -240,7 +264,8 @@ process CREATE_COMPARISON_REPORT {
         ${prot_arg} ${pident} ${mintass} ${min_conf_arg} \\
         ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg} ${offline_arg} \\
         ${flag_arg} \\
-        ${insil_json_arg} ${insil_manifest_arg} ${insil_params_arg}
+        ${insil_json_arg} ${insil_manifest_arg} ${insil_params_arg} \\
+        ${export_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

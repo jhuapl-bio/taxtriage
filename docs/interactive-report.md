@@ -358,6 +358,30 @@ Rules can ship with the run: the `--report_flag_*` parameters are baked into the
 
 ---
 
+## Export Data (several tabs into one file)
+
+Each plot and table can be exported on its own (see below), but a review usually needs more than one of them — the detections table, the cross-sample organism rollup and the VF/AMR hits in a single workbook, say. The **Export Data** button (🗂, in the Filters sidebar header next to **Export Report**, or <kbd>Ctrl/⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>) opens a picker that does exactly that.
+
+The dialog lists every table the report holds, grouped by the tab it belongs to, with a live row count next to each. Tables the run carries no data for are greyed out. Tick as many as you like, then pick an output shape:
+
+| Shape                                   | What you get                                                                                                                                                     |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Excel workbook — one sheet per table** | One `.xlsx`, one sheet per selected table, plus an **Export Info** sheet recording the run, the filters in force and the row count of each sheet.                 |
+| **Excel / CSV — single joined table**    | Every selected table folded into ONE table, joined on Specimen ID × Organism. Columns from each source are prefixed with its name (`Coverage Summary · Mean Depth`). |
+| **CSV — all tables stacked**             | Every selected table in one CSV, one after another, with a leading `Dataset` column and the union of all columns.                                                |
+
+**Apply current filters** (on by default) exports what the sidebar filters, the TASS cutoff, the view level and sample visibility leave in view; turn it off for the complete underlying data. Either way the export is the full dataset behind a table, not just the page of it you can see — table pagination does not truncate it, and a table exports correctly even if you never opened its tab.
+
+A few tables — per-gene VF/AMR hits, novelty candidates, in-silico series, per-contig coverage — carry several rows per organism, so they cannot be folded into a single joined row. Choosing a joined shape with one of those selected shows a warning naming them; use the workbook or the stacked CSV to include them.
+
+!!! tip "Same tables, without opening the report"
+    The pipeline can write all of this during the run with `--export_data`, into `<outdir>/report/export_data/`. The tables and column headers are identical, so a spreadsheet from the pipeline lines up with one exported by hand here. See [CLI Parameters → Combined Data Export](cli-parameters.md#combined-data-export).
+
+!!! note "Detections and the TASS cutoff"
+    `Passes Threshold` in the underlying data is always unset — the report decides pass/fail live against the cutoff. Every detections export therefore carries two extra columns: **TASS Cutoff** (the cutoff that applied to that sample) and **Passes Cutoff** (the verdict, honouring the species/genus rollup rescue when it is on).
+
+---
+
 ## Export to PDF
 
 An **Export Report** button (📥, in the Filters sidebar header) renders the current report, with whatever filters, view level and tab state are active, to a static PDF for sharing or archiving.

@@ -124,6 +124,46 @@ def parse_args(argv=None):
              "Hits' / 'Sample Overview' / 'AMR Genes' sheets when "
              "--protein_annotations / --annotate_reports were loaded.",
     )
+    # ── Combined multi-tab data export (bin/export_data.py) ──────────────────
+    # The report's "Export Data" panel can pull tables from several tabs into one
+    # spreadsheet. These flags do the same thing at pipeline time, so the tables
+    # land on disk without anyone opening the HTML.
+    parser.add_argument(
+        "--export_data", default=None, metavar="DIR",
+        help="Also write the combined multi-tab data export into this directory: the "
+             "detections, per-sample summary, cross-sample organism rollup, coverage, "
+             "VF/AMR, novelty, run metadata and in-silico tables the report's 'Export "
+             "Data' panel offers. Superset of --output_xlsx.",
+    )
+    parser.add_argument(
+        "--export_data_formats", default="xlsx", metavar="LIST",
+        help="Comma-separated shapes for --export_data: 'xlsx' (one workbook, a sheet "
+             "per table), 'wide' (one table joined on Specimen ID x Organism, written "
+             "as .xlsx and .csv), 'csv' (one CSV per table), 'stacked' (every table in "
+             "one CSV with a Dataset column). Default: xlsx.",
+    )
+    parser.add_argument(
+        "--export_data_datasets", default=None, metavar="LIST",
+        help="Comma-separated dataset ids for --export_data, or 'all'. Default: every "
+             "dataset the run carries data for. Run `export_data.py --list-datasets` "
+             "for the catalog.",
+    )
+    parser.add_argument(
+        "--export_data_prefix", default="taxtriage", metavar="NAME",
+        help="File-name prefix for --export_data output (default: taxtriage).",
+    )
+    parser.add_argument(
+        "--export_data_level", default=None, metavar="LEVEL",
+        choices=["Strain", "Species", "Genus"],
+        help="Restrict --export_data to one taxonomic level. The report carries a row "
+             "per organism at Strain, Species AND Genus; picking one level stops a "
+             "spreadsheet from counting the same reads three times.",
+    )
+    parser.add_argument(
+        "--export_data_min_tass", default=None, type=float, metavar="FLOAT",
+        help="Drop detections below this TASS score from --export_data output. "
+             "Independent of --mintass, which filters the report itself.",
+    )
     parser.add_argument(
         "-mc", "--microbial_category", nargs="+",
         default=["all"],
@@ -2659,6 +2699,27 @@ def main():
 
         print(f"[make_report] Written: {args.output_xlsx} "
               f"({len(_xlsx_sheets)} sheet(s): {', '.join(n for n, _ in _xlsx_sheets)})")
+
+
+    # ── combined multi-tab data export ────────────────────────────────────────
+    # Same catalog the report's "Export Data" panel offers, built from the very
+    # payload that was just embedded in the HTML -- so the spreadsheet and the
+    # report can never disagree about what a run contained.
+    if args.export_data:
+        from export_data import write_exports
+
+        _ds = None
+        if args.export_data_datasets and args.export_data_datasets.strip().lower() != "all":
+            _ds = [d.strip() for d in args.export_data_datasets.split(",") if d.strip()]
+        write_exports(
+            payload, args.export_data,
+            formats=[f for f in args.export_data_formats.split(",")],
+            datasets=_ds,
+            prefix=args.export_data_prefix,
+            min_tass=args.export_data_min_tass,
+            level=args.export_data_level,
+            source=os.path.basename(args.output),
+        )
 
 
 def _is_numeric_str(s):

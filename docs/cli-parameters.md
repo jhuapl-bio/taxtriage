@@ -413,6 +413,48 @@ They appear in the [Interactive Report](interactive-report.md) **Table** tab (vi
 
 ---
 
+## Combined Data Export
+
+Writes the interactive report's tables to spreadsheets during the run, so nobody has to open `all.odr.html` and export them one at a time. Same catalog, same column headers as the report's **Export Data** panel — see [Interactive Report → Export Data](interactive-report.md#export-data-several-tabs-into-one-file). Output lands in `<outdir>/report/export_data/`.
+
+| Parameter                       | Description                                                                                                                                                                                                                                                                                    |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--export_data`                 | Turn the export on. `true` uses `--export_data_formats`; passing a format list directly (`--export_data xlsx,wide`) works too. Default: `false`.                                                                                                                                                |
+| `--export_data_formats <list>`  | Comma-separated shapes. `xlsx` — one workbook, a sheet per table plus an Export Info provenance sheet. `wide` — every table joined on Specimen ID × Organism into one table, written as both `.xlsx` and `.csv`. `csv` — one CSV per table. `stacked` — every table in one CSV with a `Dataset` column. Default: `xlsx`. |
+| `--export_data_datasets <list>` | Which tables to export, comma-separated, or `all`. Default: every table the run carries data for.                                                                                                                                                                                              |
+| `--export_data_prefix <name>`   | File-name prefix. Default: `taxtriage`.                                                                                                                                                                                                                                                        |
+| `--export_data_level <level>`   | Keep only `Strain`, `Species` or `Genus`. The report holds a row per organism at all three, so picking one level keeps a spreadsheet from counting the same reads three times. Default: every level (each row carries its own `Level` column).                                                   |
+| `--export_data_min_tass <n>`    | Drop detections below this TASS score **from the export only**. Independent of `--mintass`, which hard-filters the report itself.                                                                                                                                                               |
+
+### Datasets
+
+| Id                                                                    | Tab                  | Contents                                                                     |
+| --------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------- |
+| `detections`                                                          | Summary / Table      | Every detection with all TASS, coverage and taxonomy columns, plus `TASS Cutoff` and `Passes Cutoff` |
+| `sample_summary`                                                      | Summary              | One row per specimen: detection counts, aligned reads, strongest hit          |
+| `organism_summary`                                                    | Explore              | Run-wide per-organism rollup: prevalence, TASS / coverage spread, ANI grouping |
+| `coverage`, `contigs`                                                 | Coverage / Histogram | Per specimen × organism breadth and depth; per aligned contig                 |
+| `vfamr_hits`, `vfamr_genus`, `vfamr_amr`                              | VF/AMR               | Per-gene hits, genus summary, AMR genes                                       |
+| `novelty_summary`, `novelty_candidates`                               | Novelty              | Per-sample novelty statistics and candidate novel taxa                        |
+| `run_metadata`, `sample_metadata`                                     | Run Metadata         | Collection / run metadata; pipeline provenance per sample                     |
+| `geo`                                                                 | Map                  | Coordinates and place fields                                                  |
+| `insilico_datasets`, `insilico_lod`                                   | In-Silico            | Per subsample dataset scoring; per-organism dilution series and LoD           |
+
+Run `export_data.py --list-datasets` for the live catalog.
+
+### Re-exporting an existing report
+
+`bin/export_data.py` also runs standalone against any report the pipeline already built, so an old run can be exported without re-running anything:
+
+```bash
+export_data.py -i results/report/all.odr.html -o export/ --formats xlsx,wide --level Strain
+```
+
+!!! note "Sample QC and the `QC Flag` column"
+    Whole-sample QC verdicts are evaluated live in the report (the pipeline only seeds the default rules), so the `QC Flag` column in a pipeline-side `sample_summary` export is present for header parity but left blank. Export from the report itself to get the verdicts.
+
+---
+
 ## Report Sample-QC Flags
 
 Whole-**sample** criteria that seed the interactive report's **Sample QC / Flags** rule set. These are report _defaults only_: every sample still runs through the full workflow and appears in every output. A sample that matches is marked in the Heatmap, Table, Metadata & Mapping and Summary tabs and, with `--report_flag_action hide`, also removed from those views (reversibly — the report keeps a one-click toggle). Users can edit, add to or delete every rule live in the report.
