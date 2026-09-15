@@ -421,6 +421,42 @@ alignments.branch {
 
 When a parent sample has multiple insilico children (one ISS, one NanoSim), all their JSONs are collected into a list and passed together via `--insilico_controls`.
 
+### What simulated datasets output
+
+Simulated datasets — ISS, NanoSim and spike-into-background alike, i.e. anything
+carrying `meta.insilico` — are **comparison inputs, not deliverables**. They are
+deliberately held to text and JSON:
+
+| Output                                           | Real / control samples | Simulated datasets                                   |
+| ------------------------------------------------ | ---------------------- | ---------------------------------------------------- |
+| `alignment/<id>.paths.json`                      | yes                    | **yes** — the file real samples are compared against |
+| `report/<id>.odr.txt`                            | yes                    | **yes**, under `report/insilico/`                    |
+| `report/<id>.odr.pdf`                            | yes                    | no                                                   |
+| `report/<id>.odr.xlsx`                           | yes                    | no                                                   |
+| `alignment/<id>_removal_stats_by_taxid.xlsx`     | yes                    | no                                                   |
+| rows in merged `all.odr.txt` / `.pdf` / `.xlsx`  | yes                    | no                                                   |
+| rows in `all.odr.json` + the In-Silico suite tab | —                      | **yes**                                              |
+| MultiQC aggregation                              | yes                    | no                                                   |
+
+How it is enforced:
+
+- `REPORT` branches the per-sample outputs on `meta.insilico`. Real and control
+  samples go to `SINGLE_REPORT`; simulated ones go to `SINGLE_REPORT_INSILICO`,
+  the same `ORGANISM_MERGE_REPORT` process called with `txt_only = true`, which
+  runs `create_report.py` without `-o` / `--output_annot_xlsx` so no PDF or
+  workbook is ever rendered.
+- Only the real branch feeds `full_list_pathogen_files`, so the merged
+  `all.odr.*` reports describe the actual run.
+- `ALIGNMENT_PER_SAMPLE_INSILICO` publishes `*.json` only (see
+  `conf/modules.config`), keeping spreadsheets out of `alignment/`.
+- `realOnly()` in `workflows/taxtriage.nf` filters simulated datasets out of every
+  MultiQC feed, so a 24-dataset series cannot drown out the real samples in the
+  QC plots.
+
+Simulated detections still reach the interactive report as JSON: `all.odr.json`
+embeds them and the In-Silico suite tab is built from them, which is how a series
+is read against the real samples.
+
 ### Step 5: Comparison Annotation (match_paths.py)
 
 For each non control sample, `match_paths.py` receives the insilico JSON(s) and performs:

@@ -13,12 +13,14 @@ on:
       - "assets/src/**"
       - "bin/report_template.py"
       - "scripts/test_sample_flags.js"
+      - "scripts/test_insilico_picker.js"
   pull_request:
     paths:
       - "assets/heatmap.html"
       - "assets/src/**"
       - "bin/report_template.py"
       - "scripts/test_sample_flags.js"
+      - "scripts/test_insilico_picker.js"
   workflow_dispatch:
 
 jobs:
@@ -47,3 +49,11 @@ jobs:
       # which is exactly when the engine can break.
       - name: Sample QC rule engine tests
         run: node scripts/test_sample_flags.js
+
+      # The In-Silico tab's series picker is what keeps a 20+ sample run
+      # readable, and it leans on the shared multi-select — both live under
+      # assets/src/**, which this workflow already watches.
+      - name: In-Silico series picker tests
+        run: |
+          npm install --no-fund --no-audit --no-save jsdom
+          node scripts/test_insilico_picker.js

@@ -3,7 +3,13 @@
 `assets/heatmap.html` is a **thin shell** (~3.4k lines): the `<head>`, the HTML
 body markup (banner, tabs, panels, overlays), and `<link>` / `<script src>`
 references to the external CSS and JS in this directory. It is directly
-openable in a browser (with `assets/heatmap_boot.js` present for demo data).
+openable in a browser: copy the committed demo payload to the (gitignored)
+path the template expects and uncomment its loader —
+`cp assets/pages.js assets/heatmap_boot.js`, then uncomment
+`<!-- <script src="heatmap_boot.js"></script> -->` near the top of
+`assets/heatmap.html`. Leave that tag commented in commits: both
+`bin/make_report.py` and `scripts/inline_boot_json.py` use it as the anchor
+where the real payload gets injected.
 
 The previous single ~30k-line file lives on only as the _generated_
 self-contained output; it is no longer committed.

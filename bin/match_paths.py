@@ -247,6 +247,20 @@ def parse_args(argv=None):
         help="Sample Type to process. If Empty, defaults to null",
     )
     parser.add_argument(
+        "--insilico", action="store_true",
+        help="Mark this sample as a simulated/in-silico dataset (ISS, NanoSim or "
+             "spike-into-background). The flag is written into the output JSON's "
+             "metadata so downstream consumers — make_report.py, the interactive "
+             "report, anything reading all.odr.json — can keep simulated datasets "
+             "out of the sample tables and render them only as per-organism "
+             "comparisons and in the In-Silico tab.",
+    )
+    parser.add_argument(
+        "--parent_sample", default=None, metavar="ID",
+        help="For a simulated dataset, the id of the real sample it was derived "
+             "from. Written to the output JSON metadata as 'parent_id'.",
+    )
+    parser.add_argument(
         "-s",
         "--samplename",
         metavar="SAMPLENAME",
@@ -3841,6 +3855,10 @@ def main():
         "sample_name":    args.samplename,
         "sample_type":    sampletype,
         "platform":       args.platform,
+        # Provenance: simulated datasets are comparison inputs, not samples of the
+        # run. Consumers key off this flag rather than guessing from the sample id.
+        "insilico":       bool(getattr(args, "insilico", False)),
+        "parent_id":      getattr(args, "parent_sample", None),
         "workflow_revision": args.workflow_revision,
         "commit_id":      args.commit_id,
         # ── Run-level metadata: known fields first (backwards compat) ──────────

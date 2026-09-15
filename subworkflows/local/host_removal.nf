@@ -108,7 +108,9 @@ workflow HOST_REMOVAL {
                 ch_bam_hosts.join(ch_reads)
             )
             ch_filtered_reads = REMOVE_HOSTREADS.out.reads
-            ch_host_removal_stats = REMOVE_HOSTREADS.out.stats.collect{it[1]}.ifEmpty([])
+            // Simulated (meta.insilico) datasets are excluded from the MultiQC feed.
+            ch_host_removal_stats = REMOVE_HOSTREADS.out.stats
+                .filter{ !it[0].insilico }.collect{it[1]}.ifEmpty([])
 
             // Check the filtered output and fallback to original reads if filtered reads are empty
             CHECK_GZIPPED_READS(ch_filtered_reads, 4)
@@ -135,7 +137,9 @@ workflow HOST_REMOVAL {
                 ch_bai_files,
                 ch_host_fasta.map { fasta -> [ [], fasta ] }
             )
-            ch_filtered_stats = FILTERED_STATS.out.stats.collect{it[1]}.ifEmpty([])
+            // Simulated (meta.insilico) datasets are excluded from the MultiQC feed.
+            ch_filtered_stats = FILTERED_STATS.out.stats
+                .filter{ !it[0].insilico }.collect{it[1]}.ifEmpty([])
         } else if (params.filter_kraken2){
             if (supported_filter_dbs.containsKey(params.filter_kraken2)) {
                 println "Kraken db ${params.filter_kraken2} will be downloaded if it cannot be found. This requires ${supported_filter_dbs[params.filter_kraken2]['size']} of space."

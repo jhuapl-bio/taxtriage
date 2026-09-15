@@ -114,6 +114,12 @@ process ALIGNMENT_PER_SAMPLE {
     def pos_ctrls = positive_control_jsons.name != "NO_FILE_pos_ctrl" ? " --positive_controls ${positive_control_jsons} " : " "
     def insilico_ctrls = insilico_control_jsons.name != "NO_FILE_insilico_ctrl" ? " --insilico_controls ${insilico_control_jsons} " : " "
 
+    // Simulated datasets (ISS / NanoSim / spike-into-background) stamp their own
+    // provenance into the output JSON, so every downstream consumer can tell them
+    // apart from real samples without pattern-matching the sample id.
+    def insilico_flag = meta.insilico ? " --insilico " : " "
+    def parent_arg    = (meta.insilico && meta.parent_id) ? " --parent_sample ${meta.parent_id} " : " "
+
     """
 
 
@@ -133,7 +139,7 @@ process ALIGNMENT_PER_SAMPLE {
         --fast \\
         $min_reads_align $compress_species $mbert_report $minmapq_arg $fast $taxonomy $enable_matrix $ani_threshold \\
         $workflow_revision $commitID $platform $sampletype_thresholds \\
-        $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $reward_factor $dispersion_factor \\
+        $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $insilico_flag $parent_arg $reward_factor $dispersion_factor \\
         $mapq_breadth_power $mapq_gini_power \\
         $annotate_report_arg $pident \\
         $meta_csv_arg

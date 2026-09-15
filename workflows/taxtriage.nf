@@ -104,6 +104,18 @@ include { BBMAP_BBNORM } from '../modules/nf-core/bbmap/bbnorm/main'
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+// ── MultiQC: real samples only ──────────────────────────────────────────────
+// Simulated datasets (meta.insilico: ISS, NanoSim, spike-into-background) are
+// comparison inputs, not part of the run being reported on, so they are kept out
+// of the MultiQC aggregation — otherwise a 24-dataset series drowns out the real
+// samples in every QC plot.
+// Their detections are still reported as JSON (+ .odr.txt) and drive the report's
+// In-Silico suite tab.
+def realOnly(ch) {
+    ch.filter { it instanceof List && it[0] instanceof Map ? !it[0].insilico : true }
+}
+
+
 workflow TAXTRIAGE {
     // ── NF v26: boolean flags arrive as strings; coerce before schema validation ──
     [
@@ -831,7 +843,7 @@ workflow TAXTRIAGE {
         ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
     )
 
-    ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect { it[1] }.ifEmpty([]) )
+    ch_multiqc_files = ch_multiqc_files.mix(realOnly(TRIMGALORE.out.reads).collect { it[1] }.ifEmpty([]) )
 
     PORECHOP(
         ch_reads.filter { (it[0].platform == 'OXFORD' || it[0].platform == "PACBIO") && it[0].trim  }
@@ -839,7 +851,7 @@ workflow TAXTRIAGE {
     ch_porechop_out  = PORECHOP.out.reads
     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
     ch_reads = nontrimmed_reads.mix(trimmed_reads)
-    ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(realOnly(ch_porechop_out).collect { it[1] }.ifEmpty([]))
     // Create an empty file if se_reads is null
     // When calling the module, pass the empty file instead of null:
     if (params.downsample) {
@@ -880,7 +892,7 @@ workflow TAXTRIAGE {
         ch_reads = FASTP.out.reads
         ch_fastp_reads = FASTP.out.json
         ch_fastp_html = FASTP.out.html
-        ch_multiqc_files = ch_multiqc_files.mix(FASTP.out.json.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(realOnly(FASTP.out.json).collect { it[1] }.ifEmpty([]))
     }
 
     //////////////////// RUN ALIGNEMNT to filter out host reads ////////////////////
@@ -935,8 +947,8 @@ workflow TAXTRIAGE {
         NANOPLOT(
             ch_reads.filter { (it[0].platform =~ /(?i)OXFORD/ || it[0].platform =~ /(?i)PACBIO/) && !it[0].is_fasta }
         )
-        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]) )
-        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]) )
+        ch_multiqc_files = ch_multiqc_files.mix(realOnly(FASTQC.out.zip).collect { it[1] }.ifEmpty([]) )
+        ch_multiqc_files = ch_multiqc_files.mix(realOnly(NANOPLOT.out.txt).collect { it[1] }.ifEmpty([]) )
     }
     // ch_reads now contains both processed FASTQ samples and FASTA samples
     // (the latter having passed through host-removal but skipped all QC plots)
@@ -977,13 +989,13 @@ workflow TAXTRIAGE {
     ch_pass_files = ch_pass_files.join(ch_kraken2_report)
     // add ch_kraken2_report to ch_multiqc, only unique names
     ch_multiqc_files = ch_multiqc_files.mix(
-    ch_kraken2_report
+    realOnly(ch_kraken2_report)
             .map { it[1] } // Correctly map to the second element of each tuple
             .ifEmpty(Channel.empty()) // Handle empty channels appropriately
             .distinct() // Remove duplicates if necessary
     )
     ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
-    ch_multiqc_files = ch_multiqc_files.mix(ch_krakenreport.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(realOnly(ch_krakenreport).collect { it[1] }.ifEmpty([]))
 
     ////////////////////////////// PRE-ALIGNED (BAM) SAMPLES: PREP /////////////////////////////////
     // Normalise the supplied alignment (convert / sort / index) and, when no
@@ -1158,7 +1170,7 @@ workflow TAXTRIAGE {
         ch_bedgraphs = ALIGNMENT.out.bedgraphs.mix(BAM_INPUT.out.bedgraphs)
         ch_report_bams = ALIGNMENT.out.bams.mix(BAM_PREP.out.bams)
         ch_versions = ch_versions.mix(ALIGNMENT.out.versions)
-        ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(realOnly(ch_alignment_stats).collect { it[1] }.ifEmpty([]))
 
         ch_alignment_outmerg = ALIGNMENT.out.bams
 

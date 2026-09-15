@@ -8,6 +8,11 @@
 # rather than editing or reformatting it.
 assets/heatmap_boot.js
 
+# GitHub Pages demo dataset: the same kind of generated
+# `window.HEATMAP_BOOT = {...}` payload, inlined into _site/index.html by
+# scripts/inline_boot_json.py. Also machine-written, never hand-edited.
+assets/pages.js
+
 # Build outputs / vendored trees
 _site/
 docs/demo/

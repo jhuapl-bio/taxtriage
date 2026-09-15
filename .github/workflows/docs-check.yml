@@ -25,7 +25,6 @@ on:
       - "scripts/test_built_links.py"
       - "assets/heatmap.html"
       - "assets/pages.js"
-      - "assets/heatmap_boot.js"
       - "assets/src/**"
       - "assets/pathogen_sheet.csv"
       - ".github/workflows/docs*.yml"

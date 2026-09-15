@@ -142,6 +142,27 @@
     }
     if (pop) pop.addEventListener("click", (ev) => ev.stopPropagation());
 
+    //  The All / None links are rendered whenever the caller supplies a handler
+    //  (see the markup above) but were never wired up, so clicking them did
+    //  nothing in every view that offers them. They stop propagation like the
+    //  rest of the panel so the document-level closer does not fire.
+    const allBtn = el.querySelector(".tt-ms-all");
+    if (allBtn && typeof o.onAll === "function") {
+      allBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        o.onAll(ev);
+      });
+    }
+    const noneBtn = el.querySelector(".tt-ms-none");
+    if (noneBtn && typeof o.onNone === "function") {
+      noneBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        o.onNone(ev);
+      });
+    }
+
     el.querySelectorAll(".tt-ms-cb").forEach((cb) => {
       cb.addEventListener("change", (ev) => {
         ev.stopPropagation();
