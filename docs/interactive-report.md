@@ -360,7 +360,7 @@ Rules can ship with the run: the `--report_flag_*` parameters are baked into the
 
 ## Export
 
-One **Export…** button sits under the *Filters* heading in the right panel (or press <kbd>Ctrl/⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>). It opens a single popup where the first choice is *what* to take away:
+One **Export…** button sits under the _Filters_ heading in the right panel (or press <kbd>Ctrl/⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>). It opens a single popup where the first choice is _what_ to take away:
 
 - **Data tables** — the underlying tables from as many tabs as you like, as one file
 - **Report PDF** — the current filtered report as a printable layout
@@ -369,12 +369,12 @@ One **Export…** button sits under the *Filters* heading in the right panel (or
 
 The dialog lists every table the report holds, grouped by the tab it belongs to, with a live row count next to each; tables the run carries no data for are greyed out. Tick what you want, then pick an output shape:
 
-| Shape                                    | What you get                                                                                                                                                       |
+| Shape                                    | What you get                                                                                                                                                         |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Excel workbook — one sheet per table**  | One `.xlsx`, one sheet per selected table, plus an **Export Info** sheet recording the run, the filters in force and the row count of each sheet.                    |
-| **Excel / CSV — single joined table**     | Every selected table folded into ONE table, joined on Specimen ID × Organism. Columns from each source are prefixed with its name (`Coverage Summary · Mean Depth`). |
-| **CSV — all tables stacked**              | Every selected table in one CSV, one after another, with a leading `Dataset` column and the union of all columns.                                                   |
-| **Pivot — organisms × a metadata field**  | A crosstab of the detections against run metadata. See below.                                                                                                      |
+| **Excel workbook — one sheet per table** | One `.xlsx`, one sheet per selected table, plus an **Export Info** sheet recording the run, the filters in force and the row count of each sheet.                    |
+| **Excel / CSV — single joined table**    | Every selected table folded into ONE table, joined on Specimen ID × Organism. Columns from each source are prefixed with its name (`Coverage Summary · Mean Depth`). |
+| **CSV — all tables stacked**             | Every selected table in one CSV, one after another, with a leading `Dataset` column and the union of all columns.                                                    |
+| **Pivot — organisms × a metadata field** | A crosstab of the detections against run metadata. See below.                                                                                                        |
 
 #### Choosing columns
 
@@ -391,7 +391,7 @@ A few tables — per-gene VF/AMR hits, novelty candidates, in-silico series, per
 "How many hits to Influenza A came from each collection site?" is a question no single tab answers: the counts live in the detections, the site lives in the run metadata. The **Pivot** output shape joins the two and aggregates:
 
 - **Rows** — Detected Organism (default), Organism + Taxid, Genus, Microbial Category, Domain, Specimen ID or Sample Type
-- **Columns** — any run-metadata field the run carries: location, host type, host disease, country, sequencing platform, run id, and anything you uploaded on the Metadata tab. Each option shows how many distinct values it has; continuous numerics (read counts, coordinates) are left out, since a crosstab keyed on those would have one column per sample. Leave it on *(none)* for a plain rollup with totals only.
+- **Columns** — any run-metadata field the run carries: location, host type, host disease, country, sequencing platform, run id, and anything you uploaded on the Metadata tab. Each option shows how many distinct values it has; continuous numerics (read counts, coordinates) are left out, since a crosstab keyed on those would have one column per sample. Leave it on _(none)_ for a plain rollup with totals only.
 - **Count** — # detections, # specimens, # distinct organisms, total reads aligned, mean TASS or max TASS
 - **Layout** — **wide** puts one column per metadata value, the crosstab shape you read in a spreadsheet; **long** emits one row per organism × value pair (`Organism, Field, Measure, Value`), the tidy shape R, pandas and most plotting libraries want
 
@@ -400,16 +400,16 @@ A live preview shows the first rows and columns before you download. Samples wit
 For the raw material behind it, tick **Detections + Metadata** in the table list: one row per detection with every metadata column joined on, ready to drop into your own pivot table.
 
 !!! tip "Same tables, without opening the report"
-    The pipeline can write all of this during the run with `--export_data`, into `<outdir>/report/export_data/` — pivot included, via `--export_data_pivot`. The tables and column headers are identical, so a spreadsheet from the pipeline lines up with one exported by hand here. See [CLI Parameters → Combined Data Export](cli-parameters.md#combined-data-export).
+The pipeline can write all of this during the run with `--export_data`, into `<outdir>/report/export_data/` — pivot included, via `--export_data_pivot`. The tables and column headers are identical, so a spreadsheet from the pipeline lines up with one exported by hand here. See [CLI Parameters → Combined Data Export](cli-parameters.md#combined-data-export).
 
 !!! note "Detections and the TASS cutoff"
-    `Passes Threshold` in the underlying data is always unset — the report decides pass/fail live against the cutoff. Every detections export therefore carries two extra columns: **TASS Cutoff** (the cutoff that applied to that sample) and **Passes Cutoff** (the verdict, honouring the species/genus rollup rescue when it is on).
+`Passes Threshold` in the underlying data is always unset — the report decides pass/fail live against the cutoff. Every detections export therefore carries two extra columns: **TASS Cutoff** (the cutoff that applied to that sample) and **Passes Cutoff** (the verdict, honouring the species/genus rollup rescue when it is on).
 
 ---
 
 ## Report PDF
 
-The popup's second type renders the current report — with whatever filters, view level and tab state are active — to a static printable layout for sharing or archiving. Choose where the sample-colour and TASS-cutoff legend goes (cover page, every page, or nowhere), then **Prepare PDF**: the report walks every tab, then opens your browser's print dialog. Set the destination to **Save as PDF**; landscape orientation with *Headers and footers* off gives the best result.
+The popup's second type renders the current report — with whatever filters, view level and tab state are active — to a static printable layout for sharing or archiving. Choose where the sample-colour and TASS-cutoff legend goes (cover page, every page, or nowhere), then **Prepare PDF**: the report walks every tab, then opens your browser's print dialog. Set the destination to **Save as PDF**; landscape orientation with _Headers and footers_ off gives the best result.
 
 ### Exporting a single plot, table or the map
 

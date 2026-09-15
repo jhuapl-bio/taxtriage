@@ -146,7 +146,7 @@ function _ttCoverageRollup() {
       "Specimen ID": cd.sample || "",
       "Detected Organism": cd.organism || "",
       "Taxonomic ID #": String(cd.taxon_id == null ? "" : cd.taxon_id),
-      "Contigs": contigs.length,
+      Contigs: contigs.length,
       "Genome Length (bp)": len || "",
       "Covered Bases": covered || "",
       "Breadth %": len ? _ttRound((covered / len) * 100, 3) : "",
@@ -193,9 +193,9 @@ function _ttInsilicoRows(kind) {
   suite.groups.forEach((g) => {
     const head = {
       "Parent Sample": g.parent || "",
-      "Platform": g.platform || "",
+      Platform: g.platform || "",
       "Series Kind": g.series_kind || "depth",
-      "Level": g.level || "",
+      Level: g.level || "",
       "Read Unit": g.read_unit || "reads",
     };
     if (kind === "datasets") {
@@ -203,19 +203,19 @@ function _ttInsilicoRows(kind) {
         rows.push(
           Object.assign({}, head, {
             "Dataset ID": d.id || "",
-            "Replicate": d.replicate == null ? "" : d.replicate,
+            Replicate: d.replicate == null ? "" : d.replicate,
             "Target Count": d.target_count == null ? "" : d.target_count,
             "Actual Count": d.actual_count == null ? "" : d.actual_count,
             "Total Master Reads": d.total_master_reads == null ? "" : d.total_master_reads,
-            "Seed": d.seed == null ? "" : d.seed,
+            Seed: d.seed == null ? "" : d.seed,
             "Observed Total Reads": d.observed_total_reads == null ? "" : d.observed_total_reads,
             "# Detected": d.n_detected == null ? "" : d.n_detected,
-            "TP": d.tp == null ? "" : d.tp,
-            "FP": d.fp == null ? "" : d.fp,
-            "FN": d.fn == null ? "" : d.fn,
-            "Precision": d.precision == null ? "" : d.precision,
-            "Recall": d.recall == null ? "" : d.recall,
-            "F1": d.f1 == null ? "" : d.f1,
+            TP: d.tp == null ? "" : d.tp,
+            FP: d.fp == null ? "" : d.fp,
+            FN: d.fn == null ? "" : d.fn,
+            Precision: d.precision == null ? "" : d.precision,
+            Recall: d.recall == null ? "" : d.recall,
+            F1: d.f1 == null ? "" : d.f1,
           }),
         );
       });
@@ -236,7 +236,7 @@ function _ttInsilicoRows(kind) {
               "Observed Reads": s.observed_reads == null ? "" : s.observed_reads,
               "TASS Score": s.tass == null ? "" : s.tass,
               "Detection Rate": s.detection_rate == null ? "" : s.detection_rate,
-              "Detected": s.detected ? "Yes" : "No",
+              Detected: s.detected ? "Yes" : "No",
               "# Replicates": s.n_reps == null ? "" : s.n_reps,
             }),
           );
@@ -642,7 +642,7 @@ const TT_EXPORT_DATASETS = [
           "Specimen ID": sample,
           "Specimen Group": typeof specimenOf === "function" ? specimenOf(sample) : sample,
           "Sample Type": meta.sample_type || "",
-          "Platform": meta.platform || "",
+          Platform: meta.platform || "",
           "Total Reads": meta.total_reads == null ? "" : meta.total_reads,
           "Aligned Reads": meta.aligned_reads == null ? "" : meta.aligned_reads,
           "TASS Cutoff": e.cutoff == null ? "" : _ttRound(e.cutoff, 2),
@@ -716,7 +716,7 @@ const TT_EXPORT_DATASETS = [
         "Total Reads Aligned": r.reads,
         "ANI Group": r.aniGroup == null ? "" : r.aniGroup,
         "ANI Group Size": r.aniGroupSize == null ? "" : r.aniGroupSize,
-        "Specimens": [...r.samples].sort().join("; "),
+        Specimens: [...r.samples].sort().join("; "),
       }));
       rows.sort((a, b) => b["# Specimens Passing"] - a["# Specimens Passing"]);
       return { columns: cols, rows: rows };
@@ -752,9 +752,7 @@ const TT_EXPORT_DATASETS = [
     filterable: true,
     defaultOn: false,
     available: () =>
-      _ttHasRows(() =>
-        (typeof CONTIG_DATA !== "undefined" ? CONTIG_DATA : []).some((c) => (c.contigs || []).length),
-      ),
+      _ttHasRows(() => (typeof CONTIG_DATA !== "undefined" ? CONTIG_DATA : []).some((c) => (c.contigs || []).length)),
     build(ctx) {
       const samples = ctx.filtered ? new Set(ctx.fd.map((r) => r["Specimen ID"])) : null;
       const rows = [];
@@ -766,12 +764,12 @@ const TT_EXPORT_DATASETS = [
             "Specimen ID": cd.sample || "",
             "Detected Organism": cd.organism || "",
             "Taxonomic ID #": String(cd.taxon_id == null ? "" : cd.taxon_id),
-            "Contig": c.name || "",
+            Contig: c.name || "",
             "Length (bp)": c.length == null ? "" : c.length,
             "# Reads Aligned": c.reads == null ? "" : c.reads,
             "Mean Depth": c.mean_depth == null ? "" : c.mean_depth,
             "Covered Bases": c.covered_bases == null ? "" : c.covered_bases,
-            "Coverage": c.coverage == null ? "" : c.coverage,
+            Coverage: c.coverage == null ? "" : c.coverage,
             "Bases 0x": dh["0x"] == null ? "" : dh["0x"],
             "Bases 1-5x": dh["1-5x"] == null ? "" : dh["1-5x"],
             "Bases 5-10x": dh["5-10x"] == null ? "" : dh["5-10x"],
@@ -903,10 +901,10 @@ const TT_EXPORT_DATASETS = [
         .filter((m) => _ttNum(m.latitude) !== null && _ttNum(m.longitude) !== null)
         .map((m) => ({
           "Specimen ID": m.sample_name || m.sample_id || "",
-          "Latitude": _ttNum(m.latitude),
-          "Longitude": _ttNum(m.longitude),
-          "Location": m.location || "",
-          "Country": m.sample_origin_country || "",
+          Latitude: _ttNum(m.latitude),
+          Longitude: _ttNum(m.longitude),
+          Location: m.location || "",
+          Country: m.sample_origin_country || "",
           "State/Province": m.sample_origin_state_province_territory || "",
           "Environmental Site": m.environmental_site || "",
           "Collection Time": m.collection_time || "",
@@ -1033,9 +1031,7 @@ function _ttWideJoin(selectedIds, ctx) {
   });
 
   const base = built.get("detections");
-  const backbone = base
-    ? base.data
-    : _ttBuildDataset(_ttDatasetById("detections"), ctx); // always needed as the spine
+  const backbone = base ? base.data : _ttBuildDataset(_ttDatasetById("detections"), ctx); // always needed as the spine
 
   const sampleKey = (r) => String(r["Specimen ID"] == null ? "" : r["Specimen ID"]);
   const orgKey = (r) => String(r["Taxonomic ID #"] || r["Detected Organism"] || "");
@@ -1118,7 +1114,9 @@ function _ttCsvText(table, delimiter) {
 
 /** Excel sheet names: <=31 chars, no []:*?/\ — and unique within the book. */
 function _ttSheetName(label, used) {
-  let base = String(label || "Sheet").replace(/[\\/\?\*\[\]:]/g, "-").slice(0, 31);
+  let base = String(label || "Sheet")
+    .replace(/[\\/\?\*\[\]:]/g, "-")
+    .slice(0, 31);
   if (!base) base = "Sheet";
   let name = base;
   let n = 2;
@@ -1220,7 +1218,11 @@ function _ttExportRun(opts) {
       _ttExportToast("Not joinable, left out of the wide sheet: " + table.skipped.join(", "), true);
     }
     if (opts.format === "csv-wide") {
-      _downloadText(_ttCsvText(table, delimiter), base + "-wide." + (delimiter === "\t" ? "tsv" : "csv"), "text/plain;charset=utf-8");
+      _downloadText(
+        _ttCsvText(table, delimiter),
+        base + "-wide." + (delimiter === "\t" ? "tsv" : "csv"),
+        "text/plain;charset=utf-8",
+      );
     } else {
       if (typeof XLSX === "undefined") {
         alert("XLSX export needs the SheetJS library, which this report could not load. Use one of the CSV formats.");
@@ -1310,7 +1312,9 @@ function _ttManifestAoa(ids, opts, ctx, pivotTable) {
       ds.label,
       ds.tab,
       built.rows.length,
-      built.columns.length < all.length ? built.columns.length + " of " + all.length + " (narrowed)" : built.columns.length,
+      built.columns.length < all.length
+        ? built.columns.length + " of " + all.length + " (narrowed)"
+        : built.columns.length,
     ]);
   });
   const narrowed = ids.filter((id) => _ttColSelActive(id, _TT_COL_CACHE[id] || []));
@@ -1556,9 +1560,7 @@ function _ttSetExportType(type) {
     _TT_EXPORT_TYPE === "pdf" ? "Export — Report PDF" : "Export — Data";
   const save = overlay.querySelector("#data-export-save");
   save.innerHTML =
-    _TT_EXPORT_TYPE === "pdf"
-      ? '<i class="fas fa-print"></i> Prepare PDF'
-      : '<i class="fas fa-download"></i> Export';
+    _TT_EXPORT_TYPE === "pdf" ? '<i class="fas fa-print"></i> Prepare PDF' : '<i class="fas fa-download"></i> Export';
   overlay.querySelector(".data-export-modal").classList.toggle("pdf-mode", _TT_EXPORT_TYPE === "pdf");
   if (_TT_EXPORT_TYPE === "data") _ttSyncExportModal();
   else save.disabled = false;
@@ -1692,7 +1694,10 @@ function _ttFillExportDataList() {
 }
 
 function _ttEsc(s) {
-  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function _ttSyncExportModal() {
@@ -1787,7 +1792,8 @@ function _ttPivotPreviewHtml(table, opts) {
   });
   html += "</tbody></table>";
   if (table.rows.length > maxRows)
-    html += '<div class="tt-pivot-more-rows">…and ' + (table.rows.length - maxRows).toLocaleString() + " more rows</div>";
+    html +=
+      '<div class="tt-pivot-more-rows">…and ' + (table.rows.length - maxRows).toLocaleString() + " more rows</div>";
   return html;
 }
 
