@@ -880,10 +880,10 @@
   // ── Right-panel walkthrough (the inline "?" button next to Export Report) ──
   const SIDEBAR_STEPS = [
     {
-      sel: ["#report-pdf-btn", "#sidebar h3"],
-      icon: "fa-file-pdf",
+      sel: ["#export-btn", "#sidebar h3"],
+      icon: "fa-file-export",
       title: "Filters & Export",
-      desc: "This right panel drives the entire report. <b>Export Report PDF</b> captures the current filtered state as a printable layout.",
+      desc: "This right panel drives the entire report. <b>Export</b> opens one popup where you choose what to take away: the data tables from any combination of tabs, or the current filtered state as a printable PDF.",
       tips: ["Every filter you set here applies across all tabs at once."],
     },
     {

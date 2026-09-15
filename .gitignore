@@ -37,6 +37,7 @@ test_output/
 !scripts/test_pathogen_table.js
 !scripts/test_built_links.py
 !scripts/test_sample_flags.js
+!scripts/test_insilico_picker.js
 ./nf-core
 tmp*
 ./nf-core

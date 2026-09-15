@@ -383,13 +383,15 @@ function __ttRunInit() {
     setTimeout(() => _ttAutofillGeoFromCoords(), 600);
   }
   _initExportEnhancer();
-  const pdfBtn = document.getElementById("report-pdf-btn");
-  if (pdfBtn) {
-    pdfBtn.addEventListener("click", _openReportPdfModal);
+  // One sidebar Export button; the popup it opens (47_export_data.js) carries
+  // both output types — the data tables and the report PDF.
+  const exportBtn = document.getElementById("export-btn");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => openExportModal());
     // Hover tooltip — same pattern as info-tip-btn icons
-    pdfBtn.addEventListener("mouseenter", (ev) => showTip(pdfBtn.dataset.tip, ev));
-    pdfBtn.addEventListener("mousemove", moveTip);
-    pdfBtn.addEventListener("mouseleave", hideTip);
+    exportBtn.addEventListener("mouseenter", (ev) => showTip(exportBtn.dataset.tip, ev));
+    exportBtn.addEventListener("mousemove", moveTip);
+    exportBtn.addEventListener("mouseleave", hideTip);
   }
 
   // ── Tooltip toggle button ──────────────────────────────────────────

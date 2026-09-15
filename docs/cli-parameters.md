@@ -225,6 +225,11 @@ The [Taxid Resolution Order](#taxid-resolution-order) above runs **accession →
 | `--mmap2_fraction_filter <float>` | Minimap2 fraction filter for repetitive minimizers. Default: `0.0009`.                                                                                                                    |
 | `--mmap2_I <size>`                | Minimap2 `-I` index batch size (e.g. `4G`). Overrides the automatic per-attempt default. Controls how much of the reference is loaded into RAM at once — smaller = less RAM, more passes. |
 | `--mmap2_K <size>`                | Minimap2 `-K` query/minibatch size (e.g. `100M`). Overrides the automatic per-attempt default. Smaller = less RAM.                                                                        |
+| `--skip_realignment`              | Skip the realignment step. No alignment metrics report will be generated.                                                                                                                 |
+| `--use_bt2`                       | Use Bowtie2 instead of minimap2 for Illumina reads.                                                                                                                                       |
+| `--use_hisat2`                    | Use Hisat2 instead of minimap2 for Illumina reads.                                                                                                                                        |
+| `--no_split_prefix`               | Disable minimap2 `split-prefix` mode. Reduces RAM savings but may improve speed.                                                                                                          |
+| `--loose`                         | Less sensitive false-positive removal — compares signatures across aligned queries only rather than whole genomes. Useful for samples with many variants. Slower and more I/O intensive.  |
 
 > **Automatic RAM back-off.** When `--mmap2_I` / `--mmap2_K` are not set, minimap2 scales both down on each retry so out-of-memory failures (e.g. exit code `143`) succeed on a later attempt without manual tuning:
 >
@@ -236,11 +241,6 @@ The [Taxid Resolution Order](#taxid-resolution-order) above runs **accession →
 > | 4       | 1G           | 50M          | 72 GB          |
 >
 > `MINIMAP2_ALIGN` / `FILTER_MINIMAP2` retry up to 3 times (4 attempts total). User-supplied `--mmap2_I` / `--mmap2_K` always take priority over these defaults.
-> | `--skip_realignment` | Skip the realignment step. No alignment metrics report will be generated. |
-> | `--use_bt2` | Use Bowtie2 instead of minimap2 for Illumina reads. |
-> | `--use_hisat2` | Use Hisat2 instead of minimap2 for Illumina reads. |
-> | `--no_split_prefix` | Disable minimap2 `split-prefix` mode. Reduces RAM savings but may improve speed. |
-> | `--loose` | Less sensitive false-positive removal — compares signatures across aligned queries only rather than whole genomes. Useful for samples with many variants. Slower and more I/O intensive. |
 
 ---
 
@@ -410,6 +410,72 @@ They appear in the [Interactive Report](interactive-report.md) **Table** tab (vi
 | `--no_subkey`                  | Do not split organisms into species and strain sub-tables.                                                                                                                                                                                                                                                                            |
 | `--offline_report`             | Download the interactive report's CDN libraries (D3, xlsx, jsPDF, Leaflet, Font Awesome) at build time and embed them inline, so `all.odr.html` opens without internet. Requires network on the **pipeline** host. Default: `false`.                                                                                                  |
 | `--offline_report_files <dir>` | Directory of local copies of those libraries (and their fonts/marker images) to embed inline — a fully offline build with **no network**. Takes precedence over `--offline_report`. Prepare it with `python scripts/fetch_offline_report_libs.py`. See [Interactive Report → Offline Reports](interactive-report.md#offline-reports). |
+
+---
+
+## Combined Data Export
+
+Writes the interactive report's tables to spreadsheets during the run, so nobody has to open `all.odr.html` and export them one at a time. Same catalog, same column headers as the report's **Export Data** panel — see [Interactive Report → Export Data](interactive-report.md#export-data-several-tabs-into-one-file). Output lands in `<outdir>/report/export_data/`.
+
+| Parameter                       | Description                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--export_data`                 | Turn the export on. `true` uses `--export_data_formats`; passing a format list directly (`--export_data xlsx,wide`) works too. Default: `false`.                                                                                                                                                                                                                                                |
+| `--export_data_formats <list>`  | Comma-separated shapes. `xlsx` — one workbook, a sheet per table plus an Export Info provenance sheet. `wide` — every table joined on Specimen ID × Organism into one table, written as both `.xlsx` and `.csv`. `csv` — one CSV per table. `stacked` — every table in one CSV with a `Dataset` column. `pivot` — detections crosstabbed against a metadata field (see below). Default: `xlsx`. |
+| `--export_data_datasets <list>` | Which tables to export, comma-separated, or `all`. Default: every table the run carries data for.                                                                                                                                                                                                                                                                                               |
+| `--export_data_columns <spec>`  | Narrow the columns of individual tables: `<dataset>:<col>,<col>[;<dataset>:...]`, e.g. `"detections:Specimen ID,Detected Organism,TASS Score;coverage:Breadth %"`. Tables you do not name keep every column. Mirrors the per-table column picker in the report.                                                                                                                                 |
+| `--export_data_prefix <name>`   | File-name prefix. Default: `taxtriage`.                                                                                                                                                                                                                                                                                                                                                         |
+| `--export_data_level <level>`   | Keep only `Strain`, `Species` or `Genus`. The report holds a row per organism at all three, so picking one level keeps a spreadsheet from counting the same reads three times. Default: every level (each row carries its own `Level` column).                                                                                                                                                  |
+| `--export_data_min_tass <n>`    | Drop detections below this TASS score **from the export only**. Independent of `--mintass`, which hard-filters the report itself.                                                                                                                                                                                                                                                               |
+
+### Datasets
+
+| Id                                       | Tab                  | Contents                                                                                             |
+| ---------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------- |
+| `detections`                             | Summary / Table      | Every detection with all TASS, coverage and taxonomy columns, plus `TASS Cutoff` and `Passes Cutoff` |
+| `detections_meta`                        | Summary / Table      | The same rows with every run-metadata column joined on — long format, ready to pivot                 |
+| `sample_summary`                         | Summary              | One row per specimen: detection counts, aligned reads, strongest hit                                 |
+| `organism_summary`                       | Explore              | Run-wide per-organism rollup: prevalence, TASS / coverage spread, ANI grouping                       |
+| `coverage`, `contigs`                    | Coverage / Histogram | Per specimen × organism breadth and depth; per aligned contig                                        |
+| `vfamr_hits`, `vfamr_genus`, `vfamr_amr` | VF/AMR               | Per-gene hits, genus summary, AMR genes                                                              |
+| `novelty_summary`, `novelty_candidates`  | Novelty              | Per-sample novelty statistics and candidate novel taxa                                               |
+| `run_metadata`, `sample_metadata`        | Run Metadata         | Collection / run metadata; pipeline provenance per sample                                            |
+| `geo`                                    | Map                  | Coordinates and place fields                                                                         |
+| `insilico_datasets`, `insilico_lod`      | In-Silico            | Per subsample dataset scoring; per-organism dilution series and LoD                                  |
+
+Run `export_data.py --list-datasets` for the live catalog, and `export_data.py -i <report> --list-columns all` for each table's column names (the strings `--export_data_columns` expects).
+
+### Pivot: counting detections against metadata
+
+`--export_data_formats pivot` crosses the detections with a run-metadata field, which is how you answer "how many hits to this organism came from each collection site / host type / run". It writes both a `.csv` and an `.xlsx` (with the axes recorded on the Export Info sheet).
+
+| Parameter                         | Description                                                                                                                                                                                                               |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--export_data_pivot <field>`     | The metadata field for the column axis — `location`, `host_disease`, `sample_origin_country`, `sequencing_platform`, `run_id`, or any column from an uploaded metadata file. Unset gives a plain rollup with totals only. |
+| `--export_data_pivot_rows <dim>`  | Row axis: `organism` (default), `organism_taxid`, `genus`, `category`, `domain`, `sample`, `sample_type`.                                                                                                                 |
+| `--export_data_pivot_measure <m>` | Cell value: `detections` (default), `specimens`, `organisms`, `reads`, `mean_tass`, `max_tass`.                                                                                                                           |
+| `--export_data_pivot_shape <s>`   | `wide` (default) — one column per metadata value, the crosstab you read in a spreadsheet. `long` — one row per pair (`Organism, Field, Measure, Value`), tidy for R / pandas / plotting.                                  |
+
+```bash
+# hits per organism per collection site, as a crosstab
+nextflow run . --export_data xlsx,pivot --export_data_pivot location --export_data_level Strain
+
+# the same counted by specimen, in tidy long form
+export_data.py -i results/report/all.odr.html -o export/ --formats pivot \
+    --pivot-field host_disease --pivot-measure specimens --pivot-shape long
+```
+
+`export_data.py -i <report> --list-fields` prints the metadata fields a given run carries, with how many distinct values each has. Samples with nothing recorded for the chosen field are grouped under `(not recorded)` rather than dropped, so the totals still add up.
+
+### Re-exporting an existing report
+
+`bin/export_data.py` also runs standalone against any report the pipeline already built, so an old run can be exported without re-running anything:
+
+```bash
+export_data.py -i results/report/all.odr.html -o export/ --formats xlsx,wide --level Strain
+```
+
+!!! note "Sample QC and the `QC Flag` column"
+Whole-sample QC verdicts are evaluated live in the report (the pipeline only seeds the default rules), so the `QC Flag` column in a pipeline-side `sample_summary` export is present for header parity but left blank. Export from the report itself to get the verdicts.
 
 ---
 
