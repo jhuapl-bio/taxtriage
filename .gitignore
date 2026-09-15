@@ -58,3 +58,7 @@ data
 
 # Local agent/editor state — never tracked
 .claude/
+
+# Local dev copy of the demo payload (see assets/src/README.md);
+# the committed dataset is assets/pages.js.
+assets/heatmap_boot.js

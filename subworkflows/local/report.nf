@@ -23,6 +23,7 @@ include { ALIGNMENT_PER_SAMPLE as ALIGNMENT_PER_SAMPLE_INSILICO } from '../../mo
 include { ALIGNMENT_PER_SAMPLE } from '../../modules/local/alignment_per_sample'
 include { ORGANISM_MERGE_REPORT } from '../../modules/local/report_merge'
 include { ORGANISM_MERGE_REPORT as SINGLE_REPORT } from '../../modules/local/report_merge'
+include { ORGANISM_MERGE_REPORT as SINGLE_REPORT_INSILICO } from '../../modules/local/report_merge'
 include { CREATE_COMPARISON_REPORT } from '../../modules/local/create_comparison_report'
 include { COMBINE_SAMPLES_JSON } from '../../modules/local/combine_samples_json'
 include { NOVELTY_COLLECT } from '../../modules/local/novelty_collect'
@@ -252,7 +253,19 @@ workflow REPORT {
                 .mix(ALIGNMENT_PER_SAMPLE.out.txt)
 
             // collect all outputs into a single channel
-            all_alignment_outputs.map{ m, txt -> txt }.collect().map{
+            // ── Simulated datasets are comparison inputs, not deliverables ───────
+            // Everything tagged meta.insilico (ISS, NanoSim and spike-into-background
+            // datasets alike) is held to JSON + .odr.txt only: no per-sample PDF or
+            // XLSX, and no rows in the merged all.odr.* reports, which describe the
+            // real run. Their JSONs still feed the In-Silico suite tab and
+            // all.odr.json, which is how they get compared against the real samples.
+            all_alignment_outputs.branch {
+                simulated: it[0].insilico == true
+                real: true
+            }.set { split_report_outputs }
+
+            // The merged report covers the real run only.
+            split_report_outputs.real.map{ m, txt -> txt }.collect().map{
                 [[id: "all"], it]
             }.set{ full_list_pathogen_files }
 
@@ -268,14 +281,25 @@ workflow REPORT {
                 .collect()
 
             // merge
+            // Real + control samples: full deliverable set (txt + pdf + xlsx).
             SINGLE_REPORT(
-                all_alignment_outputs.combine(distributions),
+                split_report_outputs.real.combine(distributions),
                 false,
+                false,
+            )
+
+            // Simulated datasets: txt_only = true, so create_report.py is invoked
+            // without -o / --output_annot_xlsx and no PDF or workbook is rendered.
+            SINGLE_REPORT_INSILICO(
+                split_report_outputs.simulated.combine(distributions),
+                false,
+                true,
             )
 
             ORGANISM_MERGE_REPORT(
                 full_list_pathogen_files.combine(distributions),
                 missing_samples,
+                false,
             )
 
             ch_template = Channel.fromPath("$projectDir/assets/heatmap.html", checkIfExists: true)

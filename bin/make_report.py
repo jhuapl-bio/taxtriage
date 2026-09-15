@@ -263,6 +263,14 @@ def parse_args(argv=None):
              "the params are inferred from the subsample sample names/metadata.",
     )
     parser.add_argument(
+        "--keep_insilico_rows", action="store_true",
+        help="Debugging escape hatch: keep simulated datasets (ISS / NanoSim / "
+             "spike-into-background) as ordinary samples in the detections table "
+             "and cross-sample heatmap. By default they are split out and appear "
+             "ONLY as per-organism insilico comparisons on the real samples and in "
+             "the In-Silico suite tab.",
+    )
+    parser.add_argument(
         "--insilico_json", nargs="*", default=[], metavar="JSON",
         help="Optional: per-dataset .paths.json file(s) for the in-silico subsample datasets "
              "(from ALIGNMENT_PER_SAMPLE_INSILICO). These are used ONLY to build the In-Silico "
@@ -1646,6 +1654,66 @@ _SS_ID_RE = re.compile(
 )
 
 
+# Fallback id patterns for datasets produced before match_paths.py stamped
+# metadata["insilico"] into the per-sample JSON. The flag is authoritative; these
+# only catch legacy files.
+_LEGACY_SIM_ID_RE = re.compile(
+    r'(?:_insilico_(?:iss|nanosim)\b|_background(?:_ss_|$))'
+)
+
+
+def is_simulated_sample(sample_id, smeta=None):
+    """
+    True when a sample is a simulated dataset (ISS, NanoSim or spike-into-background)
+    rather than a real sample of the run.
+
+    Simulated datasets are comparison inputs: they belong in the In-Silico suite
+    payload, which drives both the In-Silico tab and the per-organism comparison
+    badges the report computes client-side (insilicoCompareFor in
+    assets/src/js/46_insilico_compare.js). They are never rows in the detections
+    table or columns in the cross-sample heatmap.
+
+    The metadata flag written by match_paths.py --insilico wins; the id pattern is a
+    fallback so JSONs generated before that flag existed still classify correctly.
+    """
+    if isinstance(smeta, dict):
+        val = smeta.get("insilico")
+        if isinstance(val, str):
+            val = val.strip().lower() in ("true", "yes", "1", "y")
+        if val:
+            return True
+        # An explicit False from a stamped JSON is authoritative — don't let the
+        # id pattern override a real sample that merely has a confusing name.
+        if smeta.get("insilico") is False and smeta.get("parent_id") in (None, ""):
+            return bool(_SS_ID_RE.match(str(sample_id or "")))
+    sid = str(sample_id or "")
+    return bool(_SS_ID_RE.match(sid) or _LEGACY_SIM_ID_RE.search(sid))
+
+
+def split_simulated(rows, sample_meta):
+    """
+    Partition (rows, sample_meta) into real and simulated halves.
+
+    Returns (real_rows, real_meta, sim_rows, sim_meta).
+    """
+    sim_ids = {
+        sid for sid in sample_meta
+        if is_simulated_sample(sid, sample_meta.get(sid))
+    }
+    # Rows can reference a sample that has no sample_meta entry; classify those by id.
+    for r in rows:
+        sid = r.get("Specimen ID")
+        if sid not in sim_ids and is_simulated_sample(sid, sample_meta.get(sid)):
+            sim_ids.add(sid)
+    if not sim_ids:
+        return rows, sample_meta, [], {}
+    real_rows = [r for r in rows if r.get("Specimen ID") not in sim_ids]
+    sim_rows = [r for r in rows if r.get("Specimen ID") in sim_ids]
+    real_meta = {k: v for k, v in sample_meta.items() if k not in sim_ids}
+    sim_meta = {k: v for k, v in sample_meta.items() if k in sim_ids}
+    return real_rows, real_meta, sim_rows, sim_meta
+
+
 def _load_insilico_params(path):
     """Load the optional in-silico params JSON. Returns {} on any problem."""
     if not path:
@@ -2234,6 +2302,31 @@ def main():
         print(f"[make_report] Loaded {len(rows)} rows from tabular file "
               f"{args.input[0]!r}")
 
+    # ── Simulated datasets never become samples of the run ───────────────────
+    # report.nf feeds only non-control samples to -i, but the combined
+    # all.odr.json embeds every per-sample JSON (that is what makes the In-Silico
+    # tab work from a single drag-and-drop file), and users pass dataset JSONs to
+    # -i directly. So the split happens here, on the data, rather than relying on
+    # the caller: anything flagged insilico (or matching a legacy subsample id) is
+    # pulled out of the records/sample_meta that drive the detections table, the
+    # cross-sample heatmap and the metadata tab, and is handed to the In-Silico
+    # suite instead. Nothing is lost: the report derives its per-organism in-silico
+    # comparison badges from insilico_suite, and the sample-level
+    # insilico_controls_used / missing_insilico_controls fields ride along on the
+    # real samples' own metadata.
+    sim_rows, sim_meta = [], {}
+    if not args.keep_insilico_rows:
+        rows, sample_meta, sim_rows, sim_meta = split_simulated(rows, sample_meta)
+        if sim_meta:
+            print(f"[make_report] Simulated datasets: {len(sim_meta)} dataset(s), "
+                  f"{len(sim_rows)} organism row(s) held out of the sample tables "
+                  f"(In-Silico tab + per-organism comparisons only)")
+            print(f"[make_report] Real samples remaining: {len(sample_meta)} "
+                  f"({len(rows)} organism rows)")
+    else:
+        print("[make_report] --keep_insilico_rows: simulated datasets are being "
+              "rendered as ordinary samples")
+
     # ── optional sample metadata file ─────────────────────────────────────────
     # Merged into sample_meta BEFORE run_metadata_records is derived below, so
     # the extra columns flow into the report's metadata table, map and specimen
@@ -2476,8 +2569,11 @@ def main():
     # Union with main rows is harmless — the suite only picks rows whose sample id
     # matches the subsample pattern, so non-subsample rows are ignored. This also
     # lets the suite work if a user passes subsample JSONs straight to -i.
-    _suite_rows = rows + insil_rows
-    _suite_meta = dict(sample_meta); _suite_meta.update(insil_meta)
+    # rows/sample_meta are real samples only by this point; the simulated datasets
+    # split out above rejoin here, on the suite track, together with anything given
+    # via --insilico_json.
+    _suite_rows = rows + insil_rows + sim_rows
+    _suite_meta = dict(sample_meta); _suite_meta.update(insil_meta); _suite_meta.update(sim_meta)
     # Detection cutoff for the suite: use the SAME recommended TASS threshold the
     # report defaults to (best_cutoffs.subkey → key), so "detected" here matches
     # what the user sees elsewhere. Fall back to the --mintass hard filter.

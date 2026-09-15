@@ -185,7 +185,15 @@
       ";background:#fff;color:" +
       ACCENT +
       ";border-radius:6px;padding:.3em .7em;font-size:.8em;font-weight:600;cursor:pointer}" +
-      ".insil-exp-btn:hover{background:#f3efff}";
+      ".insil-exp-btn:hover{background:#f3efff}" +
+      ".insil-pick{display:flex;flex-wrap:wrap;align-items:center;gap:.6em;margin:.1em 0 .9em}" +
+      ".insil-pick-label{font-size:.85em;font-weight:600;color:#555}" +
+      ".insil-pick-note{font-size:.78em;color:" +
+      MUTED +
+      "}" +
+      ".insil-pick-sel{font-size:.85em;padding:.32em .5em;border:1px solid " +
+      ACCENT_L +
+      ";border-radius:6px;background:#fff;color:#333;max-width:22em}";
     document.head.appendChild(s);
   }
 
@@ -2241,6 +2249,199 @@
     return box;
   }
 
+  /* ── series picker ────────────────────────────────────────────────────────
+     One group per parent sample, each with a dataset table, three charts, an
+     organism panel and per-dataset panels. That is a screen and a half of
+     content; at 20+ samples the tab became a scroll marathon where comparing
+     two series meant paging past eighteen others.
+
+     So the groups are chosen from a searchable dropdown instead of all being
+     poured onto the page. The control is the shared ttMultiSelect used by the
+     group legends and the Longitudinal organism picker, so it looks and behaves
+     the way pickers do elsewhere in the report: one line high whatever the run
+     size, type to filter, All / None, and more than one series can be ticked
+     when two are worth seeing side by side.
+
+     Selection lives here (not in the payload) and survives tab switches and
+     redraws; it is re-validated against the current suite on every draw so a
+     newly dropped dataset cannot leave a stale key selected.
+  ─────────────────────────────────────────────────────────────────────────── */
+  var INSIL_SEL = null; // Set of group keys, or null before the first draw
+
+  // Parent alone is not unique: the same sample can have an ISS series and a
+  // NanoSim one, and a consistent and a randomized run of each.
+  // The key travels through a data-key attribute, so it must survive HTML
+  // round-tripping — no control characters.
+  var KEY_SEP = " :: ";
+  function groupKey(g) {
+    return [g.parent, g.platform, g.mode].join(KEY_SEP);
+  }
+
+  function groupLabel(g) {
+    var plat =
+      g.platform === "iss"
+        ? "ISS"
+        : g.platform === "nanosim"
+        ? "NanoSim"
+        : g.platform === "background"
+        ? "background"
+        : g.platform;
+    // Only qualify the name when the parent alone would be ambiguous — with one
+    // series per sample (the common case) the label stays just the sample id.
+    return { name: String(g.parent), qualifier: plat + " · " + g.mode };
+  }
+
+  function needsQualifier(groups) {
+    var seen = {};
+    for (var i = 0; i < groups.length; i++) {
+      var p = String(groups[i].parent);
+      if (seen[p]) return true;
+      seen[p] = 1;
+    }
+    return false;
+  }
+
+  // Default: show everything when there is little of it, otherwise the first
+  // series only — the whole point at 20+ samples is not to render 20 groups.
+  function defaultSelection(groups) {
+    var keys = groups.map(groupKey);
+    return new Set(groups.length <= 3 ? keys : keys.slice(0, 1));
+  }
+
+  function selectedGroups(suite) {
+    var groups = (suite && suite.groups) || [];
+    if (!groups.length) return [];
+    var valid = new Set(groups.map(groupKey));
+    if (INSIL_SEL) {
+      // Drop keys that no longer exist (a different file was loaded). Going from
+      // "some keys" to "none" means every selection was stale, so fall back to the
+      // default — but an empty set the reader asked for (None) is left alone.
+      var had = INSIL_SEL.size;
+      INSIL_SEL = new Set(
+        Array.from(INSIL_SEL).filter(function (k) {
+          return valid.has(k);
+        }),
+      );
+      if (had && !INSIL_SEL.size) INSIL_SEL = null;
+    }
+    if (!INSIL_SEL) INSIL_SEL = defaultSelection(groups);
+    return groups.filter(function (g) {
+      return INSIL_SEL.has(groupKey(g));
+    });
+  }
+
+  function renderSelectedGroups(suite, groupsHost) {
+    groupsHost.innerHTML = "";
+    var sel = selectedGroups(suite);
+    if (!sel.length) {
+      groupsHost.appendChild(
+        el("div", { style: "padding:1.6em;color:" + MUTED + ";font-size:.9em" }, [
+          "No series selected — pick one from the dropdown above.",
+        ]),
+      );
+      return;
+    }
+    sel.forEach(function (g) {
+      groupsHost.appendChild(renderGroup(g, suite));
+    });
+  }
+
+  // Native <select> fallback for the (unexpected) case where the shared
+  // multi-select module is not on the page. Single-select, no search, but the
+  // tab stays usable instead of dumping every group on the reader.
+  function renderNativePicker(host, groups, suite, groupsHost) {
+    var qualify = needsQualifier(groups);
+    var sel = el("select", { class: "insil-pick-sel", "aria-label": "Series to show" });
+    groups.forEach(function (g) {
+      var l = groupLabel(g);
+      var opt = document.createElement("option");
+      opt.value = groupKey(g);
+      opt.textContent = l.name + (qualify ? " (" + l.qualifier + ")" : "");
+      opt.selected = INSIL_SEL && INSIL_SEL.has(groupKey(g));
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", function () {
+      INSIL_SEL = new Set([sel.value]);
+      renderSelectedGroups(suite, groupsHost);
+    });
+    host.appendChild(el("span", { class: "insil-pick-label" }, ["Series"]));
+    host.appendChild(sel);
+  }
+
+  function renderPicker(suite, groupsHost) {
+    var groups = (suite && suite.groups) || [];
+    var host = document.getElementById("insilico-group-picker");
+    if (!host) {
+      host = el("div", { id: "insilico-group-picker", class: "insil-pick" });
+      groupsHost.parentNode.insertBefore(host, groupsHost);
+    }
+    host.className = "insil-pick";
+    host.innerHTML = "";
+    // One series is not a choice — don't spend a control on it.
+    if (groups.length < 2) {
+      host.style.display = "none";
+      return;
+    }
+    host.style.display = "";
+    selectedGroups(suite); // initialise/validate INSIL_SEL before reading it
+
+    if (!window.ttMultiSelect || typeof window.ttMultiSelect.render !== "function") {
+      renderNativePicker(host, groups, suite, groupsHost);
+      return;
+    }
+
+    var qualify = needsQualifier(groups);
+    host.appendChild(el("span", { class: "insil-pick-label" }, ["Series"]));
+    var msHost = el("div", { id: "insilico-series-ms" });
+    host.appendChild(msHost);
+    var note = el("span", { class: "insil-pick-note" }, [""]);
+    host.appendChild(note);
+
+    function paint() {
+      var items = groups.map(function (g) {
+        var l = groupLabel(g);
+        return {
+          key: groupKey(g),
+          label: l.name + (qualify ? "  (" + l.qualifier + ")" : ""),
+          title: l.name + " — " + l.qualifier + " · " + g.n_datasets + " datasets",
+          count: g.n_datasets,
+          checked: INSIL_SEL.has(groupKey(g)),
+        };
+      });
+      window.ttMultiSelect.render(msHost, {
+        key: "insilico-series",
+        icon: "fa-flask",
+        placeholder: "Search samples…",
+        title: "Choose which in-silico series to show",
+        summary: function (n, total) {
+          return n === 1 ? String(Array.from(INSIL_SEL)[0]).split(KEY_SEP)[0] : n + " of " + total + " series";
+        },
+        items: items,
+        onToggle: function (key, checked) {
+          if (checked) INSIL_SEL.add(key);
+          else INSIL_SEL.delete(key);
+          paint();
+          renderSelectedGroups(suite, groupsHost);
+        },
+        onAll: function () {
+          INSIL_SEL = new Set(groups.map(groupKey));
+          paint();
+          renderSelectedGroups(suite, groupsHost);
+        },
+        onNone: function () {
+          INSIL_SEL = new Set();
+          paint();
+          renderSelectedGroups(suite, groupsHost);
+        },
+      });
+      note.textContent =
+        INSIL_SEL.size === groups.length
+          ? "showing every series"
+          : INSIL_SEL.size + " of " + groups.length + " series shown";
+    }
+    paint();
+  }
+
   // ── entry point ───────────────────────────────────────────────────────────
   // Shared with 46_insilico_compare.js so a Detections row can be matched
   // against a genus-rolled series with exactly the same maths.
@@ -2261,6 +2462,8 @@
     if (!groupsHost) return;
     if (!suite || !suite.enabled || !(suite.groups && suite.groups.length)) {
       groupsHost.innerHTML = "";
+      var gp = document.getElementById("insilico-group-picker");
+      if (gp) gp.style.display = "none";
       var pp = document.getElementById("insilico-params-panel");
       if (pp) pp.innerHTML = "";
       if (emptyHost) emptyHost.style.display = "";
@@ -2269,10 +2472,8 @@
     ensureStyles();
     if (emptyHost) emptyHost.style.display = "none";
     renderParams(suite);
-    groupsHost.innerHTML = "";
-    suite.groups.forEach(function (g) {
-      groupsHost.appendChild(renderGroup(g, suite));
-    });
+    renderPicker(suite, groupsHost);
+    renderSelectedGroups(suite, groupsHost);
   };
 
   // Reveal the tab when subsample data is present (BOOT is already parsed by the

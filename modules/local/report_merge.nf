@@ -27,12 +27,17 @@ process ORGANISM_MERGE_REPORT {
     input:
     tuple val(meta), file(files_of_pathogens), file(distributions)
     val(missing_samples)
+    // Simulated (meta.insilico) datasets are comparison inputs, not deliverables:
+    // called with txt_only = true they emit the plain-text summary and nothing
+    // else, so no .odr.pdf / .odr.xlsx is ever produced for synthetic samples.
+    // Real samples pass false and get the full set.
+    val(txt_only)
     // path(annotate_report)
 
     output:
         path "versions.yml"           , emit: versions
         path("*odr.txt")    , optional: true, emit: report
-        path("*odr.pdf")    , optional: false, emit: pdf
+        path("*odr.pdf")    , optional: true, emit: pdf
         path("*.odr.xlsx")              , optional: true, emit: annot_xlsx
 
     when:
@@ -40,6 +45,7 @@ process ORGANISM_MERGE_REPORT {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
+    def txt_only_flag = txt_only as boolean
     def output_txt = "${meta.id}.odr.txt"
     def output_pdf = "${meta.id}.odr.pdf"
 
@@ -60,13 +66,18 @@ process ORGANISM_MERGE_REPORT {
     def integrate_strain_table = params.integrate_strain_table ? " --show_strains_table " : ""
     def rank = params.rank ? " --rank $params.rank " : ""
     def no_subkey = params.no_subkey ? " --no_subkey " : ""
+    // txt-only runs (simulated datasets) skip the PDF and XLSX renderers entirely —
+    // the args are dropped rather than the files deleted afterwards, so create_report.py
+    // never spends time building deliverables nobody wants.
+    def pdf_arg  = txt_only_flag ? "" : "-o ${output_pdf}"
+    def xlsx_arg = txt_only_flag ? "" : "--output_annot_xlsx ${output_annot_xlsx}"
     // removing the VF/AMR filed by removing --output_annot_xlsx , will address later
     // def annotate_report_arg = annotate_report.name != "NO_FILE_annotate_report" ? " --annotate_report ${annotate_report} " : " "
 
     """
 
     create_report.py -i $files_of_pathogens -u $output_txt  \\
-        -o $output_pdf \\
+        $pdf_arg \\
         $show_potentials \\
         $show_commensals \\
         $show_unidentified \\
@@ -78,7 +89,7 @@ process ORGANISM_MERGE_REPORT {
         $integrate_strain_table \\
         $rank \\
         $no_subkey \\
-        --output_annot_xlsx $output_annot_xlsx \\
+        $xlsx_arg \\
 
     cat <<-END_VERSIONS > versions.yml
         "${task.process}":

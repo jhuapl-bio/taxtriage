@@ -5963,8 +5963,11 @@ def parse_args():
         help='IF merging with taxdump, what rank to merge on',
     )
     parser.add_argument(
-        "-o", "--output", metavar="OUTPUT", required=True, type=str,
-        help="Path of output file (pdf)",
+        "-o", "--output", metavar="OUTPUT", required=False, default=None, type=str,
+        help="Path of output file (pdf). Omit it to skip PDF rendering entirely — "
+             "used for simulated/in-silico datasets, which are comparison inputs "
+             "rather than deliverables and only need -u/--output_txt. At least one "
+             "of -o / -u / --output_annot_xlsx must be given.",
     )
     parser.add_argument(
         "-u", "--output_txt", metavar="OUTPUT_TXT", required=False, type=str,
@@ -6039,7 +6042,15 @@ def parse_args():
              "Annotations with pident below this value are excluded. Default: 96.0.",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    # -o became optional so simulated datasets can be rendered as text only, but a
+    # run that asks for no output at all is a mistake, not a valid mode.
+    if not (args.output or args.output_txt or getattr(args, "output_annot_xlsx", None)):
+        parser.error(
+            "nothing to write: give at least one of -o/--output (PDF), "
+            "-u/--output_txt (text/CSV/XLSX) or --output_annot_xlsx"
+        )
+    return args
 
 
 def main():
@@ -6141,7 +6152,10 @@ def main():
     args._sample_conf_source = sample_conf_source
 
     print(f"\nConfiguration:")
-    print(f"  Output PDF: {args.output}")
+    if args.output:
+        print(f"  Output PDF: {args.output}")
+    else:
+        print("  Output PDF: skipped (no -o/--output given)")
     if args.output_txt:
         print(f"  Output TXT: {args.output_txt}")
     if getattr(args, 'output_annot_xlsx', None):
@@ -6153,7 +6167,8 @@ def main():
     print(f"  Subkey grouping: {'DISABLED' if args.no_subkey else 'ENABLED'}")
     print(f"  High ANI matches: read from 'high_ani_matches' field in JSON (set by match_paths.py)")
 
-    create_pdf_template(args.output, samples_dict, args)
+    if args.output:
+        create_pdf_template(args.output, samples_dict, args)
 
     if args.output_txt:
         create_tabular_output(args.output_txt, samples_dict, args)

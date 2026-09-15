@@ -48,7 +48,6 @@ on:
       - "scripts/test_built_links.py"
       - "assets/heatmap.html"
       - "assets/pages.js"
-      - "assets/heatmap_boot.js"
       - "assets/src/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
@@ -118,7 +117,7 @@ jobs:
                 docs/*|mkdocs.yml|requirements-docs.txt) ;;
                 scripts/write_docs_ref.py|scripts/inline_boot_json.py|scripts/docs_release_stub.py) ;;
                 scripts/test_pathogen_table.js|scripts/test_built_links.py) ;;
-                assets/heatmap.html|assets/heatmap_boot.js|assets/pages.js|assets/src/*) ;;
+                assets/heatmap.html|assets/pages.js|assets/src/*) ;;
                 .github/workflows/docs.yml) ;;
                 *) echo "not docs-only: $f"; return 1 ;;
               esac

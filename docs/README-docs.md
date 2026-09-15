@@ -37,7 +37,7 @@ readers reach it from the dropdown. So the dropdown reads, newest first:
 A push to `main` that touches **only** documentation or interactive-report
 source (`docs/`, `mkdocs.yml`, `requirements-docs.txt`, the docs
 build scripts, `assets/heatmap.html`, `assets/pages.js`,
-`assets/heatmap_boot.js`, `assets/src/`) also refreshes `stable` straight away,
+`assets/src/`) also refreshes `stable` straight away,
 so a typo fix or a report tweak is live the same day instead of waiting for the
 next release. Such a push cannot make the docs describe pipeline behaviour the
 release does not have. The site is then built from `main`, but the Pathogen
