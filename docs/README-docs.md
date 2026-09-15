@@ -40,9 +40,12 @@ build scripts, `assets/heatmap.html`, `assets/pages.js`,
 `assets/src/`) also refreshes `stable` straight away,
 so a typo fix or a report tweak is live the same day instead of waiting for the
 next release. Such a push cannot make the docs describe pipeline behaviour the
-release does not have. The site is then built from `main`, but the Pathogen
-Sheet stays pinned to the release tag and the footer records the ref actually
-built — so `stable` still documents the released pipeline. Any push that also
+release does not have. The site is then built from `main`, but two things stay
+pinned to the release tag: the Pathogen Sheet, and the **Demo Report** — its
+report source (`assets/heatmap.html`, `assets/src/`) and its dataset
+(`assets/pages.js`) are checked out from the tag before the dist is built, so
+`stable`'s demo is the released iteration of the report rather than a copy of
+development's. The footer records the ref actually built. Any push that also
 touches pipeline code updates `main` only.
 
 Every page footer stamps the version label, the ref it was built from and the

@@ -1497,6 +1497,47 @@ PROT_HIT_KEYS = ("per_gene_hits", "amr_genes")
 PROT_ANNOTATION_KEYS = PROT_HIT_KEYS + ("genus_summary",)
 
 
+def load_embedded_feeds(paths):
+    """
+    Pull the VF/AMR and novelty payloads embedded in a combined all.odr.json.
+
+    COMBINE_SAMPLES_JSON writes "prot_data"/"has_prot" and "novelty"/"has_novelty"
+    alongside "samples" precisely so ONE file can repopulate every tab when it is
+    dropped on the report. The browser reads them; make_report.py used to build
+    prot_data only from -p/--annotate_reports and novelty only from -n, so
+    rebuilding a report (or the demo payload) from all.odr.json alone silently
+    lost the VF/AMR and Novelty tabs.
+
+    Returns (prot_data, novelty) — either may be empty. Explicit flags win; this
+    only fills gaps.
+    """
+    prot = {k: [] for k in ("genus_summary", "per_gene_hits", "sample_overview", "amr_genes")}
+    novelty = {}
+    for path in paths or []:
+        path = (path or "").strip()
+        if not path or not path.endswith(".json") or not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except Exception:
+            continue  # load_json_inputs already warned about unparseable inputs
+        if not isinstance(data, dict) or not data.get("taxtriage_combined"):
+            continue
+        embedded = data.get("prot_data")
+        if isinstance(embedded, dict):
+            for k in prot:
+                rows = embedded.get(k)
+                if isinstance(rows, list):
+                    prot[k].extend(rows)
+        nov = data.get("novelty")
+        if isinstance(nov, dict) and nov.get("samples"):
+            if not novelty:
+                novelty = {"samples": {}, "classifier": nov.get("classifier", "") or ""}
+            novelty["samples"].update(nov.get("samples") or {})
+    return prot, novelty
+
+
 def load_protein_annotations(paths, pident=0):
     """
     Read one or more protein-annotation XLSX files (sheets: Genus Summary,
@@ -2464,6 +2505,19 @@ def main():
     # the --annotate_reports fallback below).
     prot_data = load_protein_annotations(args.protein_annotations, pident=args.pident)
     has_prot = any(len(prot_data.get(k, [])) > 0 for k in PROT_ANNOTATION_KEYS)
+
+    # Nothing from -p/--annotate_reports? A combined all.odr.json carries the same
+    # feed inline (that is what makes it a one-file drag-and-drop), so use it
+    # rather than dropping the VF/AMR tab from a report rebuilt off that file.
+    _embedded_prot, _embedded_novelty = (
+        load_embedded_feeds(args.input) if is_json_mode else ({}, {})
+    )
+    if not has_prot and any((_embedded_prot or {}).get(k) for k in PROT_ANNOTATION_KEYS):
+        prot_data = _embedded_prot
+        has_prot = True
+        print(f"[make_report] VF/AMR: recovered "
+              f"{sum(len(prot_data.get(k, [])) for k in PROT_ANNOTATION_KEYS)} annotation row(s) "
+              f"embedded in the combined JSON input")
     print(f"[make_report] Protein annotations loaded: {has_prot} "
           f"({sum(len(v) for v in prot_data.values())} total rows; "
           f"{sum(len(prot_data.get(k, [])) for k in PROT_ANNOTATION_KEYS)} annotation rows)")
@@ -2500,6 +2554,11 @@ def main():
 
     # ── novelty detection (reference-free LCA) ────────────────────────────────
     novelty_data, novelty_downloads = load_novelty(args.novelty, args.novelty_downloads)
+    # Same gap as VF/AMR above: -n was not given, but the combined JSON has it.
+    if not (novelty_data or {}).get("samples") and (_embedded_novelty or {}).get("samples"):
+        novelty_data = _embedded_novelty
+        print(f"[make_report] Novelty: recovered {len(novelty_data['samples'])} sample(s) "
+              f"embedded in the combined JSON input")
     has_novelty = bool(novelty_data.get("samples"))
     print(f"[make_report] Novelty loaded: {has_novelty} "
           f"({len(novelty_data.get('samples', {}))} sample(s), "

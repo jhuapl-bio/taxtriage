@@ -14,8 +14,10 @@ name: Docs
 #                      it from main — such a push cannot make the docs describe
 #                      unreleased pipeline behaviour, and waiting for the next
 #                      release to publish a typo fix is not worth it. The
-#                      Pathogen Sheet stays pinned to the release tag either
-#                      way, and the footer records the ref actually built.
+#                      Pathogen Sheet AND the Demo Report stay pinned to the
+#                      release tag either way — `stable` shows the released
+#                      iteration of the report, never development's — and the
+#                      footer records the ref actually built.
 #   main               unreleased work merged to main. Shown in the dropdown as
 #                      "development"; never the default.
 #   3.3.9, 3.3.8, …    one frozen entry per release, cut from the release tag.
@@ -126,16 +128,21 @@ jobs:
           }
 
           # One JSON object per deployment:
-          #   version  mike version directory
-          #   ref      git ref to build the site from
-          #   dataref  git ref the Pathogen Sheet CSV is read from at page load
-          #   title    dropdown label ("" = mike's default, the version itself)
-          #   aliases  extra names pointing at it, space separated
-          #   demo     whether to ship the ~4.5 MB Demo Report dist
+          #   version    mike version directory
+          #   ref        git ref to build the site from
+          #   dataref    git ref the Pathogen Sheet CSV is read from at page load
+          #   assetsref  git ref the Demo Report is built from (report source +
+          #              assets/pages.js). Normally the same as `ref`; on the
+          #              stable-from-main refresh it stays on the release tag so
+          #              the stable demo is the release's report and dataset, not
+          #              a copy of development's.
+          #   title      dropdown label ("" = mike's default, the version itself)
+          #   aliases    extra names pointing at it, space separated
+          #   demo       whether to ship the ~4.5 MB Demo Report dist
           TARGETS="[]"
           add() {
-            TARGETS="$(jq -c --arg v "$1" --arg r "$2" --arg dr "$3" --arg t "$4" --arg a "$5" --argjson d "$6" \
-              '. + [{version:$v, ref:$r, dataref:$dr, title:$t, aliases:$a, demo:$d}]' <<<"$TARGETS")"
+            TARGETS="$(jq -c --arg v "$1" --arg r "$2" --arg dr "$3" --arg t "$4" --arg a "$5" --argjson d "$6" --arg ar "${7:-$2}" \
+              '. + [{version:$v, ref:$r, dataref:$dr, title:$t, aliases:$a, demo:$d, assetsref:$ar}]' <<<"$TARGETS")"
           }
 
           case "$EVENT" in
@@ -158,8 +165,12 @@ jobs:
               if [ "$EVENT" = push ] && docs_only; then
                 T="$(newest_tag)"
                 if [ -n "$T" ]; then
-                  echo "docs/report-only push; refreshing stable from main (data pinned to $T)"
-                  add "stable" "main" "$T" "stable (${T#v})" "latest" true
+                  echo "docs/report-only push; refreshing stable from main (data + demo pinned to $T)"
+                  # Docs prose comes from main so a typo fix is live the same day,
+                  # but the Demo Report is built from the release tag: `stable`
+                  # must show the released iteration of the report, not whatever
+                  # development currently looks like.
+                  add "stable" "main" "$T" "stable (${T#v})" "latest" true "$T"
                 else
                   echo "no release tag yet; leaving stable alone"
                 fi
@@ -242,6 +253,26 @@ jobs:
       - name: Redirect demo tab to stable
         if: ${{ !matrix.target.demo }}
         run: python scripts/docs_release_stub.py
+
+      # On the stable-from-main refresh the checkout above is `main`, but the
+      # Demo Report must be the RELEASE's: its report code (assets/heatmap.html +
+      # assets/src/**) and its dataset (assets/pages.js), not development's. The
+      # build scripts come from the same ref as the assets they run on, since a
+      # newer script can expect a layout the tag does not have.
+      - name: Use the release's report source for the demo
+        if: ${{ matrix.target.demo && matrix.target.assetsref != matrix.target.ref }}
+        run: |
+          set -euo pipefail
+          R='${{ matrix.target.assetsref }}'
+          echo "Demo Report will be built from $R (site is built from ${{ matrix.target.ref }})"
+          for p in assets scripts/inline_boot_json.py bin/report_template.py; do
+            if git cat-file -e "$R:$p" 2>/dev/null; then
+              git checkout "$R" -- "$p"
+              echo "  restored $p from $R"
+            else
+              echo "::warning::$R has no $p — keeping the built ref's copy"
+            fi
+          done
 
       # Same dist the pipeline's own Pages job produced: heatmap.html with its
       # CSS/JS folded inline and the bootstrap data embedded, as one file.
