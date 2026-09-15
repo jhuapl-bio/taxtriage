@@ -162,6 +162,90 @@ function _protRowSample(r) {
 function _protRowGenus(r) {
   return String(r["Genus"] || r["genus"] || "").trim() || "Unknown";
 }
+
+/* ── Taxids carried by one VF/AMR hit row ──────────────────────────────
+       The only join key between a hit and a detection used to be the annotation
+       DB's `organism` string, split upstream into genus = first token and
+       species = first two tokens. For "Human respiratory syncytial virus A
+       (strain A2)" that yields Genus "Human" / Species "Human respiratory",
+       which matches no detection row on either side — so RSV (and every other
+       organism whose reference name does not start with its genus) lost its
+       link to the detections table entirely: the Summary chip could not resolve
+       it and the "view VF/AMR" jump searched a name no column holds.
+       Every emitter already stamps real taxids. make_report.py writes
+       `taxids: {species_taxid, taxon_id, genus_taxid}` on each hit; the
+       client-side .paths.json parser writes `_taxid` (the key of the detection
+       the annotation hung off); _protExpandRow flattens the first two into the
+       "Species Taxid" / "Genus Taxid" columns. Collect them all so callers can
+       join on taxid — which is stable — instead of on a parsed name. */
+function _protRowTaxids(r) {
+  const out = { species: [], genus: [] };
+  if (!r) return out;
+  const push = (arr, v) => {
+    const s = String(v == null ? "" : v).trim();
+    if (s && s !== "0" && arr.indexOf(s) === -1) arr.push(s);
+  };
+  const t = r.taxids || r._taxids;
+  if (t && typeof t === "object") {
+    push(out.species, t.species_taxid);
+    push(out.species, t.taxon_id);
+    push(out.genus, t.genus_taxid);
+  }
+  push(out.species, r["Species Taxid"]);
+  push(out.genus, r["Genus Taxid"]);
+  // .paths.json upload path: the taxid of the detection this hit hung off.
+  push(out.species, r._taxid);
+  const p = r._pathogen || r.pathogen;
+  if (p && typeof p === "object") push(out.species, p.taxid);
+  return out;
+}
+/** Every taxid on a hit row, species- and genus-level alike, as one array. */
+function _protRowAllTaxids(r) {
+  const t = _protRowTaxids(r);
+  return t.species.concat(t.genus.filter((g) => t.species.indexOf(g) === -1));
+}
+/** True when any taxid on this hit row is in `set` (a Set of id strings). */
+function _protRowHasTaxid(r, set) {
+  if (!set || !set.size) return true;
+  const ids = _protRowAllTaxids(r);
+  for (let i = 0; i < ids.length; i++) if (set.has(ids[i])) return true;
+  return false;
+}
+
+/* ── "is this hit one of the ones the Summary chip counted?" ──────────────
+       `match` is the {kind, key} that _vfamrForRow() resolved a detection on:
+       the Summary chip, its hover tooltip and the VF/AMR tab must agree about
+       which hits belong to a detection, and the only way to guarantee that is
+       to use the key the chip actually matched on rather than re-deriving one
+       from the organism name. A detection can resolve by species taxid, by
+       genus taxid, by the annotation DB's (mis-parsed) species string, or by
+       genus — four different keys, only some of which appear in the row the
+       detections table displays.
+       The tests below mirror _vfamrIndex()'s keying exactly. */
+function _protHitMatchesEntry(r, match) {
+  if (!match || !match.key) return true;
+  const key = String(match.key);
+  switch (match.kind) {
+    case "taxid":
+      return _protRowTaxids(r).species.indexOf(key) !== -1;
+    case "genusTaxid":
+      return _protRowTaxids(r).genus.indexOf(key) !== -1;
+    case "species":
+      return (
+        String(r["Species"] || r["species"] || "")
+          .trim()
+          .toLowerCase() === key
+      );
+    case "genus":
+      return (
+        String(r["Genus"] || r["genus"] || "")
+          .trim()
+          .toLowerCase() === key
+      );
+    default:
+      return true;
+  }
+}
 // Clean category labels used when a row carries no Property of its own. The AMR
 // Genes sheet has no Property column at all (it has Classification, which is a
 // long semicolon-joined string), so those rows used to bucket as "Unknown" and
@@ -1252,11 +1336,22 @@ function _dedupRows(rows) {
     // Global Microbial Category selection — a hit inherits the category of the
     // detection it links to, so "Primary" alone hides Commensal/Unknown hits.
     const _catFilter = _protCategoryFilter();
+    // Organism prefilter left by a "view VF/AMR" jump: the {kind, key} the
+    // Summary chip resolved this detection on. Replaces the old approach of
+    // typing the organism name into the search box, which matched nothing
+    // whenever the annotation DB's parsed name differs from the detected one.
+    const _matchFilter = window._protMatchFilter && window._protMatchFilter.key ? window._protMatchFilter : null;
 
-    let rows = _protAllRows.filter((r) => {
+    /* One row predicate, shared by the visible result and by the "hidden by
+       the category filter" count below. `ignoreHidden` skips the
+       PROT_HIDDEN_PROPS test and nothing else, so the difference between the
+       two passes is exactly the set of rows the category filter is eating. */
+    function _protRowPasses(r, ignoreHidden) {
       const rowProp = r["Property"] || r["Class"] || r["_source"] || "";
-      if (rowProp && PROT_HIDDEN_PROPS.has(rowProp)) return false;
+      if (!ignoreHidden && rowProp && PROT_HIDDEN_PROPS.has(rowProp)) return false;
       if (!_protRowInCategories(r, _catFilter)) return false;
+      // Organism prefilter (set by a jump from another tab)
+      if (_matchFilter && !_protHitMatchesEntry(r, _matchFilter)) return false;
       // %id threshold (both data and pidThresh are 0–100)
       if (pidThresh > 0) {
         const pid = parseFloat(r["%id"] || r["pident"] || r["%ID"] || r["identity"] || 0);
@@ -1307,7 +1402,24 @@ function _dedupRows(rows) {
         if (bf.cat && rCat !== bf.cat) return false;
       }
       return true;
-    });
+    }
+
+    let rows = _protAllRows.filter((r) => _protRowPasses(r, false));
+
+    /* Rows that satisfy every filter EXCEPT the hidden-category one. Drug
+       Target / Transporter / unclassified properties start hidden, and that
+       test runs before the text search — so a search for a gene, accession or
+       organism that only appears on a hidden row used to return a silently
+       empty table. Only worth computing when the result is empty or the user
+       has narrowed it explicitly; otherwise the default view would
+       permanently advertise the thousands of rows it hides by design. */
+    const _narrowed = !!(q || kwTerms || _matchFilter || pidThresh > 0 || tassMode !== "all" || window._protBarFilter);
+    let hiddenMatches = [];
+    if (PROT_HIDDEN_PROPS.size && (!rows.length || _narrowed)) {
+      hiddenMatches = _protAllRows.filter((r) => !_protRowPasses(r, false) && _protRowPasses(r, true));
+    }
+    _renderProtHiddenNotice(hiddenMatches);
+
     if (_protSortCol) {
       rows = [...rows].sort((a, b) => {
         const va = a[_protSortCol] || "",
@@ -1320,6 +1432,39 @@ function _dedupRows(rows) {
     }
     // Hand the full result to the pager; it renders only the visible slice.
     _setProtPageRows(rows, true);
+  }
+
+  /* ── "N hits hidden by the category filter" notice ───────────────────
+       Un-hides exactly the properties that are swallowing rows the user is
+       looking for, then repaints table, legend and both charts through the
+       usual single entry point. */
+  function _renderProtHiddenNotice(hiddenRows) {
+    const host = document.getElementById("prot-hidden-notice");
+    if (!host) return;
+    if (!hiddenRows || !hiddenRows.length) {
+      host.style.display = "none";
+      host.innerHTML = "";
+      return;
+    }
+    const props = [];
+    hiddenRows.forEach((r) => {
+      const p = _protRowProp(r);
+      if (p && props.indexOf(p) === -1) props.push(p);
+    });
+    const n = hiddenRows.length;
+    host.style.display = "inline-flex";
+    host.innerHTML =
+      `<span><b>${n.toLocaleString()}</b> matching hit${n === 1 ? "" : "s"} ` +
+      `${n === 1 ? "is" : "are"} hidden by the category filter ` +
+      `(<span class="prot-hidden-props"></span>)</span>` +
+      `<button type="button" title="Un-hide these categories in the table and both charts" ` +
+      `style="border:1px solid #f0c36d;background:#fff;color:#b45309;border-radius:4px;` +
+      `padding:1px 8px;cursor:pointer;font-size:.95em;white-space:nowrap">Show them</button>`;
+    host.querySelector(".prot-hidden-props").textContent = props.join(", ");
+    host.querySelector("button").onclick = () => {
+      props.forEach((p) => PROT_HIDDEN_PROPS.delete(p));
+      _syncProtCategoryViews();
+    };
   }
 
   /* ── Pagination ──────────────────────────────────────────────────────────
@@ -1501,6 +1646,13 @@ function _dedupRows(rows) {
     window._protJumpSample = null;
     const badge = document.getElementById("prot-bar-filter-badge");
     if (badge) badge.style.display = "none";
+    _filterProt();
+  };
+  // Organism prefilter set by _jumpToProteins(); {kind, key, label} as
+  // resolved by _vfamrForRow(). See _protHitMatchesEntry().
+  window._protMatchFilter = null;
+  window._clearProtMatchFilter = function () {
+    window._protMatchFilter = null;
     _filterProt();
   };
 })();

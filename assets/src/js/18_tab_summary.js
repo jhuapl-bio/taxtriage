@@ -1335,19 +1335,26 @@ function _renderSummaryTable(fd) {
       e.stopPropagation();
       hideTip();
       const g = cell.dataset.vfamrGenus || _vfR["Genus"] || "";
-      // Prefer the species-level term; _jumpToProteins falls back to genus.
       const org = cell.dataset.vfamrOrganism || _vfR["Detected Organism"] || "";
-      // Only pass the organism when the VF/AMR data actually indexes it as a
-      // species — otherwise the species search would return nothing and the
-      // genus fallback is the useful behaviour.
-      const idx = typeof _vfamrIndex === "function" ? _vfamrIndex() : null;
-      const orgKey = String(org).trim().toLowerCase();
-      const twoTok = orgKey.split(/\s+/).slice(0, 2).join(" ");
-      const hasSpecies = !!(idx && idx.bySpecies && (idx.bySpecies.has(orgKey) || idx.bySpecies.has(twoTok)));
       // Scope the jump to this row's sample — the click came from one specific
       // detection, so showing every sample's hits would be a superset.
       const smp = _vfR["Specimen ID"] || "";
-      if (g || org) _jumpToProteins(g, hasSpecies ? org : "", smp);
+      // Re-resolve through _vfamrForRow — the same call that built the tooltip —
+      // and hand the VF/AMR tab the key it matched on. Re-deriving the filter
+      // from the organism name here is what used to break: the chip can resolve
+      // by species taxid, by genus, or by the two-token prefix of the detected
+      // name, and only one of those is the organism string this row displays.
+      const _v = typeof _vfamrForRow === "function" ? _vfamrForRow(_vfR) : null;
+      if (_v && _v.match) {
+        // Say which level the filter is at: a genus-level match shows the whole
+        // genus's hits, which is a much looser set than the row implies.
+        const _lbl = (org || g) + (_v.level === "genus" ? " (genus-level)" : "");
+        _jumpToProteins(g, "", smp, { match: _v.match, label: _lbl });
+      } else if (g || org) {
+        // No resolved entry (no VF/AMR data at all for this row) — fall back to
+        // the old genus text search rather than opening an unfiltered tab.
+        _jumpToProteins(g, "", smp);
+      }
     });
   });
 
@@ -1478,8 +1485,22 @@ function _vfamrIndex() {
   if (_VFAMR_INDEX && _VFAMR_INDEX._key === _key) return _VFAMR_INDEX;
   const byGenus = new Map();
   const bySpecies = new Map();
-  const _ensure = (map, key) => {
-    if (!map.has(key)) map.set(key, { vf: new Map(), amr: new Map(), samples: new Set() });
+  // Taxid-keyed views of the same entries. The Genus/Species columns on a hit
+  // hold the annotation DB's reference-organism name split into first token /
+  // first two tokens, so "Human respiratory syncytial virus A (strain A2)"
+  // indexes as genus "Human" / species "Human respiratory" and no RSV
+  // detection can ever match it by name. Every hit also carries real taxids
+  // (make_report.py: taxids.{species_taxid,taxon_id,genus_taxid}; the
+  // .paths.json upload path: _taxid), and those do match the detection row's
+  // "Taxonomic ID #" / "Subkey". Index on them and prefer them when resolving.
+  const byTaxid = new Map();
+  const byGenusTaxid = new Map();
+  // Every entry records the key it is filed under and what kind of key that is.
+  // _vfamrForRow() hands that back to the caller as `match`, so the VF/AMR tab
+  // can filter on exactly the key the Summary chip resolved on instead of
+  // guessing a second time from the organism name.
+  const _ensure = (map, key, kind) => {
+    if (!map.has(key)) map.set(key, { vf: new Map(), amr: new Map(), samples: new Set(), key, kind });
     return map.get(key);
   };
   const _lbl = (r) =>
@@ -1504,13 +1525,18 @@ function _vfamrIndex() {
         }
         if (smp) e.samples.add(smp);
       };
-      if (gn) stamp(_ensure(byGenus, gn));
-      if (sp) stamp(_ensure(bySpecies, sp));
+      if (gn) stamp(_ensure(byGenus, gn, "genus"));
+      if (sp) stamp(_ensure(bySpecies, sp, "species"));
+      if (typeof _protRowTaxids === "function") {
+        const tx = _protRowTaxids(r);
+        tx.species.forEach((t) => stamp(_ensure(byTaxid, t, "taxid")));
+        tx.genus.forEach((t) => stamp(_ensure(byGenusTaxid, t, "genusTaxid")));
+      }
     });
   };
   _add(PROT.per_gene_hits, "vf");
   _add(PROT.amr_genes, "amr");
-  _VFAMR_INDEX = { byGenus, bySpecies, _key };
+  _VFAMR_INDEX = { byGenus, bySpecies, byTaxid, byGenusTaxid, _key };
   return _VFAMR_INDEX;
 }
 
@@ -1529,6 +1555,16 @@ function _vfamrForRow(r) {
   // genus-level annotation entries separately, so the tooltip can report
   // how specific this row's match is (species hits out of the genus total).
   let speciesInfo = null;
+  // Taxid match first — it is the only key that survives the reference-name
+  // parsing above. "Taxonomic ID #" is this row's own (strain/species) taxid,
+  // "Subkey" its species-level rollup key.
+  const _rowTaxids = [String(r["Taxonomic ID #"] || "").trim(), String(r["Subkey"] || "").trim()].filter(Boolean);
+  let taxSpeciesInfo = null;
+  let taxGenusInfo = null;
+  _rowTaxids.forEach((t) => {
+    if (!taxSpeciesInfo && idx.byTaxid && idx.byTaxid.has(t)) taxSpeciesInfo = idx.byTaxid.get(t);
+    if (!taxGenusInfo && idx.byGenusTaxid && idx.byGenusTaxid.has(t)) taxGenusInfo = idx.byGenusTaxid.get(t);
+  });
   if (org && idx.bySpecies.size) {
     if (idx.bySpecies.has(org)) {
       speciesInfo = idx.bySpecies.get(org);
@@ -1537,7 +1573,9 @@ function _vfamrForRow(r) {
       if (two && idx.bySpecies.has(two)) speciesInfo = idx.bySpecies.get(two);
     }
   }
-  const genusInfo = gn && idx.byGenus.has(gn) ? idx.byGenus.get(gn) : null;
+  // Taxid beats the parsed name at both levels.
+  speciesInfo = taxSpeciesInfo || speciesInfo;
+  const genusInfo = taxGenusInfo || (gn && idx.byGenus.has(gn) ? idx.byGenus.get(gn) : null);
   // Prefer the more specific species match; fall back to genus.
   const info = speciesInfo || genusInfo;
   if (!info) return null;
@@ -1567,6 +1605,10 @@ function _vfamrForRow(r) {
   return {
     info,
     level,
+    // How this detection was linked to its hits: {kind, key}. The VF/AMR tab
+    // filters on this so the table it opens contains exactly the hits the
+    // tooltip just listed — see _protHitMatchesEntry().
+    match: info.key ? { kind: info.kind, key: info.key } : null,
     vf: vfMap.size,
     amr: amrMap.size,
     vfMap,

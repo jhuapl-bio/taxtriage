@@ -948,6 +948,25 @@
                   padding: 0.1em 0.5em;
                 "
               ></span>
+              <!-- Shown when the current filters would match rows that the
+                   category filter (PROT_HIDDEN_PROPS) is hiding — Drug Target /
+                   Transporter / unclassified start hidden, and that test runs
+                   before the text search, so those rows used to vanish with no
+                   explanation. Populated by _renderProtHiddenNotice(). -->
+              <span
+                id="prot-hidden-notice"
+                style="
+                  display: none;
+                  align-items: center;
+                  gap: 0.4em;
+                  font-size: 0.75em;
+                  background: #fff8e1;
+                  color: #b45309;
+                  border: 1px solid #f0c36d;
+                  border-radius: 10px;
+                  padding: 0.1em 0.5em;
+                "
+              ></span>
               <span
                 id="prot-bar-filter-badge"
                 style="

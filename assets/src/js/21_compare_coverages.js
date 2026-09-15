@@ -2048,13 +2048,24 @@ function _openProteinsTab(sample) {
   return true;
 }
 
-function _jumpToProteins(genus, species, sample) {
+/* Open the VF/AMR tab pinned to one organism.
+   `opts.match` is the preferred filter: the {kind, key} that _vfamrForRow()
+   resolved this detection on, so the table shows exactly the hits the Summary
+   chip counted. Re-deriving a filter from the organism name here does not work
+   — a hit's Genus/Species columns hold the annotation DB's reference name
+   parsed into first token / first two tokens, which for viruses and renamed
+   taxa is not the name the detections table shows. The text search stays as
+   the fallback for callers that have no resolved match (e.g. the genus rows in
+   the cross-sample table). */
+function _jumpToProteins(genus, species, sample, opts) {
   const btn = document.querySelector('.tab-btn[data-tab="proteins"]');
   if (!btn || btn.classList.contains("hidden")) return;
+  const o = opts || {};
+  const match = o.match && o.match.key ? o.match : null;
   const term = String(species || "").trim() || String(genus || "").trim();
   const smp = String(sample == null ? "" : sample).trim();
-  // No usable term — open the tab plainly rather than leaving a stale filter.
-  if (!term) return void _openProteinsTab(smp);
+  // Nothing to filter on — open the tab plainly rather than leaving a stale filter.
+  if (!term && !match) return void _openProteinsTab(smp);
   window._protJumpPending = true;
   btn.click();
   setTimeout(() => {
@@ -2063,6 +2074,17 @@ function _jumpToProteins(genus, species, sample) {
     // Sample first: the search dispatch below re-runs the filter once with
     // both constraints in place.
     if (smp) _setProtSampleFilter(smp);
+    if (match) {
+      // Organism prefilter — leave the search box empty so the user can still
+      // search within this organism's hits.
+      window._protMatchFilter = { kind: match.kind, key: match.key, label: o.label || term };
+      if (search) search.value = "";
+      if (colSel) colSel.value = "";
+      if (window._filterProtExternal) window._filterProtExternal();
+      _showProtJumpBadge(o.label || term || String(match.key));
+      window._protJumpPending = false;
+      return;
+    }
     if (colSel) {
       // Match the column to what we are actually searching for: the Species
       // column when we have a species name, Genus otherwise, all columns if
@@ -2091,9 +2113,16 @@ function _clearProtJumpFilter() {
     window._protJumpSample = null;
     if (typeof window._clearProtBarFilter === "function") window._clearProtBarFilter();
   }
+  // An organism prefilter is always a jump artefact — nothing inside the tab
+  // sets one.
+  const hadMatch = !!window._protMatchFilter;
+  window._protMatchFilter = null;
   const search = document.getElementById("prot-search");
   const colSel = document.getElementById("prot-search-col");
-  if (!search || !search.value) return _showProtJumpBadge(null);
+  if (!search || !search.value) {
+    if (hadMatch && window._filterProtExternal) window._filterProtExternal();
+    return _showProtJumpBadge(null);
+  }
   if (!window._protJumpTerm || search.value !== window._protJumpTerm) return _showProtJumpBadge(null);
   search.value = "";
   if (colSel) colSel.value = "";
@@ -2120,6 +2149,10 @@ function _showProtJumpBadge(term) {
   host.querySelector("button").onclick = () => {
     const search = document.getElementById("prot-search");
     const colSel = document.getElementById("prot-search-col");
+    if (window._protMatchFilter) {
+      window._protMatchFilter = null;
+      if (window._filterProtExternal) window._filterProtExternal();
+    }
     if (search) {
       search.value = "";
       if (colSel) colSel.value = "";
