@@ -9,7 +9,7 @@
 ## See it first
 
 [Interactive report demo](demo-report.md){ .md-button .md-button--primary }
-[Example ODR (PDF)](images/pathogens.report.example.pdf){ .md-button }
+[Example ODR (PDF)](images/odr.report.example_9.15.26.pdf){ .md-button }
 [Pathogen sheet](pathogen-sheet.md){ .md-button }
 
 The **demo** is a live report built from the example dataset — the same artifact
