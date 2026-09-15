@@ -20,7 +20,9 @@ jobs:
         run: npm install -g editorconfig-checker
 
       - name: Run ECLint check
-        run: editorconfig-checker -exclude README.md $(find .* -type f | grep -v '.git\|.py\|.md\|json\|yml\|yaml\|html\|css\|work\|.nextflow\|build\|nf_core.egg-info\|log.txt\|Makefile')
+        # assets/heatmap_boot.js is a generated multi-MB payload
+        # (scripts/make_heatmap_boot.py), not hand-edited source.
+        run: editorconfig-checker -exclude README.md $(find .* -type f | grep -v '.git\|.py\|.md\|json\|yml\|yaml\|html\|css\|work\|.nextflow\|build\|nf_core.egg-info\|log.txt\|Makefile\|heatmap_boot.js')
 
   Prettier:
     runs-on: ubuntu-latest

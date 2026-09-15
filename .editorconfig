@@ -22,3 +22,13 @@ indent_size = unset
 
 [/assets/email*]
 indent_size = unset
+
+# Generated demo bootstrap payload (scripts/make_heatmap_boot.py) — a single
+# multi-MB JS object literal, not hand-edited source.
+[/assets/heatmap_boot.js]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_style = unset
+indent_size = unset
