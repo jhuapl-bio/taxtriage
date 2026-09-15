@@ -2,3 +2,5 @@
 modules/nf-core/** linguist-generated
 subworkflows/nf-core/** linguist-generated
 examples/databases/test_metagenome.tar.gz filter=lfs diff=lfs merge=lfs -text
+# Generated demo bootstrap payload — collapse it in diffs/reviews.
+assets/heatmap_boot.js linguist-generated -diff

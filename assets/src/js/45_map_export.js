@@ -187,17 +187,26 @@ async function _mapExportSvgText(width, height) {
     });
   });
 
-  // ── Attribution — required by the OpenStreetMap / CARTO tile licences,
-  //    so it travels with every exported image rather than living only in
-  //    the on-screen control. ───────────────────────────────────────────
-  const attribution = "© OpenStreetMap contributors © CARTO";
+  // ── Attribution — required by the tile licences, so it travels with every
+  //    exported image rather than living only in the on-screen control. Read
+  //    off the basemap actually in use (35_tab_map.js) rather than hard-coded,
+  //    since the picker can be on any of them; the markup is stripped because
+  //    this goes into an SVG <text> node. ────────────────────────────────────
+  let attribution = "";
+  try {
+    const _spec = _BASEMAPS.find((b) => b.id === _basemapId);
+    attribution = (_spec && _spec.attribution ? _spec.attribution : "").replace(/<[^>]*>/g, "");
+  } catch (e) {
+    attribution = "";
+  }
   const attrW = attribution.length * 5.6 + 10;
-  body.push(
-    `<g><rect x="${(W - attrW - 4).toFixed(2)}" y="${(H - 20).toFixed(2)}" width="${attrW.toFixed(2)}" ` +
-      `height="16" fill="rgba(255,255,255,.78)" rx="3"/>` +
-      `<text x="${(W - 9).toFixed(2)}" y="${(H - 12).toFixed(2)}" text-anchor="end" dominant-baseline="central" ` +
-      `font-family="system-ui, sans-serif" font-size="9.5" fill="#4a4a4a">${_mapExpEsc(attribution)}</text></g>`,
-  );
+  if (attribution)
+    body.push(
+      `<g><rect x="${(W - attrW - 4).toFixed(2)}" y="${(H - 20).toFixed(2)}" width="${attrW.toFixed(2)}" ` +
+        `height="16" fill="rgba(255,255,255,.78)" rx="3"/>` +
+        `<text x="${(W - 9).toFixed(2)}" y="${(H - 12).toFixed(2)}" text-anchor="end" dominant-baseline="central" ` +
+        `font-family="system-ui, sans-serif" font-size="9.5" fill="#4a4a4a">${_mapExpEsc(attribution)}</text></g>`,
+    );
 
   if (tilesMissing && !_mapExportTileWarned) {
     _mapExportTileWarned = true;

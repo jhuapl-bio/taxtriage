@@ -1,5 +1,24 @@
 This page describes the in-silico read simulation workflow in TaxTriage, from specification of params through simulated read generation, alignment, and final comparison metrics in the ODR.
 
+!!! warning "Check the revision and profile before you copy a command"
+
+    Every `nextflow run` on this page pins `-profile test,docker`, and the ones that
+    pull from the remote repository also pin `-r main -latest` (the `nextflow run .`
+    examples run whatever is checked out locally, so they take no revision). Those are
+    defaults for reading, not for your run:
+
+    - **`-r main`** tracks the development branch, because these commands pull the
+      pipeline from the remote repository and the simulation flags below change most
+      often there. Use `-r stable` for a reproducible run, or pin a release tag
+      (`-r 0.x.y`) for anything you will need to reproduce later. `-latest` forces a
+      re-pull so a cached copy of the revision is not silently reused.
+    - **`-profile test,docker`** runs the bundled test configuration under Docker. The
+      `test` profile supplies small example inputs and capped resources, so **drop it**
+      once you are pointing at your own `--input` and database — leave it in and you
+      may be running against test data or test-sized limits. Swap `docker` for
+      `singularity` on an HPC, or `conda` where neither is available, and add `local`
+      or your institution's profile as appropriate.
+
 ## Overview
 
 The in silico simulation pipeline makes synthetic (simulated) sequencing reads from the organisms detected in each samples' Kraken2 classification. The reads are treated as new samples that flow through the standard alignment pipeline (minimap2, bowtie2, or hisat2). Their alignment results are then compared against the non-control samples' results to compute precision, recall, F1, and accuracy.
@@ -37,6 +56,8 @@ series:
 
 ```bash
 nextflow run jhuapl-bio/taxtriage \
+    -r main -latest \
+    -profile test,docker \
     --input samplesheet.csv --db /path/to/kraken2_db --outdir results \
     --generate_iss --sim_nreads 100000 \
     --sim_subsample --sim_subsample_mode randomized \
@@ -117,6 +138,8 @@ it:
 ```bash
 # pass 1 — spike, and keep the mixed FASTQs
 nextflow run jhuapl-bio/taxtriage \
+    -r main -latest \
+    -profile test,docker \
     --input samplesheet.csv --outdir results_spike \
     --generate_iss \
     --background_reads matrix_R1.fastq.gz --background_reads2 matrix_R2.fastq.gz \
@@ -125,6 +148,8 @@ nextflow run jhuapl-bio/taxtriage \
 
 # pass 2 — dilute one spiked level across a depth series
 nextflow run jhuapl-bio/taxtriage \
+    -r main -latest \
+    -profile test,docker \
     --input samplesheet.csv --outdir results_dilute \
     --background_reads results_spike/simulation/<bg>_background/spikein/fastq/datasets/<bg>_background_ss_randomized_c600_r1.spikein_R1.fastq.gz \
     --background_reads2 results_spike/simulation/<bg>_background/spikein/fastq/datasets/<bg>_background_ss_randomized_c600_r1.spikein_R2.fastq.gz \
@@ -484,6 +509,8 @@ spike-in series, or both, start at [Choosing an experiment](#choosing-an-experim
 
 ```bash
 nextflow run jhuapl-bio/taxtriage \
+    -r main -latest \
+    -profile test,docker \
     --generate_iss \
     --sim_nreads 100000 \
     --iss_model miseq \
@@ -496,6 +523,8 @@ nextflow run jhuapl-bio/taxtriage \
 
 ```bash
 nextflow run jhuapl-bio/taxtriage \
+    -r main -latest \
+    -profile test,docker \
     --generate_nanosim \
     --nanosim_training /path/to/training_model \
     --sim_nreads 100000 \
@@ -509,6 +538,8 @@ nextflow run jhuapl-bio/taxtriage \
 
 ```bash
 nextflow run jhuapl-bio/taxtriage \
+    -r main -latest \
+    -profile test,docker \
     --generate_iss \
     --generate_nanosim \
     --nanosim_training /path/to/training_model \
@@ -526,6 +557,8 @@ When both are enabled, each real sample produces two insilico children (e.g., `s
 
 ```bash
 nextflow run jhuapl-bio/taxtriage \
+    -r main -latest \
+    -profile test,docker \
     --generate_iss \
     --sim_abundance /path/to/custom_abundance.tsv \
     --input samplesheet.csv \
@@ -603,6 +636,7 @@ sheet carrying it still runs normally on its own.
 
 ```bash
 nextflow run . \
+  -profile test,docker \
   --input samplesheet.csv --outdir results \
   --generate_iss \
   --background_reads stool_bg_R1.fastq.gz \
@@ -615,6 +649,7 @@ and with the background named in the sheet instead:
 
 ```bash
 nextflow run . \
+  -profile test,docker \
   --input samplesheet.csv --outdir results \
   --generate_iss \
   --background_from_sheet \
