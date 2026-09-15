@@ -563,11 +563,11 @@ function _fitMapToData() {
    ═══════════════════════════════════════════════════════════════════════ */
 const _BASEMAPS = [
   {
-    id: "osm",
-    label: "OpenStreetMap",
-    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    maxZoom: 19,
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    id: "esri-gray",
+    label: "Esri Light Gray",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    maxZoom: 16,
+    attribution: "Tiles © Esri",
   },
   {
     id: "carto",
@@ -580,25 +580,34 @@ const _BASEMAPS = [
       '<a href="https://carto.com/attributions">CARTO</a>',
   },
   {
-    id: "esri-gray",
-    label: "Esri Light Gray",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-    maxZoom: 16,
-    attribution: "Tiles © Esri",
-  },
-  {
     id: "esri-imagery",
     label: "Esri Satellite",
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     maxZoom: 19,
     attribution: "Tiles © Esri, Maxar, Earthstar Geographics",
   },
+  {
+    /* Kept as a choice, never the default. OSM's tile servers are volunteer
+       run and their usage policy blocks clients they cannot attribute — a
+       report opened from a file:// path sends no Referer, so tile.openstreetmap.org
+       answers 403 with an "Access blocked" PNG. It works from a served page
+       often enough to be worth offering; _probeBasemapBlocked() below catches
+       the blocked case and moves on rather than papering the map in warnings. */
+    id: "osm",
+    label: "OpenStreetMap",
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
   { id: "none", label: "No basemap", url: null },
 ];
 
+/* The default basemap for a report nobody has expressed a preference in. */
+const _BASEMAP_DEFAULT_ID = "esri-gray";
+
 let _basemapLayer = null;
 let _basemapId = null;
-const _BASEMAP_LS_KEY = "tt.map.basemap";
+const _BASEMAP_LS_KEY = "tt.map.basemap.v2";
 
 function _savedBasemapId() {
   try {
@@ -616,11 +625,58 @@ function _mapNotice(html) {
   el.style.display = html ? "" : "none";
 }
 
+/* Step to the next basemap in the list, explaining why. Shared by both ways a
+   basemap can turn out to be unusable: tiles that never arrive (offline, host
+   blocked, provider now wants a key) and tiles that arrive but are refusals. */
+function _basemapFailover(spec, why) {
+  const i = _BASEMAPS.findIndex((b) => b.id === spec.id);
+  const next = _BASEMAPS[i + 1];
+  if (!next) return;
+  _applyBasemap(next.id, true);
+  _mapNotice(
+    '<i class="fas fa-triangle-exclamation"></i> <b>' +
+      spec.label +
+      "</b> " +
+      why +
+      " Switched to <b>" +
+      next.label +
+      "</b>." +
+      (next.url
+        ? " Pick a different basemap from the control on the map if this one is no better."
+        : " No tile source answered, so the map is drawing without a basemap — markers, clusters and drawn " +
+          "regions all still work."),
+  );
+}
+
+/* Some public tile servers answer a client they have blocked with an HTTP 403
+   whose BODY is still a valid PNG — OpenStreetMap's "Access blocked" tile is
+   the one seen in practice. The browser loads that image perfectly happily, so
+   Leaflet fires `tileload` rather than `tileerror` and the error-count failover
+   below never sees a problem: the map simply fills up with warning tiles. The
+   status code is the only signal, so one representative tile is fetched
+   directly and its status inspected. A network/CORS failure tells us nothing
+   here — that path is the `tileerror` failover's job. */
+async function _probeBasemapBlocked(spec) {
+  if (!spec.url || typeof fetch !== "function") return false;
+  const url = spec.url
+    .replace(/\{s\}/g, (spec.subdomains || "a")[0])
+    .replace(/\{r\}/g, "")
+    .replace(/\{z\}/g, "3")
+    .replace(/\{x\}/g, "4")
+    .replace(/\{y\}/g, "3");
+  try {
+    const res = await fetch(url, { method: "GET", cache: "no-store" });
+    return res.status === 401 || res.status === 403 || res.status === 429;
+  } catch (e) {
+    return false;
+  }
+}
+
 /* Swap the tile layer. `auto` marks a switch the failover made rather than
    one the user asked for, so only a deliberate choice is remembered. */
 function _applyBasemap(id, auto) {
   if (!_leafletMap || typeof L === "undefined") return;
-  const spec = _BASEMAPS.find((b) => b.id === id) || _BASEMAPS[0];
+  const spec = _BASEMAPS.find((b) => b.id === id) || _BASEMAPS.find((b) => b.id === _BASEMAP_DEFAULT_ID);
   if (_basemapLayer) {
     _leafletMap.removeLayer(_basemapLayer);
     _basemapLayer = null;
@@ -660,25 +716,25 @@ function _applyBasemap(id, auto) {
   _basemapLayer.on("tileerror", () => {
     errors += 1;
     if (loadedOne || errors < 6) return;
-    const i = _BASEMAPS.findIndex((b) => b.id === spec.id);
-    const next = _BASEMAPS[i + 1];
-    if (!next) return;
-    _applyBasemap(next.id, true);
-    _mapNotice(
-      '<i class="fas fa-triangle-exclamation"></i> <b>' +
-        spec.label +
-        "</b> tiles did not load — the machine is offline, the tile host is blocked, or that provider now wants an " +
-        "API key. Switched to <b>" +
-        next.label +
-        "</b>." +
-        (next.url
-          ? " Pick a different basemap from the control on the map if this one is no better."
-          : " No tile source answered, so the map is drawing without a basemap — markers, clusters and drawn " +
-            "regions all still work."),
+    _basemapFailover(
+      spec,
+      "tiles did not load — the machine is offline, the tile host is blocked, or that provider now wants an API key.",
     );
   });
   _basemapLayer.addTo(_leafletMap);
   if (!auto) _mapNotice("");
+
+  /* Blocked-but-decodable tiles (see _probeBasemapBlocked). The check is async
+     and the user may have changed basemap in the meantime, so the result is
+     only acted on while this layer is still the current one. */
+  _probeBasemapBlocked(spec).then((blocked) => {
+    if (!blocked || _basemapId !== spec.id) return;
+    _basemapFailover(
+      spec,
+      "refused the request — its tile usage policy blocks this viewer (a report opened straight from disk sends " +
+        "no referrer, which is the usual reason), so every tile comes back as an <b>Access blocked</b> image.",
+    );
+  });
 }
 
 /* On-map control: basemap picker + the fullscreen toggle live together in the
@@ -844,7 +900,9 @@ function _doInitMap() {
 
   _leafletMap = L.map("map-container", { zoomControl: true });
 
-  _applyBasemap(_savedBasemapId() || _BASEMAPS[0].id);
+  const _savedBase = _savedBasemapId();
+  // `auto` on the fallback: an untouched default is not a choice worth storing.
+  _applyBasemap(_savedBase || _BASEMAP_DEFAULT_ID, !_savedBase);
   _addBasemapControl();
   _addMapFullscreenControl();
 

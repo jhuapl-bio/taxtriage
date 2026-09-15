@@ -1,0 +1,17 @@
+# Generated files — content is machine-written, never hand-edited, and
+# reformatting them only produces enormous meaningless diffs.
+
+# Demo bootstrap payload for assets/heatmap.html: a single ~3 MB
+# `window.HEATMAP_BOOT = {...}` literal emitted by
+# scripts/make_heatmap_boot.py (via bin/make_report.py). Regenerate it with
+#   python scripts/make_heatmap_boot.py <all.odr.json>
+# rather than editing or reformatting it.
+assets/heatmap_boot.js
+
+# Build outputs / vendored trees
+_site/
+docs/demo/
+node_modules/
+work/
+.nextflow/
+test_output/
