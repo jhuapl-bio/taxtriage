@@ -72,6 +72,19 @@ process ALIGNMENT_PER_SAMPLE {
     def output = "${meta.id}.paths.json"
     def id = meta.id
     def minmapq_arg = minmapq ? " --minmapq ${minmapq} " :  ""
+    // ── Ambiguous-read (multimapper) rescue ───────────────────────────────────
+    // Re-scores MAPQ-0 ties on their own alignment phred instead of dropping
+    // them wholesale; see docs/multimapper-rescue.md.
+    def rescue_multimapped = params.rescue_multimapped == false ? " --no_rescue_multimapped " : " "
+    def rescue_min_aln_phred = params.rescue_min_aln_phred != null ? " --rescue_min_aln_phred ${params.rescue_min_aln_phred} " : " "
+    def rescue_max_mapq = params.rescue_max_mapq != null ? " --rescue_max_mapq ${params.rescue_max_mapq} " : " "
+    def rescue_min_aln_frac = params.rescue_min_aln_frac != null ? " --rescue_min_aln_frac ${params.rescue_min_aln_frac} " : " "
+    def rescue_max_nm_rate = params.rescue_max_nm_rate != null ? " --rescue_max_nm_rate ${params.rescue_max_nm_rate} " : " "
+    def rescue_min_aln_len = params.rescue_min_aln_len != null ? " --rescue_min_aln_len ${params.rescue_min_aln_len} " : " "
+    def rescue_proper_pair = params.rescue_require_proper_pair ? " --rescue_require_proper_pair " : " "
+    def rescue_as_highmapq = params.rescue_counts_as_highmapq ? " --rescue_counts_as_highmapq " : " "
+    def rescue_args = rescue_multimapped + rescue_min_aln_phred + rescue_max_mapq + rescue_min_aln_frac +
+                      rescue_max_nm_rate + rescue_min_aln_len + rescue_proper_pair + rescue_as_highmapq
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
     // def assemblyi = assembly ? " -j ${assembly} " : " "
@@ -140,7 +153,7 @@ process ALIGNMENT_PER_SAMPLE {
         $min_reads_align $compress_species $mbert_report $minmapq_arg $fast $taxonomy $enable_matrix $ani_threshold \\
         $workflow_revision $commitID $platform $sampletype_thresholds \\
         $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $insilico_flag $parent_arg $reward_factor $dispersion_factor \\
-        $mapq_breadth_power $mapq_gini_power \\
+        $mapq_breadth_power $mapq_gini_power $rescue_args \\
         $annotate_report_arg $pident \\
         $meta_csv_arg
 

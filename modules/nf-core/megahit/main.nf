@@ -31,7 +31,8 @@ process MEGAHIT {
         ${args} \\
         -t ${task.cpus} \\
         ${reads_command} \\
-        --out-prefix ${prefix}
+        --out-prefix ${prefix} 
+        
 
     pigz \\
         --no-name \\

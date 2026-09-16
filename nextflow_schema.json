@@ -662,6 +662,54 @@
                     "description": "Minimum MapQ Score for alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "rescue_multimapped": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Re-score MAPQ-0 multimapped reads on their own alignment phred (-10*log10(NM/aligned bases)) instead of dropping them at --minmapq. Uniquely-placed low-MAPQ reads are still filtered.",
+                    "fa_icon": "fas fa-life-ring"
+                },
+                "rescue_min_aln_phred": {
+                    "type": ["number", "null"],
+                    "default": null,
+                    "description": "Phred bar applied to a multimapped read's own alignment quality. Null uses --minmapq, so one threshold governs both unique and ambiguous reads. 2% divergence is about Q17, 10% about Q10.",
+                    "fa_icon": "fas fa-life-ring"
+                },
+                "rescue_max_mapq": {
+                    "type": ["number", "null"],
+                    "default": 0,
+                    "description": "Only alignments at or below this MAPQ are eligible for rescue. Default 0, i.e. only the true ties aligners mark MAPQ 0.",
+                    "fa_icon": "fas fa-life-ring"
+                },
+                "rescue_min_aln_frac": {
+                    "type": ["number", "null"],
+                    "default": null,
+                    "description": "Minimum unclipped fraction of the read required for a rescue. Null uses the platform preset: 0.95 illumina, 0.80 ont, 0.85 pacbio.",
+                    "fa_icon": "fas fa-life-ring"
+                },
+                "rescue_max_nm_rate": {
+                    "type": ["number", "null"],
+                    "default": null,
+                    "description": "Optional extra ceiling on NM per aligned base for a rescue (e.g. 0.02). Null relies on rescue_min_aln_phred alone.",
+                    "fa_icon": "fas fa-life-ring"
+                },
+                "rescue_min_aln_len": {
+                    "type": ["number", "null"],
+                    "default": 50,
+                    "description": "Minimum aligned query length (bp) for a rescue.",
+                    "fa_icon": "fas fa-life-ring"
+                },
+                "rescue_require_proper_pair": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Paired-end only: restrict rescues to reads flagged properly paired (SAM flag 0x2).",
+                    "fa_icon": "fas fa-life-ring"
+                },
+                "rescue_counts_as_highmapq": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Count rescued multimappers toward highmapq_fraction, which scales breadth and Gini via mapq_breadth_power / mapq_gini_power. Off by default so ANI-cluster evidence is not scored as accession-specific evidence.",
+                    "fa_icon": "fas fa-life-ring"
+                },
                 "minq": {
                     "type": "number",
                     "default": 1,

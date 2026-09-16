@@ -29,6 +29,19 @@ process ALIGN_INSILICO_READS {
     def prefix = task.ext.prefix ?: "${meta.id}"
     def output = "${prefix}.insilico.json"
     def minmapq_arg = minmapq ? " --minmapq ${minmapq} " : ""
+    // ── Ambiguous-read (multimapper) rescue ───────────────────────────────────
+    // Re-scores MAPQ-0 ties on their own alignment phred instead of dropping
+    // them wholesale; see docs/multimapper-rescue.md.
+    def rescue_multimapped = params.rescue_multimapped == false ? " --no_rescue_multimapped " : " "
+    def rescue_min_aln_phred = params.rescue_min_aln_phred != null ? " --rescue_min_aln_phred ${params.rescue_min_aln_phred} " : " "
+    def rescue_max_mapq = params.rescue_max_mapq != null ? " --rescue_max_mapq ${params.rescue_max_mapq} " : " "
+    def rescue_min_aln_frac = params.rescue_min_aln_frac != null ? " --rescue_min_aln_frac ${params.rescue_min_aln_frac} " : " "
+    def rescue_max_nm_rate = params.rescue_max_nm_rate != null ? " --rescue_max_nm_rate ${params.rescue_max_nm_rate} " : " "
+    def rescue_min_aln_len = params.rescue_min_aln_len != null ? " --rescue_min_aln_len ${params.rescue_min_aln_len} " : " "
+    def rescue_proper_pair = params.rescue_require_proper_pair ? " --rescue_require_proper_pair " : " "
+    def rescue_as_highmapq = params.rescue_counts_as_highmapq ? " --rescue_counts_as_highmapq " : " "
+    def rescue_args = rescue_multimapped + rescue_min_aln_phred + rescue_max_mapq + rescue_min_aln_frac +
+                      rescue_max_nm_rate + rescue_min_aln_len + rescue_proper_pair + rescue_as_highmapq
     def assemblyi = assembly ? " -j ${assembly} " : " "
     def mapping_arg = mapping.name != "NO_FILE" ? " -m ${mapping} " : " "
     def taxonomy = taxdump ? " --taxdump ${taxdump} " : " "
@@ -52,7 +65,7 @@ process ALIGN_INSILICO_READS {
         -i ${prefix}.sorted.bam \\
         -o ${output} \\
         -s ${prefix}_insilico \\
-        ${mapping_arg} ${minmapq_arg} ${pathogens_arg} ${assemblyi} \\
+        ${mapping_arg} ${minmapq_arg} ${rescue_args} ${pathogens_arg} ${assemblyi} \\
         --output_dir search_results \\
         --scaled 8000 \\
         --min_threshold 0.002 \\

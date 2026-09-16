@@ -617,6 +617,47 @@ def parse_args(argv=None):
     parser.add_argument('--minmapq', required=False, type=int, default=7,
                     help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
                          "are counted as high-quality. The fraction of such reads scales breadth score.")
+    # ── Strong-multimapper rescue ────────────────────────────────────────────
+    # --minmapq remains a hard quality filter for uniquely-placed reads.  For a
+    # read whose MAPQ is 0 *because two or more references are equally good*
+    # (routine at >=97-98%% ANI), MAPQ measures reference ambiguity, not alignment
+    # quality, so the alignment is re-scored on the same phred scale --
+    # -10*log10(NM / aligned bases) -- and held to the same threshold.  Reads kept
+    # this way are evidence for the ANI cluster rather than for one accession, so
+    # they are reported separately as numreads_rescued / rescued_fraction /
+    # mean_rescued_aln_phred alongside numreads_unique.
+    parser.add_argument('--rescue_multimapped', dest='rescue_multimapped',
+                    required=False, action='store_true', default=True,
+                    help="Score multimapped (MAPQ<=--rescue_max_mapq) alignments on their own "
+                         "phred-scaled per-base error rate instead of on MAPQ, and keep them when "
+                         "that score clears --rescue_min_aln_phred (default: --minmapq). On by default.")
+    parser.add_argument('--no_rescue_multimapped', dest='rescue_multimapped',
+                    required=False, action='store_false',
+                    help="Disable the rescue; apply --minmapq as a hard cut on every read.")
+    parser.add_argument('--rescue_min_aln_phred', required=False, type=float, default=None,
+                    help="Phred threshold applied to a multimapped read's own alignment quality, "
+                         "-10*log10(NM/aligned_bases), capped at 60. Default: the value of "
+                         "--minmapq, so one threshold governs both unique and ambiguous reads. "
+                         "Reference: 2%% divergence ~= Q17, 10%% ~= Q10, 30%% ~= Q5.")
+    parser.add_argument('--rescue_max_mapq', required=False, type=int, default=0,
+                    help="Only alignments at or below this MAPQ are eligible for rescue. Default 0, "
+                         "i.e. only the true ties that bwa/bowtie2/minimap2 mark as MAPQ 0.")
+    parser.add_argument('--rescue_min_aln_frac', required=False, type=float, default=None,
+                    help="Minimum fraction of the read that must be aligned (soft/hard clips "
+                         "excluded) for a rescue. Guards against a conserved fragment anchoring a "
+                         "mostly-clipped read. Default: 0.95 (illumina), 0.80 (ont), 0.85 (pacbio).")
+    parser.add_argument('--rescue_max_nm_rate', required=False, type=float, default=None,
+                    help="Optional extra ceiling on NM per aligned base for a rescue (e.g. 0.02). "
+                         "Default: unset -- --rescue_min_aln_phred already bounds divergence.")
+    parser.add_argument('--rescue_min_aln_len', required=False, type=int, default=50,
+                    help="Minimum aligned query length (bp) for a rescue. Default: 50.")
+    parser.add_argument('--rescue_require_proper_pair', required=False, action='store_true', default=False,
+                    help="For paired-end data, only rescue alignments flagged properly paired "
+                         "(SAM flag 0x2). Single-end reads are unaffected.")
+    parser.add_argument('--rescue_counts_as_highmapq', required=False, action='store_true', default=False,
+                    help="Count rescued multimappers toward highmapq_fraction (which scales "
+                         "breadth/Gini via --mapq_breadth_power / --mapq_gini_power). Off by default: "
+                         "cluster-level evidence should not be scored as accession-specific evidence.")
     parser.add_argument('--mapq_breadth_power', required=False, type=float, default=0.3,
                     help="Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. "
                          "Higher values penalize low-MAPQ organisms more aggressively. "
@@ -945,6 +986,131 @@ def import_k2_file(filename):
     # Return the mapping with parent-child relationships
     return taxids
 
+# ── Strong-multimapper rescue ────────────────────────────────────────────────
+#
+# --minmapq stays a real quality filter.  What changes is WHAT gets phred-scored
+# for a read whose MAPQ is 0 because the aligner found two or more equally good
+# placements (the normal situation at >=97-98% ANI).  For such a read MAPQ says
+# nothing about alignment quality -- it only says "I cannot choose a reference".
+# So instead of MAPQ we score the alignment itself, on the same phred scale, and
+# apply the same threshold:
+#
+#     aln_phred = -10 * log10(NM / aligned_query_bases)
+#
+# i.e. the phred-scaled per-base error rate of the alignment (mismatches +
+# indel bases over the aligned query length), capped at 60 for a perfect match.
+# A read that is ambiguous but aligns at 2% divergence scores ~17 and survives a
+# --minmapq 5; a read that is ambiguous AND aligns badly (say 40% divergence)
+# scores ~4 and is dropped exactly as before.  Uniquely-mapped reads are never
+# rescued: a genuinely low MAPQ on a unique placement is real evidence of a poor
+# alignment and still fails the cut.
+#
+# Per-platform default for the clipping gate only (min aligned fraction of the
+# read); the phred threshold defaults to --minmapq itself.
+_RESCUE_ALN_FRAC_PRESETS = {
+    "illumina": 0.95,
+    "ont":      0.80,
+    "pacbio":   0.85,
+}
+_PHRED_CAP = 60.0
+
+
+def _resolve_rescue_params(args):
+    """Return a small params tuple for the rescue gate (resolved once per BAM)."""
+    plat = (getattr(args, "platform", None) or "illumina").strip().lower()
+    if any(t in plat for t in ("ont", "nano", "oxford")):
+        default_frac = _RESCUE_ALN_FRAC_PRESETS["ont"]
+    elif "pac" in plat or "hifi" in plat:
+        default_frac = _RESCUE_ALN_FRAC_PRESETS["pacbio"]
+    else:
+        default_frac = _RESCUE_ALN_FRAC_PRESETS["illumina"]
+    frac = getattr(args, "rescue_min_aln_frac", None)
+    phred = getattr(args, "rescue_min_aln_phred", None)
+    nmr = getattr(args, "rescue_max_nm_rate", None)
+    return dict(
+        enabled=bool(getattr(args, "rescue_multimapped", True)),
+        min_aln_frac=default_frac if frac is None else float(frac),
+        # Default: the SAME threshold as --minmapq, just measured on the
+        # alignment instead of on the aligner's ability to pick a reference.
+        min_aln_phred=float(args.minmapq) if phred is None else float(phred),
+        max_nm_rate=None if nmr is None else float(nmr),
+        min_aln_len=int(getattr(args, "rescue_min_aln_len", 50) or 0),
+        max_mapq=int(getattr(args, "rescue_max_mapq", 0) or 0),
+        require_pp=bool(getattr(args, "rescue_require_proper_pair", False)),
+        as_highmapq=bool(getattr(args, "rescue_counts_as_highmapq", False)),
+    )
+
+
+def _alignment_phred(read, aln_len):
+    """Phred-scaled per-base error rate of this alignment (None if unknowable).
+
+    NM = mismatches + inserted + deleted bases, so NM/aln_len is the observed
+    divergence between read and reference over the aligned block.  Falls back to
+    minimap2's `de` tag (gap-compressed per-base divergence) when NM is absent.
+    """
+    try:
+        err = read.get_tag("NM") / aln_len
+    except KeyError:
+        try:
+            err = float(read.get_tag("de"))
+        except KeyError:
+            return None
+    if err <= 0:
+        return _PHRED_CAP
+    return min(_PHRED_CAP, -10.0 * math.log10(err))
+
+
+def _is_ambiguous_alignment(read):
+    """True when the low MAPQ is due to competing references, not a bad alignment.
+
+    MAPQ 0 from bwa/bowtie2/minimap2 means ">=2 placements with equal (or nearly
+    equal) score" -- the exact situation a 98%-ANI reference cluster creates.
+    XA (bwa alternative hits) and SA are also accepted as explicit multimapping
+    evidence.  All checks are on the primary record, so no extra BAM pass and no
+    per-read bookkeeping is needed.
+    """
+    if read.mapping_quality == 0:
+        return True
+    return read.has_tag("XA")
+
+
+def _rescue_alignment(read, params):
+    """Decide whether a sub---minmapq alignment survives, and why.
+
+    Returns the alignment phred when the read is kept, else None.  Only C-level
+    pysam attributes plus one or two tag lookups are touched, and the function is
+    only reached by reads that already failed the MAPQ cut, so the cost on a
+    multi-million-read BAM is negligible.
+    """
+    # 1. Only ambiguous (multimapped) reads are eligible.  A unique alignment
+    #    with a poor MAPQ is genuinely poor evidence and stays filtered.
+    if read.mapping_quality > params["max_mapq"]:
+        return None
+    if not _is_ambiguous_alignment(read):
+        return None
+    # 2. The alignment must cover essentially the whole read (guards against a
+    #    conserved-domain fragment anchoring a mostly-clipped read).
+    aln = read.query_alignment_length or 0
+    if aln < params["min_aln_len"]:
+        return None
+    qlen = read.infer_read_length() or read.query_length or 0
+    if qlen and aln < params["min_aln_frac"] * qlen:
+        return None
+    # 3. Paired-end sanity, when requested.
+    if params["require_pp"] and read.is_paired and not read.is_proper_pair:
+        return None
+    # 4. The alignment's own phred must clear the same bar --minmapq sets.
+    phred = _alignment_phred(read, aln)
+    if phred is None:
+        # No NM/de tag: cannot score the alignment, so do not rescue on faith.
+        return None
+    if phred < params["min_aln_phred"]:
+        return None
+    if params["max_nm_rate"] is not None and 10.0 ** (-phred / 10.0) > params["max_nm_rate"]:
+        return None
+    return phred
+
+
 def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_lengths={}, args={}):
     """
     Count the number of reads aligned to each reference in a BAM file.
@@ -960,19 +1126,17 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
     unaligned = 0
     aligned_reads = 0
     total_reads = 0
-    primary_counts = defaultdict(int)
-    secondary_counts = defaultdict(int)
+    rescued_total = 0
 
-    # Pre-pass: count primary/secondary alignments per read to gate MAPQ=0 reads
-    with pysam.AlignmentFile(bam_file_path, "rb") as bam_count:
-        for read in bam_count.fetch(until_eof=True):
-            if read.is_unmapped:
-                continue
-            if read.is_secondary or read.is_supplementary:
-                secondary_counts[read.query_name] += 1
-                continue
-            primary_counts[read.query_name] += 1
-    # for each of the reads, check which ones have more than 1 count
+    # Strong-multimapper rescue parameters.  The previous implementation needed a
+    # full extra pass over the BAM just to learn which reads had secondary
+    # records; that pass is gone.  MAPQ==0 on a primary record already means the
+    # aligner found >1 equally good placement, so ambiguity is readable off the
+    # record itself and the file is now streamed exactly once.
+    _rescue = _resolve_rescue_params(args)
+    _rescue_on = _rescue["enabled"]
+    _rescue_as_hiq = _rescue["as_highmapq"]
+
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
         # get total reads
 
@@ -998,6 +1162,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 count_baseq = 0,
                 count_mapq = 0,
                 count_highmapq = 0,  # reads with MAPQ >= threshold
+                count_rescued = 0,   # sub-MAPQ reads kept by the strong-alignment rescue
+                sum_rescued_phred = 0.0,  # sum of alignment phreds of rescued reads
                 sum_mapq_filtered = 0,   # MAPQ sum for reads that pass the filter
                 count_mapq_filtered = 0, # count of reads that pass the filter
                 total_reads = 0,
@@ -1031,27 +1197,28 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             # Track MAPQ for the high-quality fraction (computed on ALL mapped reads)
             reference_stats[ref]["sum_mapq"] += read.mapping_quality
             reference_stats[ref]["count_mapq"] += 1
-            if read.mapping_quality >= args.minmapq:
+            _passes_mapq = read.mapping_quality >= args.minmapq
+            if _passes_mapq:
                 reference_stats[ref]["count_highmapq"] += 1
 
             # ── Filter: skip reads below --minmapq for all downstream metrics ──
             # These reads don't count toward read totals, coverage, depth, or
             # base quality.  They ARE still counted for highmapq_fraction above
             # so the fraction reflects the full alignment picture.
-            if read.mapping_quality < args.minmapq:
-                # if read.reference_name == "NC_002695.2":
-                #     print(read.mapping_quality, read)
-                allow_low_mapq = (
-                    read.mapping_quality == 0
-                    and secondary_counts.get(read.query_name, 0) > 0
-                )
-                # if"NC_002695.2" in read.query_name:
-                #     print(read.query_qualities)
-                #     print(help(read), read.is_mapped)
-                #     exit()
-                #     print(read.mapping_quality, read.query_name, read.reference_name, allow_low_mapq)
-                if not allow_low_mapq:
+            if not _passes_mapq:
+                # Rescue: the MAPQ is low because the reference set is ambiguous,
+                # but the alignment itself may still be near-perfect.  Only the
+                # PRIMARY record is ever seen here (secondary/supplementary were
+                # skipped above), so a read is credited to at most one accession
+                # and counts cannot be inflated across the ANI cluster.
+                _aln_phred = _rescue_alignment(read, _rescue) if _rescue_on else None
+                if _aln_phred is None:
                     continue
+                reference_stats[ref]["count_rescued"] += 1
+                reference_stats[ref]["sum_rescued_phred"] += _aln_phred
+                rescued_total += 1
+                if _rescue_as_hiq:
+                    reference_stats[ref]["count_highmapq"] += 1
 
             # Accumulate MAPQ only for reads that passed the filter
             # (so meanmapq reflects the actual reads used for coverage/depth)
@@ -1092,6 +1259,10 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 reference_stats[ref]['numreads'] = 0
                 reference_stats[ref]['accession'] = ref
                 reference_stats[ref]['highmapq_fraction'] = 0.0
+                reference_stats[ref]['numreads_rescued'] = 0
+                reference_stats[ref]['numreads_unique'] = 0
+                reference_stats[ref]['rescued_fraction'] = 0.0
+                reference_stats[ref]['mean_rescued_aln_phred'] = 0.0
             else:
 
                 # Calculate average read length
@@ -1147,6 +1318,17 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 _n_hiq = stats.get("count_highmapq", 0)
                 reference_stats[ref]['highmapq_fraction'] = (
                     _n_hiq / _n_mapped if _n_mapped > 0 else 0.0)
+                # Split the kept reads into accession-specific evidence
+                # (MAPQ >= minmapq) and ANI-cluster-level evidence (rescued
+                # strong multimappers) so a report can qualify the claim.
+                _n_resc = stats.get("count_rescued", 0)
+                _kept = stats.get("count_mapq_filtered", 0)
+                reference_stats[ref]['numreads_rescued'] = _n_resc
+                reference_stats[ref]['numreads_unique'] = max(_kept - _n_resc, 0)
+                reference_stats[ref]['rescued_fraction'] = (
+                    _n_resc / _kept if _kept > 0 else 0.0)
+                reference_stats[ref]['mean_rescued_aln_phred'] = (
+                    stats.get("sum_rescued_phred", 0.0) / _n_resc if _n_resc > 0 else 0.0)
 
                 # Clean up intermediate fields
                 del reference_stats[ref]["sum_baseq"]
@@ -1154,11 +1336,18 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 del reference_stats[ref]["sum_mapq"]
                 del reference_stats[ref]["count_mapq"]
                 del reference_stats[ref]["count_highmapq"]
+                del reference_stats[ref]["count_rescued"]
+                del reference_stats[ref]["sum_rescued_phred"]
                 del reference_stats[ref]["read_positions"]
                 del reference_stats[ref]["unique_read_ids"]
                 del reference_stats[ref]["total_reads"]
                 del reference_stats[ref]["total_length"]
 
+    if _rescue_on:
+        print(f"[rescue] kept {rescued_total} multimapped alignments scored on their own "
+              f"alignment phred (>= {_rescue['min_aln_phred']:.1f}, aln_frac >= "
+              f"{_rescue['min_aln_frac']}, min_aln_len {_rescue['min_aln_len']}, "
+              f"mapq <= {_rescue['max_mapq']})")
     print(f"Processed {total_reads} reads from {len(reference_lengths)} references in {time.time()-start_time} seconds.")
     bam_file.close()
     return reference_stats, aligned_reads, total_reads
