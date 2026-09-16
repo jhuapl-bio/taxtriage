@@ -177,6 +177,7 @@ nav:
           - TASS Scoring: tass-scoring.md
           - Microbial Categories: microbial-categories.md
           - Novelty Detection: novelty-detection.md
+          - Multimapper Rescue: multimapper-rescue.md
           - Detection Rescue: detection-rescue.md
           - In-Silico Simulation: in-silico.md
       - Deployment:

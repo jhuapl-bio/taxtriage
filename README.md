@@ -303,6 +303,22 @@ Pre-aligned (BAM/CRAM) samples enter at stage 7; stages 1–6 and 10 are skipped
 
 Detailed descriptions are available in [Pipeline Modules](https://jhuapl-bio.github.io/taxtriage/latest/pipeline-modules/).
 
+### High-ANI reference sets and ambiguous reads
+
+At stage 7, MAPQ is not a measure of alignment quality — it is the aligner's confidence that it picked the _right_ reference. When two or more genomes in the candidate set sit at 97–98% ANI, a read from any conserved region matches both equally well and is reported at MAPQ 0 by definition, so a hard `--minmapq` cut discards near-perfect alignments along with genuinely bad ones.
+
+TaxTriage therefore applies `--minmapq` to MAPQ for uniquely-placed reads, and to the **alignment's own phred score** for reads the aligner marked as a tie:
+
+```
+aln_phred = -10 * log10(NM / aligned query bases)     # capped at Q60
+```
+
+A tied read aligning at 2% divergence scores ~Q17 and survives `--minmapq 5`; a tied read aligning at 40% divergence scores ~Q4 and is still dropped. Uniquely-placed low-MAPQ reads are never rescued, and only the primary record of each read is counted, so a read matching three genomes stays one observation rather than three.
+
+Rescued reads are evidence for the **ANI cluster**, not for one accession, so they are reported separately — `numreads_unique`, `numreads_rescued`, `rescued_fraction`, `mean_rescued_aln_phred` — and excluded from `highmapq_fraction` so they cannot inflate breadth or Gini in the TASS score. Rescue is on by default; `--rescue_multimapped false` restores a hard cut.
+
+See [Multimapper Rescue](https://jhuapl-bio.github.io/taxtriage/latest/multimapper-rescue/) for the full gate, per-platform defaults, and how to read the resulting fields.
+
 ## Important outputs
 
 | Output                      | Purpose                                                 |
@@ -348,6 +364,7 @@ Dave O'Connor's laboratory at the University of Wisconsin–Madison developed a 
 - [CLI parameters](https://jhuapl-bio.github.io/taxtriage/latest/cli-parameters/)
 - [Pipeline modules](https://jhuapl-bio.github.io/taxtriage/latest/pipeline-modules/)
 - [TASS scoring](https://jhuapl-bio.github.io/taxtriage/latest/tass-scoring/)
+- [Multimapper rescue](https://jhuapl-bio.github.io/taxtriage/latest/multimapper-rescue/) — how ambiguous MAPQ-0 reads at high ANI are scored and reported
 - [Interactive report](https://jhuapl-bio.github.io/taxtriage/latest/interactive-report/)
 - [Output files](https://jhuapl-bio.github.io/taxtriage/latest/output/)
 - [Troubleshooting](https://jhuapl-bio.github.io/taxtriage/latest/troubleshooting/)
