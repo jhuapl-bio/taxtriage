@@ -766,8 +766,11 @@ async function main() {
   }
 
   /* ── provenance (request_type) ──────────────────────────────────────────
-   * Every existing row is APL-derived. New requests are stamped from the route
-   * actually used, and external requesters may not claim APL-derived.
+   * Committed rows are either APL-derived (the original sheet) or git-tracked
+   * (added later through an issue); external-local rows are downloaded and sent
+   * privately, so they must never appear in the committed sheet. New requests
+   * are stamped from the route actually used, and external requesters may not
+   * claim APL-derived.
    */
   console.log("\nrequest_type provenance");
   {
@@ -777,7 +780,26 @@ async function main() {
     ok("request_type is a table column", heads.includes("request_type"), heads.join(","));
     ok("request_type is a facet", !!d.querySelector('.pt-facet[data-key="request_type"]'));
     const opts = Array.from(d.querySelectorAll('.pt-facet[data-key="request_type"] input')).map((i) => i.value);
-    eq("existing sheet is uniformly APL-derived", JSON.stringify(opts), JSON.stringify(["APL-derived"]));
+
+    // Ground truth straight from the CSV, ordered the way facets order values:
+    // count descending, then alphabetically.
+    const rtCol = col("request_type");
+    const tally = new Map();
+    parsed.rows.forEach((cells) => {
+      const v = (cells[rtCol] || "").trim();
+      if (v) tally.set(v, (tally.get(v) || 0) + 1);
+    });
+    const want = Array.from(tally.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map((e) => e[0]);
+    eq("facet mirrors the sheet's provenance values", JSON.stringify(opts), JSON.stringify(want));
+    ok("most of the sheet is APL-derived", want[0] === "APL-derived", want.join(","));
+    eq("no committed row claims external-local", tally.has("external-local"), false);
+    ok(
+      "every value is in the vocabulary",
+      want.every((v) => ["APL-derived", "git-tracked", "external-local"].includes(v)),
+      want.join(","),
+    );
   }
   {
     const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
