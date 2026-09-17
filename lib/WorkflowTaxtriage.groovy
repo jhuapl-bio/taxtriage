@@ -2,6 +2,8 @@
 // This file holds several functions specific to the workflow/taxtriage.nf in the nf-core/taxtriage pipeline
 //
 
+import nextflow.Nextflow
+
 class WorkflowTaxtriage {
 
     //
@@ -33,6 +35,117 @@ class WorkflowTaxtriage {
     //
     // Check and validate parameters
     //
+    //
+    // ── Where auto-downloaded databases are cached ────────────────────────────
+    //
+    // The caches are `storeDir` targets: the download happens once and every
+    // later run that resolves to the same directory skips the process outright.
+    // That only works if the directory is (a) writable by the executor and
+    // (b) the SAME path on the next run.
+    //
+    // `${projectDir}` satisfies neither on Seqera / cloud executors. When the
+    // pipeline is pulled rather than checked out, projectDir is the local clone
+    // of one commit:
+    //
+    //     /.nextflow/assets/.repos/jhuapl-bio/taxtriage/clones/<sha>/dbs/kaiju
+    //
+    // which lives inside the head-job container (so a task running on another
+    // node cannot write it, and nothing there survives the job), and is keyed by
+    // COMMIT, so bumping the revision silently re-downloads everything. Worse,
+    // on a cloud executor it is a local POSIX path where every other path is a
+    // bucket URI, so the storeDir is simply lost.
+    //
+    // Resolution order:
+    //   1. the per-backend override (--novelty_kaiju_db_cache, ...)   - explicit wins
+    //   2. --db_cache_dir <base>/<kind>                               - one base for all
+    //   3. <workDir>/dbs/<kind>   when the work dir is remote (s3://, gs://,
+    //      az://) OR the pipeline is running from a pulled clone       - bucket-native,
+    //      shared by every task, and stable across runs and revisions because the
+    //      work dir is what the user (or Seqera) pins
+    //   4. <projectDir>/dbs/<kind>                                    - a plain local
+    //      checkout, i.e. the historical behaviour, unchanged
+    //
+    public static String dbCacheDir(params, workflow, String kind) {
+        def override = null
+        switch (kind) {
+            case 'mmseqs':  override = params.novelty_db_cache;         break
+            case 'kaiju':   override = params.novelty_kaiju_db_cache;   break
+            case 'kraken2': override = params.novelty_kraken2_db_cache; break
+        }
+        if (override) {
+            return override.toString()
+        }
+        if (params.db_cache_dir) {
+            return "${params.db_cache_dir}/${kind}".toString()
+        }
+
+        def workDir    = workflow.workDir.toString()
+        def projectDir = workflow.projectDir.toString()
+
+        // The work dir is the ONE location guaranteed to be writable by, and visible
+        // to, every task -- that is what makes it the work dir. So it is the default,
+        // and `${projectDir}/dbs` is used only when projectDir is demonstrably a real
+        // local checkout (the historical behaviour, kept so an existing dbs/ folder is
+        // still picked up).
+        //
+        // projectDir is NOT usable anywhere else. When the pipeline is pulled rather
+        // than checked out, it is a throwaway per-revision copy inside the head job --
+        // e.g. /.nextflow/assets/..., /nextflow/.cache/assets/... or .../clones/<sha>/
+        // on Seqera -- so a storeDir derived from it is an absolute path that exists
+        // only on the head node, keyed by commit, and unreachable from an AWS Batch
+        // task. That is what fails on Batch while --db (DOWNLOAD_DB, which has no
+        // storeDir at all) keeps working.
+        //
+        // Deliberately NOT a match on known asset-path shapes: that is what broke
+        // before, because the layout differs per launcher. Instead we require positive
+        // evidence of a checkout -- a .git/nextflow.config at projectDir, not under
+        // Nextflow's home/assets/cache area, and writable.
+        if (isLocalCheckout(projectDir)) {
+            return "${projectDir}/dbs/${kind}".toString()
+        }
+        return "${workDir}/dbs/${kind}".toString()
+    }
+
+    //
+    // True only for a genuine local clone of the pipeline the user controls -- never
+    // for the copy Nextflow (or Seqera) stages when the pipeline is pulled by name.
+    //
+    private static boolean isLocalCheckout(String projectDir) {
+        if (!projectDir || projectDir =~ /^[a-zA-Z0-9+.-]+:\/\//) {
+            return false
+        }
+        def nxfHome = System.getenv('NXF_HOME') ?: "${System.getProperty('user.home')}/.nextflow".toString()
+        def dir = new File(projectDir)
+        def canon = null
+        try { canon = dir.canonicalPath } catch (Exception e) { canon = projectDir }
+        if (canon.startsWith(new File(nxfHome).absolutePath) ||
+            canon.contains('/assets/') || canon.contains('/clones/') || canon.contains('/.nextflow/')) {
+            return false
+        }
+        return dir.isDirectory() && dir.canWrite() &&
+               (new File(dir, '.git').exists() || new File(dir, 'nextflow.config').canWrite())
+    }
+
+    //
+    // The storeDir value for an auto-downloaded db, or null when no safe store
+    // directory exists (see dbCacheDir). Modules call this directly so a null
+    // cache dir drops the directive instead of producing the string "null/<name>".
+    //
+    public static String dbStoreDir(params, workflow, String kind, db_name) {
+        def base = dbCacheDir(params, workflow, kind)
+        if (!base) { return null }
+        return "${base}/${db_name.toString().replaceAll('[^A-Za-z0-9._-]', '_')}".toString()
+    }
+
+    //
+    // Human-readable description of where a db download will land, for the
+    // up-front console messages.
+    //
+    public static String dbCacheDescription(params, workflow, String kind) {
+        def base = dbCacheDir(params, workflow, kind)
+        return base ? "cached at ${base}" : 'staged in the work directory (set --db_cache_dir to cache it across runs)'
+    }
+
     public static void initialise(params, log) {
         genomeExistsError(params, log)
         mergeHostTaxids(params, log)
@@ -126,5 +239,222 @@ class WorkflowTaxtriage {
                 "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
             System.exit(1)
         }
+    }
+
+    //
+    // ── Initialisation helpers ────────────────────────────────────────────────
+    //
+    // These used to live inline at the top of `workflow TAXTRIAGE`. They were moved
+    // here because Nextflow captures each workflow body's source verbatim as a
+    // string constant in the compiled class, and the JVM class-file format caps a
+    // string at 65,535 bytes -- the body had grown past that and the pipeline no
+    // longer compiled ("Module compilation error ... String too long"). Keeping
+    // pure param validation/resolution in this class keeps the workflow body well
+    // under the cap. Behaviour is unchanged.
+    //
+
+    // Flags that may arrive as strings on NF v26 and must be coerced before
+    // schema validation.
+    private static final List<String> BOOLEAN_PARAMS = [
+        'annotate', 'centrifuge', 'trim', 'downsample', 'low_memory',
+        'download_taxdump', 'download_db', 'add_irregular_top_hits',
+        'save_output_fastqs', 'save_unaligned', 'remove_commensal',
+        'save_k2_read_assignment', 'save_classified_fastq',
+        'include_singletons_hostremoval', 'include_singletons_removal',
+        'split_prefix', 'use_megahit_longreads', 'use_bt2', 'use_hisat2',
+        'use_diamond', 'use_denovo', 'skip_report', 'skip_consensus',
+        'skip_variants', 'skip_realignment', 'skip_confidence',
+        'enable_genbank', 'get_pathogens', 'conf_sens', 'disable_auto_weights',
+        'auto_score_power', 'fuzzy', 'refresh_download', 'igenomes_ignore',
+        'recursive_reference', 'decompress_pre_megahit', 'skip_plots',
+        'skip_stats', 'skip_fastp', 'skip_kraken2', 'skip_refpull',
+        'skip_krona', 'skip_features', 'skip_pathogens', 'unknown_sample',
+        'ignore_missing', 'reference_assembly', 'pathogenicity', 'get_features',
+        'get_variants', 'compress_species', 'fast', 'enable_matrix', 'no_subkey',
+        'sort_alphabetical', 'show_potentials', 'show_opportunistics',
+        'show_commensals', 'show_unidentified', 'integrate_strain_table',
+        'skip_multiqc', 'email_on_fail', 'plaintext_email', 'monochrome_logs',
+        'help', 'validate_params', 'show_hidden_params', 'enable_conda'
+    ]
+
+    public static void coerceBooleanParams(params) {
+        BOOLEAN_PARAMS.each { p ->
+            if (params[p] instanceof String) { params[p] = params[p].toBoolean() }
+        }
+    }
+
+    //
+    // Container engine / classifier / input pre-flight checks.
+    //
+    public static void validateInputs(params, workflow, log) {
+        if (workflow.containerEngine != 'singularity' && workflow.containerEngine != 'docker') {
+            Nextflow.error("Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting...")
+        }
+
+        if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
+            Nextflow.error("Classifier must be either kraken2, centrifuge or metaphlan")
+        }
+
+        println "Working Directory: ${workflow.workDir}"
+
+        if (params.bam) {
+            if (!Nextflow.file(params.bam).exists()) {
+                Nextflow.error("ERROR: bam file does not exist: ${params.bam}")
+            }
+        } else if (params.fastq_1) {
+            // An SRA/ENA accession is not a path -- nothing exists on disk yet, it is
+            // downloaded by INPUT_CHECK. Skip the existence pre-flight for those.
+            if (isAccession(params.fastq_1)) {
+                println "Detected SRA/ENA accession for --fastq_1: ${params.fastq_1} (reads will be downloaded)"
+                if (params.fastq_2) {
+                    log.warn "--fastq_2 is ignored when --fastq_1 is an accession; paired-end layout is detected from the archive."
+                }
+            } else {
+                if (!Nextflow.file(params.fastq_1).exists()) {
+                    Nextflow.error("ERROR: fastq_1 file does not exist: ${params.fastq_1}")
+                }
+                if (params.fastq_2 && !Nextflow.file(params.fastq_2).exists()) {
+                    Nextflow.error("ERROR: fastq_2 file does not exist: ${params.fastq_2}")
+                }
+            }
+        } else if (!params.input) {
+            Nextflow.error('ERROR: Please specify an input samplesheet (--input), a fastq_1 file (--fastq_1) or an alignment (--bam)!')
+        }
+    }
+
+    //
+    // PRE-ALIGNED (BAM) INPUT
+    // Peek at the samplesheet up front so a BAM-only run can relax the checks that
+    // exist purely for the read-based path (Kraken2 DB, QC, reference download) and
+    // warn about flags that cannot apply without raw reads.
+    //
+    public static Map scanBamSamplesheet(infile) {
+        def scan = [any: false, all: false]
+        if (!infile) { return scan }
+        try {
+            def f = Nextflow.file(infile)
+            if (!f.exists()) { return scan }
+            def lines = f.readLines().findAll { it != null && it.trim() }
+            if (lines.size() < 2) { return scan }
+            def sep = lines[0].contains('\t') ? '\t' : ','
+            // strip a UTF-8 BOM if the samplesheet was saved from Excel
+            def hdr = lines[0].split(sep, -1).collect { it.trim().replaceAll('\\uFEFF', '') }
+            def bidx = hdr.indexOf('bam')
+            if (bidx < 0) { return scan }
+            def flags = lines[1..-1].collect { l ->
+                def cols = l.split(sep, -1)
+                (bidx < cols.size() && cols[bidx] != null && cols[bidx].trim()) ? true : false
+            }
+            scan.any = flags.any { it }
+            scan.all = flags.every { it }
+        /* groovylint-disable-next-line CatchException */
+        } catch (Exception e) {
+            println "WARNING: could not pre-scan ${infile} for a bam column: ${e.message}"
+        }
+        return scan
+    }
+
+    //
+    // match_paths.py needs the reference(s) the BAM was aligned against: the FASTA
+    // for sourmash / shared-window / ANI comparison and the derived accession->taxid
+    // map for -m.  A BAM header carries reference NAMES and LENGTHS but no bases, so
+    // when no reference is supplied we reconstruct one by calling consensus off the
+    // alignment itself (BAM_CONSENSUS).  --bam_consensus false opts out and instead
+    // runs without the minhash / conflict component.
+    //
+    public static boolean resolveBamConsensusMode(params, boolean has_bam_samples) {
+        if (!has_bam_samples) { return false }
+        def consensus_opt_out = (params.bam_consensus != null && !params.bam_consensus)
+        if (!params.reference_fasta && !params.get_pathogens) {
+            if (consensus_opt_out) {
+                println 'WARNING: pre-aligned input without --reference_fasta and --bam_consensus false: ' +
+                        'no reference sequence is available, so sourmash/ANI comparison and conflict-based ' +
+                        'read removal are disabled. Set --minhash_weight 0 to rebalance the TASS weights.'
+                return false
+            }
+            println 'NOTE: pre-aligned input without --reference_fasta -> reconstructing reference ' +
+                    'sequence from the alignment (samtools consensus).'
+            println 'WARNING: consensus-derived references only cover positions with aligned reads, and ' +
+                    'multi-mapping reads contribute to every reference they were placed on, which ' +
+                    'overstates similarity between related organisms and makes conflict-driven read ' +
+                    'removal more aggressive. Pass --reference_fasta whenever the true reference is available.'
+            return true
+        }
+        if (params.bam_consensus) {
+            println 'NOTE: --bam_consensus set explicitly; consensus sequence will be derived from the ' +
+                    'alignment in addition to the supplied reference.'
+            return true
+        }
+        return false
+    }
+
+    //
+    // Flags that need raw reads / de novo contigs are turned off for a BAM-only run.
+    //
+    public static void applyBamOnlyOverrides(params, boolean bam_only_run, boolean has_bam_samples) {
+        if (bam_only_run) {
+            println 'BAM-only run detected: skipping read QC, trimming, host removal, classification and reference download.'
+            // Nothing to classify and nothing to select references from.
+            params.skip_kraken2 = true
+            params.skip_refpull = true
+            [
+                'use_denovo', 'use_diamond', 'annotate', 'microbert', 'novelty',
+                'generate_iss', 'generate_nanosim', 'reference_assembly', 'get_variants'
+            ].each { flag ->
+                if (params[flag]) {
+                    println "WARNING: --${flag} is not supported for pre-aligned (BAM) input and has been disabled."
+                    params[flag] = false
+                }
+            }
+        } else if (has_bam_samples) {
+            println 'Mixed FASTQ/BAM samplesheet detected: pre-aligned samples bypass QC, ' +
+                    'classification, reference download, de novo assembly, MicrobeRT and novelty.'
+        }
+    }
+
+    //
+    // Database requirements. Pre-aligned samples are exempt: the references are
+    // already fixed by the BAM, and their sequence comes either from
+    // --reference_fasta or from BAM_CONSENSUS.
+    //
+    public static void requireDatabases(params, boolean has_bam_samples) {
+        if (!params.skip_kraken2 && !params.db && !params.download_db) {
+            Nextflow.error("If --skip_kraken2 is false, you must provide --db or --download_db")
+        }
+        if (params.skip_kraken2 && !has_bam_samples && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
+            Nextflow.error("If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file")
+        }
+    }
+
+    //
+    // --pathogens override -> the sheet to read, else the bundled default.
+    //
+    public static String resolvePathogensSheet(params, projectDir) {
+        if (!params.pathogens) {
+            return "${projectDir}/assets/pathogen_sheet.csv".toString()
+        }
+        if (!(params.pathogens.endsWith('.csv') || params.pathogens.endsWith('.txt'))) {
+            Nextflow.error("Pathogens file must end with .csv or .txt i.e. it is a .csv (comma-delimited) file!")
+        }
+        return params.pathogens.toString()
+    }
+
+    //
+    // --assembly (+ optional --assembly_summary_genbank) -> a Path, a List of Paths,
+    // or null when the summaries should be downloaded instead.
+    //
+    public static Object resolveAssemblyFiles(params) {
+        if (!params.assembly) {
+            println 'No assembly file given, downloading the standard NCBI RefSeq summary' +
+                    (params.enable_genbank ? ' and GenBank summary (--enable_genbank)' : ' (GenBank pulling disabled; enable with --enable_genbank)')
+            return null
+        }
+        println "Assembly file present, using it to pull genomes from... ${params.assembly}"
+        def files = [Nextflow.file(params.assembly, checkIfExists: true)]
+        if (params.assembly_summary_genbank) {
+            println "GenBank assembly file also provided: ${params.assembly_summary_genbank}"
+            files << Nextflow.file(params.assembly_summary_genbank, checkIfExists: true)
+        }
+        return files.size() == 1 ? files[0] : files
     }
 }
