@@ -117,160 +117,24 @@ def realOnly(ch) {
 
 
 workflow TAXTRIAGE {
-    // ── NF v26: boolean flags arrive as strings; coerce before schema validation ──
-    [
-        'annotate', 'centrifuge', 'trim', 'downsample', 'low_memory',
-        'download_taxdump', 'download_db', 'add_irregular_top_hits',
-        'save_output_fastqs', 'save_unaligned', 'remove_commensal',
-        'save_k2_read_assignment', 'save_classified_fastq',
-        'include_singletons_hostremoval', 'include_singletons_removal',
-        'split_prefix', 'use_megahit_longreads', 'use_bt2', 'use_hisat2',
-        'use_diamond', 'use_denovo', 'skip_report', 'skip_consensus',
-        'skip_variants', 'skip_realignment', 'skip_confidence',
-        'enable_genbank', 'get_pathogens', 'conf_sens', 'disable_auto_weights',
-        'auto_score_power', 'fuzzy', 'refresh_download', 'igenomes_ignore',
-        'recursive_reference', 'decompress_pre_megahit', 'skip_plots',
-        'skip_stats', 'skip_fastp', 'skip_kraken2', 'skip_refpull',
-        'skip_krona', 'skip_features', 'skip_pathogens', 'unknown_sample',
-        'ignore_missing', 'reference_assembly', 'pathogenicity', 'get_features',
-        'get_variants', 'compress_species', 'fast', 'enable_matrix', 'no_subkey',
-        'sort_alphabetical', 'show_potentials', 'show_opportunistics',
-        'show_commensals', 'show_unidentified', 'integrate_strain_table',
-        'skip_multiqc', 'email_on_fail', 'plaintext_email', 'monochrome_logs',
-        'help', 'validate_params', 'show_hidden_params', 'enable_conda'
-    ].each { p ->
-        if (params[p] instanceof String) { params[p] = params[p].toBoolean() }
-    }
+    // ── Initialisation ───────────────────────────────────────────────────────────
+    // The param coercion / validation / resolution that used to sit inline here now
+    // lives in lib/WorkflowTaxtriage.groovy. Nextflow stores each workflow body's
+    // source verbatim as a class-file string constant, which the JVM caps at 65,535
+    // bytes; this body had outgrown that cap. Behaviour is unchanged.
+    WorkflowTaxtriage.coerceBooleanParams(params)
 
-    // ── Initialisation (moved from top level for NF v25+ compatibility) ──────────
     def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
     WorkflowTaxtriage.initialise(params, log)
+    WorkflowTaxtriage.validateInputs(params, workflow, log)
 
-    def checkPathParamList = [ params.input ]
-
-    if (workflow.containerEngine != 'singularity' && workflow.containerEngine != 'docker') {
-        exit 1, "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
-    }
-
-    if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
-        exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
-    }
-
-    println "Working Directory: ${workflow.workDir}"
-
-    if (params.bam) {
-        if (!file(params.bam).exists()) {
-            exit 1, "ERROR: bam file does not exist: ${params.bam}"
-        }
-    } else if (params.fastq_1) {
-        // An SRA/ENA accession is not a path — nothing exists on disk yet, it is
-        // downloaded by INPUT_CHECK. Skip the existence pre-flight for those.
-        if (WorkflowTaxtriage.isAccession(params.fastq_1)) {
-            println "Detected SRA/ENA accession for --fastq_1: ${params.fastq_1} (reads will be downloaded)"
-            if (params.fastq_2) {
-                log.warn "--fastq_2 is ignored when --fastq_1 is an accession; paired-end layout is detected from the archive."
-            }
-        } else {
-            if (!file(params.fastq_1).exists()) {
-                exit 1, "ERROR: fastq_1 file does not exist: ${params.fastq_1}"
-            }
-            if (params.fastq_2) {
-                if (!file(params.fastq_2).exists()) {
-                    exit 1, "ERROR: fastq_2 file does not exist: ${params.fastq_2}"
-                }
-            }
-        }
-    } else if (params.input) {
-        if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not available or non-existent!' }
-    } else {
-        exit 1, 'ERROR: Please specify an input samplesheet (--input), a fastq_1 file (--fastq_1) or an alignment (--bam)!'
-    }
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-    // PRE-ALIGNED (BAM) INPUT
-    // Peek at the samplesheet up front so a BAM-only run can relax the checks that
-    // exist purely for the read-based path (Kraken2 DB, QC, reference download) and
-    // warn about flags that cannot apply without raw reads.
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-    def scan_bam_samplesheet = { infile ->
-        def scan = [any: false, all: false]
-        try {
-            def f = file(infile)
-            if (!f.exists()) { return scan }
-            def lines = f.readLines().findAll { it != null && it.trim() }
-            if (lines.size() < 2) { return scan }
-            def sep = lines[0].contains('\t') ? '\t' : ','
-            // strip a UTF-8 BOM if the samplesheet was saved from Excel
-            def hdr = lines[0].split(sep, -1).collect { it.trim().replaceAll('\\uFEFF', '') }
-            def bidx = hdr.indexOf('bam')
-            if (bidx < 0) { return scan }
-            def flags = lines[1..-1].collect { l ->
-                def cols = l.split(sep, -1)
-                (bidx < cols.size() && cols[bidx] != null && cols[bidx].trim()) ? true : false
-            }
-            scan.any = flags.any { it }
-            scan.all = flags.every { it }
-        /* groovylint-disable-next-line CatchException */
-        } catch (Exception e) {
-            println "WARNING: could not pre-scan ${infile} for a bam column: ${e.message}"
-        }
-        return scan
-    }
-
-    def bam_scan = params.input ? scan_bam_samplesheet.call(params.input) : [any: false, all: false]
-    def has_bam_samples = params.bam ? true : bam_scan.any
-    def bam_only_run    = params.bam ? true : bam_scan.all
-
-    // ── Reference sequence for pre-aligned samples ──────────────────────────────
-    // match_paths.py needs the reference(s) the BAM was aligned against: the FASTA
-    // for sourmash / shared-window / ANI comparison and the derived accession->taxid
-    // map for -m.  A BAM header carries reference NAMES and LENGTHS but no bases, so
-    // when no reference is supplied we reconstruct one by calling consensus off the
-    // alignment itself (BAM_CONSENSUS).  --bam_consensus false opts out and instead
-    // runs without the minhash / conflict component.
-    def bam_consensus_mode = false
-    if (has_bam_samples) {
-        def consensus_opt_out = (params.bam_consensus != null && !params.bam_consensus)
-        if (!params.reference_fasta && !params.get_pathogens) {
-            if (consensus_opt_out) {
-                println 'WARNING: pre-aligned input without --reference_fasta and --bam_consensus false: ' +
-                        'no reference sequence is available, so sourmash/ANI comparison and conflict-based ' +
-                        'read removal are disabled. Set --minhash_weight 0 to rebalance the TASS weights.'
-            } else {
-                bam_consensus_mode = true
-                println 'NOTE: pre-aligned input without --reference_fasta -> reconstructing reference ' +
-                        'sequence from the alignment (samtools consensus).'
-                println 'WARNING: consensus-derived references only cover positions with aligned reads, and ' +
-                        'multi-mapping reads contribute to every reference they were placed on, which ' +
-                        'overstates similarity between related organisms and makes conflict-driven read ' +
-                        'removal more aggressive. Pass --reference_fasta whenever the true reference is available.'
-            }
-        } else if (params.bam_consensus) {
-            bam_consensus_mode = true
-            println 'NOTE: --bam_consensus set explicitly; consensus sequence will be derived from the ' +
-                    'alignment in addition to the supplied reference.'
-        }
-    }
-
-    if (bam_only_run) {
-        println 'BAM-only run detected: skipping read QC, trimming, host removal, classification and reference download.'
-        // Nothing to classify and nothing to select references from.
-        params.skip_kraken2 = true
-        params.skip_refpull = true
-        // These all need raw reads / de novo contigs.
-        [
-            'use_denovo', 'use_diamond', 'annotate', 'microbert', 'novelty',
-            'generate_iss', 'generate_nanosim', 'reference_assembly', 'get_variants'
-        ].each { flag ->
-            if (params[flag]) {
-                println "WARNING: --${flag} is not supported for pre-aligned (BAM) input and has been disabled."
-                params[flag] = false
-            }
-        }
-    } else if (has_bam_samples) {
-        println 'Mixed FASTQ/BAM samplesheet detected: pre-aligned samples bypass QC, ' +
-                'classification, reference download, de novo assembly, MicrobeRT and novelty.'
-    }
+    // Pre-aligned (BAM) input: peek at the samplesheet up front so a BAM-only run can
+    // relax the checks that exist purely for the read-based path.
+    def bam_scan           = params.bam ? [any: true, all: true] : WorkflowTaxtriage.scanBamSamplesheet(params.input)
+    def has_bam_samples    = bam_scan.any
+    def bam_only_run       = bam_scan.all
+    def bam_consensus_mode = WorkflowTaxtriage.resolveBamConsensusMode(params, has_bam_samples)
+    WorkflowTaxtriage.applyBamOnlyOverrides(params, bam_only_run, has_bam_samples)
 
     if (params.minq) {
         ch_minq_shortreads = params.minq
@@ -282,54 +146,14 @@ workflow TAXTRIAGE {
     }
 
     ch_save_fastq_classified = params.save_classified_fastq ? true : false
-    ch_assembly_txt          = null
     ch_kraken_reference      = false
+    ch_empty_file            = file("$projectDir/assets/NO_FILE")
 
-    String  value   = 'G,-10,-2'
-    boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$')
-    ch_empty_file   = file("$projectDir/assets/NO_FILE")
+    WorkflowTaxtriage.requireDatabases(params, has_bam_samples)
 
-    if (matches) { println('The value matches the pattern.') }
-    else          { println('The value does not match the pattern.') }
-
-    // Require Kraken2 DB unless Kraken2 is skipped
-    if (!params.skip_kraken2 && !params.db && !params.download_db) {
-        exit 1, "If --skip_kraken2 is false, you must provide --db or --download_db"
-    }
-
-    // Pre-aligned samples are exempt: the references are already fixed by the BAM,
-    // and their sequence comes either from --reference_fasta or from BAM_CONSENSUS.
-    if (params.skip_kraken2 && !has_bam_samples && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
-        exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
-    }
-
-    ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIfExists: true)
-    if (params.pathogens) {
-        if (params.pathogens.endsWith('.csv') || params.pathogens.endsWith('.txt')) {
-            ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true)
-        } else {
-            exit 1, "Pathogens file must end with .csv or .txt i.e. it is a .csv (comma-delimited) file!"
-        }
-    }
-
-    if (!params.assembly) {
-        println 'No assembly file given, downloading the standard NCBI RefSeq summary' + (params.enable_genbank ? ' and GenBank summary (--enable_genbank)' : ' (GenBank pulling disabled; enable with --enable_genbank)')
-        ch_assembly_txt = null
-    } else {
-        println "Assembly file present, using it to pull genomes from... ${params.assembly}"
-        def _assembly_files = [file(params.assembly, checkIfExists: true)]
-        if (params.assembly_summary_genbank) {
-            println "GenBank assembly file also provided: ${params.assembly_summary_genbank}"
-            _assembly_files << file(params.assembly_summary_genbank, checkIfExists: true)
-        }
-        ch_assembly_txt = _assembly_files.size() == 1 ? _assembly_files[0] : _assembly_files
-    }
-
-    if (!params.assembly_file_type) {
-        ch_assembly_file_type = 'ncbi'
-    } else {
-        ch_assembly_file_type = params.assembly_file_type
-    }
+    ch_pathogens          = Channel.fromPath(WorkflowTaxtriage.resolvePathogensSheet(params, projectDir), checkIfExists: true)
+    ch_assembly_txt       = WorkflowTaxtriage.resolveAssemblyFiles(params)
+    ch_assembly_file_type = params.assembly_file_type ?: 'ncbi'
 
     workflow_summary          = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
     ch_workflow_summary       = Channel.value(workflow_summary)
