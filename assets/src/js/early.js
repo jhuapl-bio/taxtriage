@@ -245,6 +245,18 @@ CONTIG_DATA.forEach(function (cd) {
 });
 // best_cutoffs.subkey.best_threshold — stored as 0–100
 const BEST_TASS_THRESH = ((BOOT.best_cutoffs || {}).subkey || {}).best_threshold;
+
+// ── Microbial-category default selection ───────────────────────────────
+// The pipeline's --show_potentials / --show_commensals / --show_opportunistics
+// / --show_unidentified flags say which categories the run cared about. They
+// are baked in here so the report OPENS with those categories selected in the
+// "Microbial Category" filter instead of the HTML's authored default (Primary
+// only). It is only a starting selection: the control stays fully editable, so
+// a viewer can deselect them or add others at any time.
+// Absent (uploaded datasets, older reports) -> leave the authored default.
+const DEFAULT_MICROBIAL_CATS = Array.isArray(BOOT.default_microbial_categories)
+  ? BOOT.default_microbial_categories.filter(Boolean).map(String)
+  : null;
 // ── Run metadata ───────────────────────────────────────────────────────
 const RUN_META = BOOT.run_metadata_records || []; // [{sample_name, run_id, latitude, longitude, ...}]
 const HAS_GEO = BOOT.has_geo || false;
