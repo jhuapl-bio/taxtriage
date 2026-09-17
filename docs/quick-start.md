@@ -24,28 +24,6 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
   -resume
 ```
 
-### Choosing a revision and profile
-
-!!! warning "Check the revision and profile before you copy a command"
-
-    Every `nextflow run` in these docs pins a revision (`-r`) and a profile
-    (`-profile`). Those are defaults for reading, not for your run:
-
-    - **`-r <revision>`** selects which version of the pipeline is pulled. `-r stable`
-      is the right default for a real run; pin a release tag (`-r 0.x.y`) for anything
-      you will need to reproduce later. Pages documenting fast-moving features (such as
-      [in-silico simulation](in-silico.md)) use `-r main`, the development branch, so
-      the flags they describe exist — swap it for `stable` or a tag once you are past
-      reading. `-latest` forces a re-pull so a cached copy of the revision is not
-      silently reused. Commands written as `nextflow run .` take no revision: they run
-      whatever is checked out locally.
-    - **`-profile test,docker`** runs the bundled test configuration under Docker. The
-      `test` profile supplies small example inputs and capped resources, so **drop it**
-      once you are pointing at your own `--input` and database — leave it in and you
-      may be running against test data or test-sized limits. Swap `docker` for
-      `singularity` on an HPC, or `conda` where neither is available, and add `local`
-      or your institution's profile as appropriate.
-
 Replace `docker` with `singularity` if running on an HPC:
 
 > ```bash

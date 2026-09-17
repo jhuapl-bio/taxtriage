@@ -158,8 +158,7 @@ extra:
       name: nf-core Slack
 
 # Top-level entries render as tabs (navigation.tabs), so "Documentation",
-# "Profiles", "Demo Report" and "Pathogen Sheet" are the four tabs across the
-# header.
+# "Demo Report" and "Pathogen Sheet" are the three tabs across the header.
 nav:
   - Documentation:
       - Home: index.md
@@ -188,6 +187,5 @@ nav:
           - Troubleshooting: troubleshooting.md
           - Contributing: contributing.md
           - Citations: citations.md
-  - Profiles: profiles.md
   - Demo Report: demo-report.md
   - Pathogen Sheet: pathogen-sheet.md

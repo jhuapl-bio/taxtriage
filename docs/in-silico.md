@@ -1,12 +1,23 @@
 This page describes the in-silico read simulation workflow in TaxTriage, from specification of params through simulated read generation, alignment, and final comparison metrics in the ODR.
 
-!!! note "Revision and profile"
+!!! warning "Check the revision and profile before you copy a command"
 
     Every `nextflow run` on this page pins `-profile test,docker`, and the ones that
-    pull from the remote repository also pin `-r main -latest`. Those are defaults for
-    reading, not for your run — see
-    [Choosing a revision and profile](quick-start.md#choosing-a-revision-and-profile)
-    before you copy a command.
+    pull from the remote repository also pin `-r main -latest` (the `nextflow run .`
+    examples run whatever is checked out locally, so they take no revision). Those are
+    defaults for reading, not for your run:
+
+    - **`-r main`** tracks the development branch, because these commands pull the
+      pipeline from the remote repository and the simulation flags below change most
+      often there. Use `-r stable` for a reproducible run, or pin a release tag
+      (`-r 0.x.y`) for anything you will need to reproduce later. `-latest` forces a
+      re-pull so a cached copy of the revision is not silently reused.
+    - **`-profile test,docker`** runs the bundled test configuration under Docker. The
+      `test` profile supplies small example inputs and capped resources, so **drop it**
+      once you are pointing at your own `--input` and database — leave it in and you
+      may be running against test data or test-sized limits. Swap `docker` for
+      `singularity` on an HPC, or `conda` where neither is available, and add `local`
+      or your institution's profile as appropriate.
 
 ## Overview
 
