@@ -27,8 +27,10 @@ process KAIJU_DOWNLOADDB {
 
     // 'test' is a tiny CI index -> no persistent storeDir; it just lives in work/ like the
     // main kraken2 'test' download. Real indexes still persist to the per-name dbs/kaiju cache.
+    // 'test' is a tiny CI index -> never cached. null (no safe shared store dir, e.g. AWS
+    // Batch) drops the directive entirely -- see WorkflowTaxtriage.dbCacheDir.
     storeDir { db_name.toString().equalsIgnoreCase('test') ? null :
-               "${WorkflowTaxtriage.dbCacheDir(params, workflow, 'kaiju')}/${db_name.toString().replaceAll('[^A-Za-z0-9._-]', '_')}" }
+               WorkflowTaxtriage.dbStoreDir(params, workflow, 'kaiju', db_name) }
 
     conda "conda-forge::gnu-wget=1.18"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?

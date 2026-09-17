@@ -414,8 +414,8 @@ workflow TAXTRIAGE {
             } else {
                 def novelty_dbname = novelty_db_in ?: 'UniProtKB'
                 println "Novelty (mmseqs2): seqTaxDB '${novelty_dbname}' not local; will " +
-                        "download via 'mmseqs databases' (cached at " +
-                        "${WorkflowTaxtriage.dbCacheDir(params, workflow, 'mmseqs')})."
+                        "download via 'mmseqs databases' " +
+                        "(${WorkflowTaxtriage.dbCacheDescription(params, workflow, 'mmseqs')})."
                 MMSEQS_DOWNLOADDB(novelty_dbname)
                 ch_versions = ch_versions.mix(MMSEQS_DOWNLOADDB.out.versions)
                 ch_novelty_db = MMSEQS_DOWNLOADDB.out.db
@@ -438,7 +438,7 @@ workflow TAXTRIAGE {
                 def kaiju_name = (!novelty_db_in || novelty_db_in == 'Kalamari') ? 'viruses' : novelty_db_in
                 def kaiju_where = kaiju_name.equalsIgnoreCase('test') ?
                         'staged in the work directory' :
-                        "cached at ${WorkflowTaxtriage.dbCacheDir(params, workflow, 'kaiju')}"
+                        WorkflowTaxtriage.dbCacheDescription(params, workflow, 'kaiju')
                 println "Novelty (kaiju): index '${kaiju_name}' not local; will download a " +
                         "prebuilt kaiju index (${kaiju_where})."
                 KAIJU_DOWNLOADDB(kaiju_name)
@@ -475,8 +475,8 @@ workflow TAXTRIAGE {
                 } else {
                     def k2_name = (!novelty_db_in || novelty_db_in == 'Kalamari') ? 'viral' : novelty_db_in
                     println "Novelty (bracken): db '${k2_name}' not local; will download a " +
-                            "prebuilt Kraken2+Bracken db (cached at " +
-                            "${WorkflowTaxtriage.dbCacheDir(params, workflow, 'kraken2')})."
+                            "prebuilt Kraken2+Bracken db " +
+                            "(${WorkflowTaxtriage.dbCacheDescription(params, workflow, 'kraken2')})."
                     KRAKEN2_DOWNLOADDB(k2_name)
                     ch_versions = ch_versions.mix(KRAKEN2_DOWNLOADDB.out.versions)
                     ch_novelty_db = KRAKEN2_DOWNLOADDB.out.db

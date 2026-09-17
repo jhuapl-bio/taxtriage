@@ -81,15 +81,69 @@ class WorkflowTaxtriage {
 
         def workDir    = workflow.workDir.toString()
         def projectDir = workflow.projectDir.toString()
-        boolean isRemote = (workDir =~ /^[a-zA-Z0-9+.-]+:\/\//).find()
-        // Nextflow stages a pulled pipeline under <home>/.nextflow/assets/... ,
-        // and Seqera adds a per-commit `clones/<sha>` level. Either way the path
-        // is not a stable, shared, writable place to park tens of GB.
-        def isPulledClone = projectDir.contains('/.nextflow/assets/') || projectDir.contains('/clones/')
 
-        return (isRemote || isPulledClone)
-            ? "${workDir}/dbs/${kind}".toString()
-            : "${projectDir}/dbs/${kind}".toString()
+        // The work dir is the ONE location guaranteed to be writable by, and visible
+        // to, every task -- that is what makes it the work dir. So it is the default,
+        // and `${projectDir}/dbs` is used only when projectDir is demonstrably a real
+        // local checkout (the historical behaviour, kept so an existing dbs/ folder is
+        // still picked up).
+        //
+        // projectDir is NOT usable anywhere else. When the pipeline is pulled rather
+        // than checked out, it is a throwaway per-revision copy inside the head job --
+        // e.g. /.nextflow/assets/..., /nextflow/.cache/assets/... or .../clones/<sha>/
+        // on Seqera -- so a storeDir derived from it is an absolute path that exists
+        // only on the head node, keyed by commit, and unreachable from an AWS Batch
+        // task. That is what fails on Batch while --db (DOWNLOAD_DB, which has no
+        // storeDir at all) keeps working.
+        //
+        // Deliberately NOT a match on known asset-path shapes: that is what broke
+        // before, because the layout differs per launcher. Instead we require positive
+        // evidence of a checkout -- a .git/nextflow.config at projectDir, not under
+        // Nextflow's home/assets/cache area, and writable.
+        if (isLocalCheckout(projectDir)) {
+            return "${projectDir}/dbs/${kind}".toString()
+        }
+        return "${workDir}/dbs/${kind}".toString()
+    }
+
+    //
+    // True only for a genuine local clone of the pipeline the user controls -- never
+    // for the copy Nextflow (or Seqera) stages when the pipeline is pulled by name.
+    //
+    private static boolean isLocalCheckout(String projectDir) {
+        if (!projectDir || projectDir =~ /^[a-zA-Z0-9+.-]+:\/\//) {
+            return false
+        }
+        def nxfHome = System.getenv('NXF_HOME') ?: "${System.getProperty('user.home')}/.nextflow".toString()
+        def dir = new File(projectDir)
+        def canon = null
+        try { canon = dir.canonicalPath } catch (Exception e) { canon = projectDir }
+        if (canon.startsWith(new File(nxfHome).absolutePath) ||
+            canon.contains('/assets/') || canon.contains('/clones/') || canon.contains('/.nextflow/')) {
+            return false
+        }
+        return dir.isDirectory() && dir.canWrite() &&
+               (new File(dir, '.git').exists() || new File(dir, 'nextflow.config').canWrite())
+    }
+
+    //
+    // The storeDir value for an auto-downloaded db, or null when no safe store
+    // directory exists (see dbCacheDir). Modules call this directly so a null
+    // cache dir drops the directive instead of producing the string "null/<name>".
+    //
+    public static String dbStoreDir(params, workflow, String kind, db_name) {
+        def base = dbCacheDir(params, workflow, kind)
+        if (!base) { return null }
+        return "${base}/${db_name.toString().replaceAll('[^A-Za-z0-9._-]', '_')}".toString()
+    }
+
+    //
+    // Human-readable description of where a db download will land, for the
+    // up-front console messages.
+    //
+    public static String dbCacheDescription(params, workflow, String kind) {
+        def base = dbCacheDir(params, workflow, kind)
+        return base ? "cached at ${base}" : 'staged in the work directory (set --db_cache_dir to cache it across runs)'
     }
 
     public static void initialise(params, log) {
