@@ -1207,8 +1207,14 @@
                 },
                 "novelty_db": {
                     "type": "string",
+                    "fa_icon": "fas fa-book",
+                    "format": "directory-path",
                     "description": "DB selector for the chosen --novelty backend: a NAME to auto-download or a local path/dir. mmseqs2: an mmseqs db name (e.g. Kalamari, UniProtKB) or a seqTaxDB path. kaiju: an alias (viruses, nr, refseq, nr_euk, refseq_nr, refseq_ref, progenomes, fungi, plasmids, rvdb), an exact *.tgz filename, a full URL, or a local dir. bracken: an alias (standard[_8gb|_16gb], viral, minusb, pluspf[_8gb|_16gb], pluspfp[_8gb|_16gb], core_nt, gtdb, eupathdb, ncbi_reference; 'k2_' prefix optional), an exact *.tar.gz filename, a full URL, or a local kraken2 db dir.",
                     "default": "UniProtKB"
+                },
+                "db_cache_dir": {
+                    "type": "string",
+                    "description": "Opt-in base directory for every novelty db cache (<base>/mmseqs, <base>/kaiju, <base>/kraken2). Unset by default: the db is downloaded into the task work directory, like --db. On cloud executors point this at a bucket prefix (e.g. s3://my-bucket/dbs); a local path is ignored when the work directory is a bucket URI, because cloud workers (and Fusion) cannot reach it."
                 },
                 "novelty_db_cache": {
                     "type": "string",

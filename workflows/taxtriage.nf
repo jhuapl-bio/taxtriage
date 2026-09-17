@@ -115,6 +115,23 @@ def realOnly(ch) {
     ch.filter { it instanceof List && it[0] instanceof Map ? !it[0].insilico : true }
 }
 
+// Drop [meta, reads] entries whose FASTQs hold no records, warning once per sample.
+// An all-host sample (or one bbnorm/seqtk reduced to nothing) arrives here as an
+// empty FASTQ, and every read QC tool downstream -- trimgalore, porechop, fastp --
+// exits non-zero on an empty input. With the default `finish` error strategy that
+// one dead-end sample used to take the whole run down with it, so it is skipped
+// instead. See WorkflowTaxtriage.hasReads for why this is a size check.
+def dropEmptyReads(ch, String stage) {
+    ch.filter { meta, reads ->
+        def keep = WorkflowTaxtriage.hasReads(reads)
+        if (!keep) {
+            println "WARNING: sample '${meta.id}' has no reads left after ${stage} " +
+                    "(empty FASTQ) -- skipping this sample. The rest of the run continues."
+        }
+        return keep
+    }
+}
+
 
 workflow TAXTRIAGE {
     // ── Initialisation ───────────────────────────────────────────────────────────
@@ -694,6 +711,15 @@ workflow TAXTRIAGE {
         params.genome
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
+
+    // ── Skip samples that de-hosting emptied out ─────────────────────────────
+    // All-host (or fully filtered) samples come out of HOST_REMOVAL as an empty
+    // fastq. trimgalore / porechop / fastp all exit non-zero on an empty input,
+    // which used to end the whole run over one dead-end sample. Drop them here,
+    // loudly, so every other sample still finishes. See
+    // WorkflowTaxtriage.hasReads for why this is a size check.
+    ch_reads = dropEmptyReads(ch_reads, 'host removal/filtering')
+
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.host_removal_stats)
 
@@ -737,6 +763,12 @@ workflow TAXTRIAGE {
     }.set { reads_by_type_qc }
     ch_fasta_reads = reads_by_type_qc.fasta
     ch_reads       = reads_by_type_qc.fastq
+
+    // Second empty-read gate: bbnorm (--downsample) and seqtk (--subsample) can
+    // themselves reduce a thin sample to nothing, and trimgalore / porechop / fastp
+    // all exit non-zero on an empty input. Drop those samples here so one dead-end
+    // sample cannot end the run.
+    ch_reads = dropEmptyReads(ch_reads, 'downsampling/subsampling')
 
     // // // //
     // // // // MODULE: Run Porechop / Trimgalore

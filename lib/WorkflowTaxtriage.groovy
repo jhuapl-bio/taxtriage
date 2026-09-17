@@ -36,34 +36,73 @@ class WorkflowTaxtriage {
     // Check and validate parameters
     //
     //
+    // ── Empty read files ──────────────────────────────────────────────────────
+    //
+    // A sample whose reads were ALL host (or all filtered out by the kraken2
+    // de-hosting filter) comes out of HOST_REMOVAL as an EMPTY fastq. Every read
+    // QC tool downstream -- trimgalore, porechop, fastp -- exits non-zero on an
+    // empty input, and with the default `finish` error strategy that one dead-end
+    // sample used to take the whole run down with it. Such samples are dropped
+    // before trimming instead (see workflows/taxtriage.nf), so the rest of the
+    // run completes.
+    //
+    // Size, not record count, on purpose: the channel holds Paths that may live in
+    // a bucket, so `.size()` is a cheap HEAD request while counting records would
+    // mean pulling every fastq onto the head node. An empty gzip member is 20-30
+    // bytes (gzip writes 20-25, bgzip's EOF block is 28); a single 20 bp read
+    // already gzips to ~59 bytes and a usable sample is orders of magnitude bigger,
+    // so the threshold below separates "no records at all" from "some data" without
+    // ever having to decompress anything.
+    //
+    public static final int EMPTY_READS_BYTES = 100
+
+    //
+    // True when every read file in the entry holds at least one record. A pair with
+    // one empty mate counts as empty: the mates would no longer be in sync, and the
+    // paired tools fail on that just as hard as on a fully empty input.
+    //
+    public static boolean hasReads(reads) {
+        if (!reads) { return false }
+        def files = (reads instanceof List) ? reads : [reads]
+        if (!files) { return false }
+        return files.every { f ->
+            if (!f) { return false }
+            def sz = -1
+            try { sz = f.size() } catch (Exception e) { return true }  // unreadable here -> let the task decide
+            return f.toString().endsWith('.gz') ? sz > EMPTY_READS_BYTES : sz > 0
+        }
+    }
+
+    //
     // ── Where auto-downloaded databases are cached ────────────────────────────
     //
     // The caches are `storeDir` targets: the download happens once and every
     // later run that resolves to the same directory skips the process outright.
-    // That only works if the directory is (a) writable by the executor and
-    // (b) the SAME path on the next run.
+    // That only works if the directory is (a) writable by the executor, (b) the
+    // SAME path on the next run, and (c) a path the task launcher will accept.
     //
-    // `${projectDir}` satisfies neither on Seqera / cloud executors. When the
-    // pipeline is pulled rather than checked out, projectDir is the local clone
-    // of one commit:
+    // Nothing auto-derived satisfies all three off a developer laptop:
+    //   * `${projectDir}` is a throwaway per-revision clone inside the head job
+    //     when the pipeline is PULLED rather than checked out, so it is head-node
+    //     only and keyed by commit.
+    //   * `${workDir}` is node-local scratch on Seqera (/nftass/scratch/<id>),
+    //     which the Fusion script launcher rejects outright:
+    //       Unexpected path for Fusion script launcher: /nftass/scratch/.../dbs/kaiju/viral
     //
-    //     /.nextflow/assets/.repos/jhuapl-bio/taxtriage/clones/<sha>/dbs/kaiju
-    //
-    // which lives inside the head-job container (so a task running on another
-    // node cannot write it, and nothing there survives the job), and is keyed by
-    // COMMIT, so bumping the revision silently re-downloads everything. Worse,
-    // on a cloud executor it is a local POSIX path where every other path is a
-    // bucket URI, so the storeDir is simply lost.
+    // So the default is NO storeDir -- the same contract as the main --db
+    // (DOWNLOAD_DB has no storeDir either, which is exactly why `--db <alias>`
+    // has always worked everywhere). Caching is opt-in.
     //
     // Resolution order:
     //   1. the per-backend override (--novelty_kaiju_db_cache, ...)   - explicit wins
     //   2. --db_cache_dir <base>/<kind>                               - one base for all
-    //   3. <workDir>/dbs/<kind>   when the work dir is remote (s3://, gs://,
-    //      az://) OR the pipeline is running from a pulled clone       - bucket-native,
-    //      shared by every task, and stable across runs and revisions because the
-    //      work dir is what the user (or Seqera) pins
-    //   4. <projectDir>/dbs/<kind>                                    - a plain local
-    //      checkout, i.e. the historical behaviour, unchanged
+    //   3. <projectDir>/dbs/<kind>   ONLY for a genuine local checkout - historical
+    //      behaviour, so an existing local dbs/ folder is still picked up
+    //   4. null -> no storeDir; the db lands in the task work dir, like --db
+    //
+    // Any candidate that is a plain local path while the work dir is a bucket URI
+    // is dropped (see usableStoreDir): cloud workers, and Fusion in particular,
+    // cannot reach it.
     //
     public static String dbCacheDir(params, workflow, String kind) {
         def override = null
@@ -73,37 +112,54 @@ class WorkflowTaxtriage {
             case 'kraken2': override = params.novelty_kraken2_db_cache; break
         }
         if (override) {
-            return override.toString()
+            return usableStoreDir(override.toString(), workflow)
         }
         if (params.db_cache_dir) {
-            return "${params.db_cache_dir}/${kind}".toString()
+            return usableStoreDir("${params.db_cache_dir}/${kind}".toString(), workflow)
         }
 
-        def workDir    = workflow.workDir.toString()
+        // NO IMPLICIT CACHE. This is the --db behaviour, deliberately: DOWNLOAD_DB has
+        // no storeDir at all, the db lands in the task work dir, and that is why
+        // `--db <alias>` works on every executor (Seqera/Fusion, AWS Batch, local)
+        // while an auto-derived `--novelty_db` cache did not.
+        //
+        // The old default was `<workDir>/dbs/<kind>` when projectDir was not a local
+        // checkout. On Seqera the head job's work dir is a node-local scratch path
+        // (e.g. /nftass/scratch/<id>), so that produced a storeDir like
+        // `/nftass/scratch/<id>/dbs/kaiju/viral` -- an absolute POSIX path that the
+        // Fusion script launcher rejects outright:
+        //     Unexpected path for Fusion script launcher: /nftass/scratch/.../dbs/kaiju/viral
+        // Fusion only accepts paths under its own mount (bucket-backed), so any local
+        // path handed to it kills the task before it starts.
+        //
+        // A cache across runs is now strictly opt-in: --db_cache_dir (or the
+        // per-backend --novelty_{,kaiju_,kraken2_}db_cache), pointed at something the
+        // executor can actually reach -- an s3://... prefix on cloud, a shared mount
+        // on a cluster, a plain folder locally.
+        //
+        // The one exception is a genuine local checkout, where `<projectDir>/dbs/<kind>`
+        // has always worked and an existing dbs/ folder should keep being picked up.
         def projectDir = workflow.projectDir.toString()
-
-        // The work dir is the ONE location guaranteed to be writable by, and visible
-        // to, every task -- that is what makes it the work dir. So it is the default,
-        // and `${projectDir}/dbs` is used only when projectDir is demonstrably a real
-        // local checkout (the historical behaviour, kept so an existing dbs/ folder is
-        // still picked up).
-        //
-        // projectDir is NOT usable anywhere else. When the pipeline is pulled rather
-        // than checked out, it is a throwaway per-revision copy inside the head job --
-        // e.g. /.nextflow/assets/..., /nextflow/.cache/assets/... or .../clones/<sha>/
-        // on Seqera -- so a storeDir derived from it is an absolute path that exists
-        // only on the head node, keyed by commit, and unreachable from an AWS Batch
-        // task. That is what fails on Batch while --db (DOWNLOAD_DB, which has no
-        // storeDir at all) keeps working.
-        //
-        // Deliberately NOT a match on known asset-path shapes: that is what broke
-        // before, because the layout differs per launcher. Instead we require positive
-        // evidence of a checkout -- a .git/nextflow.config at projectDir, not under
-        // Nextflow's home/assets/cache area, and writable.
         if (isLocalCheckout(projectDir)) {
-            return "${projectDir}/dbs/${kind}".toString()
+            return usableStoreDir("${projectDir}/dbs/${kind}".toString(), workflow)
         }
-        return "${workDir}/dbs/${kind}".toString()
+        return null
+    }
+
+    //
+    // A storeDir is only usable if the TASKS can reach it. When the work dir is a
+    // bucket URI (s3://, gs://, az://) the tasks run on cloud workers -- possibly
+    // behind Fusion, which refuses any path outside its own mount -- so a plain
+    // local POSIX path is not a cache, it is a hard failure. Drop it and let the
+    // download land in the work dir, exactly like DOWNLOAD_DB (--db) does.
+    //
+    private static String usableStoreDir(String dir, workflow) {
+        if (!dir) { return null }
+        def isRemote = { String p -> p ==~ /^[a-zA-Z0-9+.-]+:\/\/.*/ && !p.startsWith('file://') }
+        if (isRemote(workflow.workDir.toString()) && !isRemote(dir)) {
+            return null
+        }
+        return dir
     }
 
     //
