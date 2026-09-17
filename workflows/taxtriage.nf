@@ -590,7 +590,8 @@ workflow TAXTRIAGE {
             } else {
                 def novelty_dbname = novelty_db_in ?: 'UniProtKB'
                 println "Novelty (mmseqs2): seqTaxDB '${novelty_dbname}' not local; will " +
-                        "download via 'mmseqs databases' (cached at ${params.novelty_db_cache})."
+                        "download via 'mmseqs databases' (cached at " +
+                        "${WorkflowTaxtriage.dbCacheDir(params, workflow, 'mmseqs')})."
                 MMSEQS_DOWNLOADDB(novelty_dbname)
                 ch_versions = ch_versions.mix(MMSEQS_DOWNLOADDB.out.versions)
                 ch_novelty_db = MMSEQS_DOWNLOADDB.out.db
@@ -613,7 +614,7 @@ workflow TAXTRIAGE {
                 def kaiju_name = (!novelty_db_in || novelty_db_in == 'Kalamari') ? 'viruses' : novelty_db_in
                 def kaiju_where = kaiju_name.equalsIgnoreCase('test') ?
                         'staged in the work directory' :
-                        "cached at ${params.novelty_kaiju_db_cache}"
+                        "cached at ${WorkflowTaxtriage.dbCacheDir(params, workflow, 'kaiju')}"
                 println "Novelty (kaiju): index '${kaiju_name}' not local; will download a " +
                         "prebuilt kaiju index (${kaiju_where})."
                 KAIJU_DOWNLOADDB(kaiju_name)
@@ -650,7 +651,8 @@ workflow TAXTRIAGE {
                 } else {
                     def k2_name = (!novelty_db_in || novelty_db_in == 'Kalamari') ? 'viral' : novelty_db_in
                     println "Novelty (bracken): db '${k2_name}' not local; will download a " +
-                            "prebuilt Kraken2+Bracken db (cached at ${params.novelty_kraken2_db_cache})."
+                            "prebuilt Kraken2+Bracken db (cached at " +
+                            "${WorkflowTaxtriage.dbCacheDir(params, workflow, 'kraken2')})."
                     KRAKEN2_DOWNLOADDB(k2_name)
                     ch_versions = ch_versions.mix(KRAKEN2_DOWNLOADDB.out.versions)
                     ch_novelty_db = KRAKEN2_DOWNLOADDB.out.db
@@ -830,14 +832,91 @@ workflow TAXTRIAGE {
     ch_reads = split_compressing.noCompress.mix(PIGZ_COMPRESS.out.archive)
 
     // // // //
-    // // // // MODULE: Run FastQC or Porechop, Trimgalore
+    // // // // MODULE: Host removal -> read reduction -> QC trimming
     // // //
+    // Ordering note: de-hosting and read reduction (bbnorm / seqtk) now run
+    // BEFORE adapter/quality trimming (trimgalore, porechop, fastp).  Removing
+    // host reads first means the trimmers only ever see the reads we actually
+    // care about, and normalising/subsampling before trimming means the
+    // expensive per-read QC work is done on a much smaller set of reads.
     ch_porechop_out = Channel.empty()
     ch_fastp_reads = Channel.empty()
     ch_fastp_html = Channel.empty()
     ch_mapaa_taxid = Channel.empty()
     ch_diamond_output = Channel.empty()
 
+    //////////////////// RUN ALIGNEMNT to filter out host reads ////////////////////
+    // Force singleton removal when de novo assembly or diamond is enabled,
+    // as singletons can cause issues with assemblers
+    if ((params.use_denovo || params.use_diamond) && params.include_singletons_removal) {
+        println "WARNING: --include_singletons_removal has been overwritten to false because --use_denovo or --use_diamond was specified. Singletons will be removed from paired-end host-removed reads."
+        params.include_singletons_removal = false
+    }
+
+    // Re-join FASTA inputs into the main read channel now so they benefit from
+    // host removal.  minimap2 handles FASTA queries natively; if host removal
+    // runs, REMOVE_HOSTREADS converts them to FASTQ via samtools-fastq (dummy
+    // quality scores).  If host removal is not configured, FASTA files pass
+    // through unchanged.  Either way, meta.is_fasta stays true and gates the
+    // trimming / QC visualisation steps below.
+    ch_fasta_reads = ch_fasta_reads.map { meta, reads ->
+        meta.read_count = 0   // COUNT_READS is skipped for these samples
+        [meta, reads]
+    }
+    ch_reads = ch_reads.mix(ch_fasta_reads)
+
+    HOST_REMOVAL(
+        ch_reads,
+        params.genome
+    )
+    ch_reads = HOST_REMOVAL.out.unclassified_reads
+    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
+    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.host_removal_stats)
+
+    // ── Optional read reduction with BBMap bbnorm (--downsample) ─────────────
+    // bbnorm is k-mer coverage normalisation, which is only meaningful for
+    // accurate short reads.  Long noisy reads (ONT/PacBio) would fill the k-mer
+    // table with error k-mers, and FASTA inputs have no quality information at
+    // all, so both are routed AROUND the module and mixed back untouched.
+    // Previously every sample was fed in and ch_reads was reassigned to the
+    // module output, which meant any bypassed/failed sample silently vanished
+    // from the rest of the pipeline.
+    if (params.downsample) {
+        ch_bbnorm_in = ch_reads.branch { meta, reads ->
+            norm  : ((meta.platform ?: '') =~ /(?i)ILLUMINA/) && !(meta.is_fasta == true)
+            bypass: true
+        }
+
+        BBMAP_BBNORM( ch_bbnorm_in.norm )
+
+        ch_reads    = ch_bbnorm_in.bypass.mix( BBMAP_BBNORM.out.fastq )
+        ch_versions = ch_versions.mix( BBMAP_BBNORM.out.versions )
+    }
+
+    //////////////////// RUN OPTIONAL SEQTK to subsample arbitrarily ////////////////////
+    if (params.subsample && params.subsample > 0) {
+        ch_subsample  = params.subsample
+        SEQTK_SAMPLE(
+            ch_reads,
+            ch_subsample
+        )
+        ch_reads = SEQTK_SAMPLE.out.reads
+    }
+
+    // Pull FASTA inputs back out of the main channel before trimming: they have
+    // no adapters or quality scores to act on, so trimgalore/porechop/fastp
+    // would be meaningless (or would error) on them.  They are mixed back in
+    // after fastp, below.
+    ch_reads.branch {
+        fasta: it[0].is_fasta == true
+        fastq: !(it[0].is_fasta == true)
+    }.set { reads_by_type_qc }
+    ch_fasta_reads = reads_by_type_qc.fasta
+    ch_reads       = reads_by_type_qc.fastq
+
+    // // // //
+    // // // // MODULE: Run Porechop / Trimgalore
+    // // //
     nontrimmed_reads = ch_reads.filter { !it[0].trim }
     TRIMGALORE(
         ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
@@ -852,15 +931,7 @@ workflow TAXTRIAGE {
     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
     ch_reads = nontrimmed_reads.mix(trimmed_reads)
     ch_multiqc_files = ch_multiqc_files.mix(realOnly(ch_porechop_out).collect { it[1] }.ifEmpty([]))
-    // Create an empty file if se_reads is null
-    // When calling the module, pass the empty file instead of null:
-    if (params.downsample) {
-        BBMAP_BBNORM(
-            ch_reads
-        )
-        ch_reads = BBMAP_BBNORM.out.fastq
-        ch_versions = ch_versions.mix(BBMAP_BBNORM.out.versions)
-    }
+
     COUNT_READS(ch_reads)
     readCountChannel = COUNT_READS.out.count
     // Update the meta with the read count by reading the file content
@@ -872,7 +943,6 @@ workflow TAXTRIAGE {
             meta.read_count = count
             return [meta, reads]
         }
-
 
     //////////////////// RUN PYCOQC on any seq summary file ////////////////////
 
@@ -895,44 +965,10 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(realOnly(FASTP.out.json).collect { it[1] }.ifEmpty([]))
     }
 
-    //////////////////// RUN ALIGNEMNT to filter out host reads ////////////////////
-    // Force singleton removal when de novo assembly or diamond is enabled,
-    // as singletons can cause issues with assemblers
-    if ((params.use_denovo || params.use_diamond) && params.include_singletons_removal) {
-        println "WARNING: --include_singletons_removal has been overwritten to false because --use_denovo or --use_diamond was specified. Singletons will be removed from paired-end host-removed reads."
-        params.include_singletons_removal = false
-    }
-
-    // Re-join FASTA inputs into the main read channel now so they benefit from
-    // host removal.  minimap2 handles FASTA queries natively; if host removal
-    // runs, REMOVE_HOSTREADS converts them to FASTQ via samtools-fastq (dummy
-    // quality scores).  If host removal is not configured, FASTA files pass
-    // through unchanged.  Either way, meta.is_fasta stays true and gates the
-    // QC visualisation steps below.
-    ch_fasta_reads = ch_fasta_reads.map { meta, reads ->
-        meta.read_count = 0   // COUNT_READS was skipped for these samples
-        [meta, reads]
-    }
+    // Re-join the (already de-hosted) FASTA inputs now that all read-quality
+    // steps are done.  meta.is_fasta stays true and gates the QC plots below.
     ch_reads = ch_reads.mix(ch_fasta_reads)
-
-    HOST_REMOVAL(
-        ch_reads,
-        params.genome
-    )
-    //////////////////// RUN OPTIONAL SEQTK to subsample arbitrarily ////////////////////
-
-    ch_reads = HOST_REMOVAL.out.unclassified_reads
-    if (params.subsample && params.subsample > 0) {
-        ch_subsample  = params.subsample
-        SEQTK_SAMPLE(
-            ch_reads,
-            ch_subsample
-        )
-        ch_reads = SEQTK_SAMPLE.out.reads
-    }
     // test to make sure that fastq files are not empty files
-    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
-    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.host_removal_stats)
 
     //////////////////// RUN OPTIONAL FASTQC to get qc plots for multiqc  ////////////////////
     // Skip QC plots for FASTA inputs: if host removal ran, those reads were

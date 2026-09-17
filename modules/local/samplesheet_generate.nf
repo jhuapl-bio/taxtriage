@@ -14,7 +14,13 @@ process GENERATE_SAMPLESHEET {
 
     script:
     def sampleName = meta.sampleName ?: 'sample'
-    def platform   = meta.platform ?: 'ILLUMINA'
+    // Deliberately NOT defaulted to ILLUMINA here.  When fastq_1 is an SRA/ENA
+    // accession, input_check.nf's merge_sra_row() treats a non-empty platform
+    // column as "the user declared this" and skips the instrument_platform that
+    // ENA/NCBI reported -- so defaulting here would silently process an ONT or
+    // PacBio accession as Illumina.  The ILLUMINA fallback lives in
+    // create_fastq_channel(), which still applies to local-file rows.
+    def platform   = meta.platform ?: ''
     def fastq_1    = meta.fastq_1    ?: ''
     def fastq_2    = meta.fastq_2    ?: ''
     def bam        = meta.bam        ?: ''

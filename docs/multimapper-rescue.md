@@ -19,7 +19,7 @@ The missing ~370 are near-perfect alignments sitting at MAPQ 0 because two or th
 `--minmapq` remains a hard filter for uniquely-placed reads. What changes is **what gets phred-scored** for a read the aligner marked as a tie. Instead of MAPQ, the alignment is scored on its own observed divergence, on the same phred scale, and held to the same threshold:
 
 $$
-\text{aln\_phred} = -10 \cdot \log_{10}\!\left(\frac{\text{NM}}{\text{aligned query bases}}\right)
+\text{aln}_{\text{phred}} = -10 \cdot \log_{10}\!\left(\frac{\text{NM}}{\text{aligned query bases}}\right)
 $$
 
 `NM` is the edit distance (mismatches + inserted + deleted bases) and the aligned query length excludes soft- and hard-clipped bases, so the ratio is the observed read-to-reference divergence over the aligned block. A perfect match is capped at Q60. When `NM` is absent, minimap2's gap-compressed divergence tag `de` is used instead; when neither exists the read is **not** rescued.

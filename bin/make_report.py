@@ -206,6 +206,16 @@ def parse_args(argv=None):
              "Multiple values are allowed, e.g. -mc Primary Potential",
     )
     parser.add_argument(
+        "--default_categories", nargs="+", default=None, metavar="CAT",
+        help="Microbial categories the report should OPEN with selected in its "
+             "'Microbial Category' filter. Fed by the pipeline's --show_potentials / "
+             "--show_commensals / --show_opportunistics / --show_unidentified flags so "
+             "the HTML shows the same categories the run was configured for. This is a "
+             "starting selection only -- the control stays editable in the report. "
+             "Accepted values: Primary, Commensal, Opportunistic, Potential, Unknown. "
+             "Unlike -mc/--microbial_category this does NOT drop anything from the data.",
+    )
+    parser.add_argument(
         "-n", "--novelty", default=None, metavar="JSON",
         help="Optional: combined all.novelty.json produced by NOVELTY_COLLECT. When given, the "
              "report shows a Novelty Detection panel (per-sample score/flag + candidate taxa).",
@@ -858,6 +868,14 @@ def _collect_best_cutoffs(sample_meta):
     return aggregated or None
 
 _VALID_MICROBIAL_CATS = {"Primary", "Commensal", "Opportunistic", "Potential", "Unknown"}
+
+
+def _normalise_microbial_cat(raw):
+    """Case-insensitively map a user-supplied category onto the canonical spelling."""
+    return next(
+        (v for v in _VALID_MICROBIAL_CATS if v.lower() == str(raw).strip().lower()),
+        None,
+    )
 
 
 def _resolve_microbial_cats(cat_args):
@@ -2390,6 +2408,27 @@ def main():
     )
 
     microbial_cats = _resolve_microbial_cats(args.microbial_category)
+
+    # ── Category pre-selection for the report UI ──────────────────────────────
+    # Distinct from microbial_cats above, which decides what goes INTO the
+    # report. This only decides what the "Microbial Category" filter has
+    # selected when the report opens; every category stays in the data and is
+    # one click away. Primary is always included -- a report that opened with
+    # no pathogen category selected would look empty.
+    default_categories = None
+    if args.default_categories:
+        _seen = []
+        for _raw in ["Primary"] + list(args.default_categories):
+            _norm = _normalise_microbial_cat(_raw)
+            if _norm is None:
+                print(
+                    f"[make_report] WARNING: --default_categories value {_raw!r} is not "
+                    f"recognised (valid: {sorted(_VALID_MICROBIAL_CATS)}); ignoring.",
+                    file=sys.stderr,
+                )
+            elif _norm not in _seen:
+                _seen.append(_norm)
+        default_categories = _seen or None
     if microbial_cats is None:
         print("[make_report] Microbial category filter: all")
     else:
@@ -2772,6 +2811,7 @@ def main():
         "pipeline_commit":       pipeline_commit,              # global commit hash or None
         "insilico_suite":        insilico_suite,               # spike-in/dilution suite or None
         "has_insilico_suite":    bool(insilico_suite),         # true when subsample datasets present
+        "default_microbial_categories": default_categories,       # UI pre-selection for the category filter
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))

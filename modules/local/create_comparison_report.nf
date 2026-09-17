@@ -264,6 +264,20 @@ process CREATE_COMPARISON_REPORT {
     }
     def export_arg = export_bits.join(' ')
 
+    // ── Microbial-category pre-selection for the interactive report ───────────
+    // The --show_* flags already control which categories reach the static
+    // (PDF/TSV) report. The interactive HTML always carries every category in
+    // its data, so instead of filtering it we bake the same choice in as the
+    // filter's OPENING selection. The viewer can change it at any time.
+    def default_cats = ['Primary']
+    if (params.show_potentials)      default_cats << 'Potential'
+    if (params.show_commensals)      default_cats << 'Commensal'
+    if (params.show_opportunistics)  default_cats << 'Opportunistic'
+    if (params.show_unidentified)    default_cats << 'Unknown'
+    def default_cats_arg = default_cats.size() > 1
+        ? "--default_categories ${default_cats.join(' ')}"
+        : ''
+
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
@@ -272,6 +286,7 @@ process CREATE_COMPARISON_REPORT {
         ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg} ${offline_arg} \\
         ${flag_arg} \\
         ${insil_json_arg} ${insil_manifest_arg} ${insil_params_arg} \\
+        ${default_cats_arg} \\
         ${export_arg}
 
     cat <<-END_VERSIONS > versions.yml
