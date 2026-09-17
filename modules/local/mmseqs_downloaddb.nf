@@ -21,7 +21,7 @@ process MMSEQS_DOWNLOADDB {
 
     // Per-db-name cache dir -> switching --novelty_db doesn't clobber a previous download,
     // and each is reused independently. Closure form lets the directive see the input value.
-    storeDir { "${WorkflowTaxtriage.dbCacheDir(params, workflow, 'mmseqs')}/${db_name.replaceAll('[^A-Za-z0-9._-]', '_')}" }
+    storeDir { "${params.novelty_db_cache}/${db_name.replaceAll('[^A-Za-z0-9._-]', '_')}" }
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?

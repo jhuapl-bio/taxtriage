@@ -186,71 +186,26 @@ The Novelty tab links the raw artifacts, all written to `report/`:
 
 See [CLI Parameters → Novelty Detection](cli-parameters.md#novelty-detection-reference-free--open-set) for the full table. The essentials:
 
-| Parameter                      | Default              | Purpose                                                                                                                                                        |
-| ------------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--novelty`                    | `false`              | Master switch **and** backend selector: `mmseqs2`, `kaiju`, or `bracken`.                                                                                      |
-| `--disable_gene`               | `false`              | Skip the default Pyrodigal step and classify the whole contigs instead of predicted genes. See [Gene mode](#gene-mode-default-on).                             |
-| `--novelty_db`                 | `Kalamari`           | Database for the chosen backend, given as a name/alias (auto-downloaded) or a local path. See the [Backends](#backends) table for what each accepts.           |
-| `--db_cache_dir`               | auto                 | Base dir for every db cache (`<base>/mmseqs`, `<base>/kaiju`, `<base>/kraken2`). See [Database caching on Seqera / cloud](#database-caching-on-seqera--cloud). |
-| `--novelty_db_cache`           | auto                 | `storeDir` cache for the mmseqs2 download. Overrides `--db_cache_dir`.                                                                                         |
-| `--novelty_kaiju_db_cache`     | auto                 | `storeDir` cache for the kaiju download. Overrides `--db_cache_dir`.                                                                                           |
-| `--novelty_kraken2_db_cache`   | auto                 | `storeDir` cache for the bracken/kraken2 download. Overrides `--db_cache_dir`.                                                                                 |
-| `--novelty_kaiju_db_baseurl`   | kaiju S3 bucket      | Index bucket kaiju aliases are fetched from.                                                                                                                   |
-| `--novelty_kraken2_db_baseurl` | genome-idx S3 bucket | Index bucket kraken2/bracken aliases are fetched from.                                                                                                         |
-| `--novelty_kaiju_mode`         | `greedy`             | Kaiju run mode: `greedy` (sensitive) or `mem` (precise). See [Kaiju run mode](#kaiju-run-mode---novelty_kaiju_mode).                                           |
-| `--use_denovo`                 | `false`              | Build the de novo assembly the novelty branch classifies.                                                                                                      |
-| `--novelty_weights`            | `0.5,0.3,0.2`        | `w_dark,w_rank,w_idnt` for the novelty score.                                                                                                                  |
-| `--novelty_flag_z`             | `2.0`                | Score threshold for flagging a sample.                                                                                                                         |
-| `--novelty_idnt_cut`           | `50.0`               | Amino-acid % identity below which a hit counts toward the low-identity tail (mmseqs2 pident).                                                                  |
-| `--novelty_min_reads`          | `2`                  | Candidate floor: min hits to report a taxon (contigs for kaiju/mmseqs2, reads for bracken). `1` disables the depth-scaled cutoff.                              |
-| `--novelty_bracken_readlen`    | `100`                | bracken `-r` read length (kmer distribution to use).                                                                                                           |
-| `--novelty_bracken_level`      | `S`                  | bracken `-l` rank level (S = species).                                                                                                                         |
+| Parameter                      | Default              | Purpose                                                                                                                                              |
+| ------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--novelty`                    | `false`              | Master switch **and** backend selector: `mmseqs2`, `kaiju`, or `bracken`.                                                                            |
+| `--disable_gene`               | `false`              | Skip the default Pyrodigal step and classify the whole contigs instead of predicted genes. See [Gene mode](#gene-mode-default-on).                   |
+| `--novelty_db`                 | `Kalamari`           | Database for the chosen backend, given as a name/alias (auto-downloaded) or a local path. See the [Backends](#backends) table for what each accepts. |
+| `--novelty_db_cache`           | `dbs/mmseqs`         | `storeDir` cache for the mmseqs2 download.                                                                                                           |
+| `--novelty_kaiju_db_cache`     | `dbs/kaiju`          | `storeDir` cache for the kaiju download.                                                                                                             |
+| `--novelty_kraken2_db_cache`   | `dbs/kraken2`        | `storeDir` cache for the bracken/kraken2 download.                                                                                                   |
+| `--novelty_kaiju_db_baseurl`   | kaiju S3 bucket      | Index bucket kaiju aliases are fetched from.                                                                                                         |
+| `--novelty_kraken2_db_baseurl` | genome-idx S3 bucket | Index bucket kraken2/bracken aliases are fetched from.                                                                                               |
+| `--novelty_kaiju_mode`         | `greedy`             | Kaiju run mode: `greedy` (sensitive) or `mem` (precise). See [Kaiju run mode](#kaiju-run-mode---novelty_kaiju_mode).                                 |
+| `--use_denovo`                 | `false`              | Build the de novo assembly the novelty branch classifies.                                                                                            |
+| `--novelty_weights`            | `0.5,0.3,0.2`        | `w_dark,w_rank,w_idnt` for the novelty score.                                                                                                        |
+| `--novelty_flag_z`             | `2.0`                | Score threshold for flagging a sample.                                                                                                               |
+| `--novelty_idnt_cut`           | `50.0`               | Amino-acid % identity below which a hit counts toward the low-identity tail (mmseqs2 pident).                                                        |
+| `--novelty_min_reads`          | `2`                  | Candidate floor: min hits to report a taxon (contigs for kaiju/mmseqs2, reads for bracken). `1` disables the depth-scaled cutoff.                    |
+| `--novelty_bracken_readlen`    | `100`                | bracken `-r` read length (kmer distribution to use).                                                                                                 |
+| `--novelty_bracken_level`      | `S`                  | bracken `-l` rank level (S = species).                                                                                                               |
 
 The lower bound of the candidate gate is the top-level `--novelty_min_reads` (passed straight through by the `NOVELTY_SCORE` module). The depth-scaling fraction (`--min-cand-frac`, default `0.002`) is a `novelty_score.py` default and is not exposed as a pipeline flag; the module forces it to `0` (disabling depth scaling) whenever `--novelty_min_reads ≤ 1`. To use a different fraction, edit the module/script. For very shallow residuals, prefer `--novelty_min_reads 1`.
-
-### Database caching on Seqera / cloud
-
-Every auto-downloaded database is written through a Nextflow `storeDir`: the download
-happens once and any later run resolving to the same directory skips the process
-entirely. That only pays off if the directory is writable by the executor and is the
-_same path_ on the next run.
-
-`${projectDir}` is neither of those on Seqera or any cloud executor. When the pipeline
-is pulled instead of checked out, `projectDir` is a local clone of one commit inside the
-head job:
-
-```
-/.nextflow/assets/.repos/jhuapl-bio/taxtriage/clones/<sha>/dbs/kaiju
-```
-
-Task nodes cannot write there, nothing there survives the job, and the path is keyed by
-**commit**, so bumping the revision re-downloads everything. So the cache location is now
-resolved per run:
-
-| Situation                                                                  | Cache base                    |
-| -------------------------------------------------------------------------- | ----------------------------- |
-| `--db_cache_dir` set                                                       | `<that>/<backend>`            |
-| Work dir is remote (`s3://`, `gs://`, `az://`), or the pipeline was pulled | `${workDir}/dbs/<backend>`    |
-| Plain local checkout (`nextflow run .`)                                    | `${projectDir}/dbs/<backend>` |
-
-The work dir is the right default on cloud: it is a bucket path every task can reach, it
-is pinned by you (or by your Seqera compute environment) rather than by the revision, and
-it therefore survives both re-runs and version bumps.
-
-For a cache shared across runs, users or workspaces, point `--db_cache_dir` at a fixed
-prefix of your own:
-
-```bash
-nextflow run https://github.com/jhuapl-bio/taxtriage \
-  -r stable -latest \
-  --novelty kaiju --novelty_db viral \
-  --db_cache_dir s3://my-bucket/taxtriage-dbs \
-  -profile docker
-```
-
-The per-backend flags (`--novelty_db_cache`, `--novelty_kaiju_db_cache`,
-`--novelty_kraken2_db_cache`) still win over `--db_cache_dir` when you need one database
-in a different place.
 
 ### Example
 

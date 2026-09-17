@@ -33,63 +33,6 @@ class WorkflowTaxtriage {
     //
     // Check and validate parameters
     //
-    //
-    // ── Where auto-downloaded databases are cached ────────────────────────────
-    //
-    // The caches are `storeDir` targets: the download happens once and every
-    // later run that resolves to the same directory skips the process outright.
-    // That only works if the directory is (a) writable by the executor and
-    // (b) the SAME path on the next run.
-    //
-    // `${projectDir}` satisfies neither on Seqera / cloud executors. When the
-    // pipeline is pulled rather than checked out, projectDir is the local clone
-    // of one commit:
-    //
-    //     /.nextflow/assets/.repos/jhuapl-bio/taxtriage/clones/<sha>/dbs/kaiju
-    //
-    // which lives inside the head-job container (so a task running on another
-    // node cannot write it, and nothing there survives the job), and is keyed by
-    // COMMIT, so bumping the revision silently re-downloads everything. Worse,
-    // on a cloud executor it is a local POSIX path where every other path is a
-    // bucket URI, so the storeDir is simply lost.
-    //
-    // Resolution order:
-    //   1. the per-backend override (--novelty_kaiju_db_cache, ...)   - explicit wins
-    //   2. --db_cache_dir <base>/<kind>                               - one base for all
-    //   3. <workDir>/dbs/<kind>   when the work dir is remote (s3://, gs://,
-    //      az://) OR the pipeline is running from a pulled clone       - bucket-native,
-    //      shared by every task, and stable across runs and revisions because the
-    //      work dir is what the user (or Seqera) pins
-    //   4. <projectDir>/dbs/<kind>                                    - a plain local
-    //      checkout, i.e. the historical behaviour, unchanged
-    //
-    public static String dbCacheDir(params, workflow, String kind) {
-        def override = null
-        switch (kind) {
-            case 'mmseqs':  override = params.novelty_db_cache;         break
-            case 'kaiju':   override = params.novelty_kaiju_db_cache;   break
-            case 'kraken2': override = params.novelty_kraken2_db_cache; break
-        }
-        if (override) {
-            return override.toString()
-        }
-        if (params.db_cache_dir) {
-            return "${params.db_cache_dir}/${kind}".toString()
-        }
-
-        def workDir    = workflow.workDir.toString()
-        def projectDir = workflow.projectDir.toString()
-        boolean isRemote = (workDir =~ /^[a-zA-Z0-9+.-]+:\/\//).find()
-        // Nextflow stages a pulled pipeline under <home>/.nextflow/assets/... ,
-        // and Seqera adds a per-commit `clones/<sha>` level. Either way the path
-        // is not a stable, shared, writable place to park tens of GB.
-        def isPulledClone = projectDir.contains('/.nextflow/assets/') || projectDir.contains('/clones/')
-
-        return (isRemote || isPulledClone)
-            ? "${workDir}/dbs/${kind}".toString()
-            : "${projectDir}/dbs/${kind}".toString()
-    }
-
     public static void initialise(params, log) {
         genomeExistsError(params, log)
         mergeHostTaxids(params, log)

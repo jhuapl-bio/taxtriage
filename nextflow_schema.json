@@ -216,46 +216,8 @@
                 },
                 "downsample": {
                     "type": "boolean",
-                    "default": false,
-                    "description": "Reduce read depth with BBMap bbnorm (k-mer coverage normalisation). Applied to Illumina FASTQ only; ONT/PacBio and FASTA inputs bypass it.",
+                    "description": "Downsample your fastq file(s) using khmer",
                     "fa_icon": "fas fa-file-signature"
-                },
-                "bbnorm_target": {
-                    "type": "integer",
-                    "default": 100,
-                    "description": "bbnorm target k-mer coverage to normalise down to. Only used with --downsample.",
-                    "fa_icon": "fas fa-compress"
-                },
-                "bbnorm_mindepth": {
-                    "type": "integer",
-                    "default": 2,
-                    "description": "bbnorm mindepth: reads below this k-mer depth are discarded. bbnorm's own default of 6 removes genuinely rare organisms, so keep this low for pathogen triage. Only used with --downsample.",
-                    "fa_icon": "fas fa-compress"
-                },
-                "bbnorm_passes": {
-                    "type": "integer",
-                    "default": 2,
-                    "description": "Number of bbnorm normalisation passes. Only used with --downsample.",
-                    "fa_icon": "fas fa-compress"
-                },
-                "bbnorm_prefilter": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Enable bbnorm's bloom prefilter (prefilter=t). Strongly recommended for multi-GB inputs. Only used with --downsample.",
-                    "fa_icon": "fas fa-compress"
-                },
-                "bbnorm_args": {
-                    "type": ["string", "null"],
-                    "default": null,
-                    "description": "Extra arguments appended verbatim to bbnorm.sh. Only used with --downsample.",
-                    "fa_icon": "fas fa-terminal"
-                },
-                "deep_profile": {
-                    "type": "boolean",
-                    "default": false,
-                    "hidden": true,
-                    "description": "Internal flag set by -profile deep. Gates conf/deep_process.config, which must load after conf/modules.config to win its process resource overrides. Do not set manually.",
-                    "fa_icon": "fas fa-cog"
                 },
                 "clip_r1": {
                     "type": ["integer", "null"],
@@ -1248,21 +1210,17 @@
                     "description": "DB selector for the chosen --novelty backend: a NAME to auto-download or a local path/dir. mmseqs2: an mmseqs db name (e.g. Kalamari, UniProtKB) or a seqTaxDB path. kaiju: an alias (viruses, nr, refseq, nr_euk, refseq_nr, refseq_ref, progenomes, fungi, plasmids, rvdb), an exact *.tgz filename, a full URL, or a local dir. bracken: an alias (standard[_8gb|_16gb], viral, minusb, pluspf[_8gb|_16gb], pluspfp[_8gb|_16gb], core_nt, gtdb, eupathdb, ncbi_reference; 'k2_' prefix optional), an exact *.tar.gz filename, a full URL, or a local kraken2 db dir.",
                     "default": "UniProtKB"
                 },
-                "db_cache_dir": {
-                    "type": "string",
-                    "description": "Base directory for every auto-downloaded database cache (<base>/mmseqs, <base>/kaiju, <base>/kraken2). Unset, the pipeline uses ${projectDir}/dbs for a local checkout and ${workDir}/dbs when the pipeline was pulled or the work dir is a bucket (Seqera/cloud), because ${projectDir} there is a throwaway per-commit clone inside the head job. Point this at a bucket prefix or shared filesystem to reuse downloads across runs and users."
-                },
                 "novelty_db_cache": {
                     "type": "string",
-                    "description": "storeDir cache directory for downloaded mmseqs databases; persists across runs and on -resume. Overrides --db_cache_dir."
+                    "description": "storeDir cache directory for downloaded mmseqs databases; persists across runs and on -resume."
                 },
                 "novelty_kaiju_db_cache": {
                     "type": "string",
-                    "description": "storeDir cache directory for auto-downloaded kaiju indexes; persists across runs and on -resume. Overrides --db_cache_dir."
+                    "description": "storeDir cache directory for auto-downloaded kaiju indexes; persists across runs and on -resume."
                 },
                 "novelty_kraken2_db_cache": {
                     "type": "string",
-                    "description": "storeDir cache directory for auto-downloaded Kraken2+Bracken databases; persists across runs and on -resume. Overrides --db_cache_dir."
+                    "description": "storeDir cache directory for auto-downloaded Kraken2+Bracken databases; persists across runs and on -resume."
                 },
                 "novelty_kaiju_db_baseurl": {
                     "type": "string",

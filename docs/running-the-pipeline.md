@@ -112,13 +112,21 @@ Profiles control resource allocation and container runtime. Multiple profiles ca
 -profile test,docker
 ```
 
-A run normally chains one workload profile (`low`, `viral`, `desktop`, `local`,
-`deep`, …) with one container profile (`docker`, `singularity`, …), plus an
-executor profile such as `slurm` on a cluster.
+### Container Profiles
 
-**See [Profiles](profiles.md)** for the full list of available profiles, what
-each one sets, guidance on picking the right one for your hardware, and the
-database and memory limits each implies.
+| Profile       | Description                        |
+| ------------- | ---------------------------------- |
+| `docker`      | Use Docker for all containers      |
+| `singularity` | Use Singularity for all containers |
+
+### Execution Profiles
+
+| Profile      | Description                                              |
+| ------------ | -------------------------------------------------------- |
+| `local`      | Reduced resource limits for laptops/workstations         |
+| `test`       | Minimal test dataset (pulls from GitHub)                 |
+| `test_viral` | Test dataset with the viral Kraken2 database             |
+| `mce`        | Uses the pathogen FASTA sheet for alignment (no Kraken2) |
 
 ---
 

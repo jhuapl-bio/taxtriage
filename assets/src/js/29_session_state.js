@@ -261,15 +261,6 @@
     document.querySelectorAll("input[id], select[id], textarea[id]").forEach(function (el) {
       if (el.type === "file") return;
       if (el.type === "checkbox" || el.type === "radio") ui.controls[el.id] = { checked: el.checked };
-      // A <select multiple> (e.g. #filter-mc) carries N selections; el.value
-      // only reports the first one, which silently dropped the rest on
-      // save -> reload. Capture the whole selection instead.
-      else if (el.tagName === "SELECT" && el.multiple)
-        ui.controls[el.id] = {
-          values: Array.from(el.selectedOptions).map(function (o) {
-            return o.value;
-          }),
-        };
       else ui.controls[el.id] = { value: el.value };
     });
     try {
@@ -296,15 +287,7 @@
       if (!el || el.type === "file") return;
       var v = ui.controls[id];
       if (v && Object.prototype.hasOwnProperty.call(v, "checked")) el.checked = v.checked;
-      else if (v && Array.isArray(v.values)) {
-        var want = {};
-        v.values.forEach(function (x) {
-          want[String(x)] = true;
-        });
-        Array.from(el.options).forEach(function (o) {
-          o.selected = !!want[String(o.value)];
-        });
-      } else if (v && v.value !== undefined) el.value = v.value;
+      else if (v && v.value !== undefined) el.value = v.value;
     });
     // Keep the TASS min number<->range slider pair in sync.
     var minEl = document.getElementById("filter-min");

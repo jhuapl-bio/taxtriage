@@ -35,7 +35,7 @@ process KRAKEN2_DOWNLOADDB {
     label 'process_medium'
 
     // Per-name cache dir -> switching --novelty_db doesn't clobber a previous download.
-    storeDir { "${WorkflowTaxtriage.dbCacheDir(params, workflow, 'kraken2')}/${db_name.toString().replaceAll('[^A-Za-z0-9._-]', '_')}" }
+    storeDir { "${params.novelty_kraken2_db_cache}/${db_name.toString().replaceAll('[^A-Za-z0-9._-]', '_')}" }
 
     conda "conda-forge::gnu-wget=1.18"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?

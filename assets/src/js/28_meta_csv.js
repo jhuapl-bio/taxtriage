@@ -311,39 +311,6 @@ function __ttRunInit() {
   // Sync the View-level dropdown to what the data actually contains.
   _syncViewLevelOptions();
 
-  // ── Pre-select the microbial categories the run was built for ───────────
-  // DEFAULT_MICROBIAL_CATS comes from the pipeline's --show_potentials /
-  // --show_commensals / --show_opportunistics / --show_unidentified flags
-  // (see early.js). Applying it here, before the first redraw, means the
-  // report opens showing exactly the categories the run asked for. The select
-  // keeps working normally afterwards — deselecting everything still means
-  // "show all" — so this is a default, not a lock.
-  {
-    const mcEl = document.getElementById("filter-mc");
-    if (mcEl && DEFAULT_MICROBIAL_CATS && DEFAULT_MICROBIAL_CATS.length) {
-      const want = new Set(DEFAULT_MICROBIAL_CATS.map((c) => String(c).toLowerCase()));
-      let matched = 0;
-      Array.from(mcEl.options).forEach((opt) => {
-        const on = want.has(String(opt.value).toLowerCase());
-        opt.selected = on;
-        if (on) matched++;
-      });
-      // Every requested category missing from the control would silently clear
-      // the selection (= show everything). Restore the authored default instead.
-      if (!matched) {
-        Array.from(mcEl.options).forEach((opt) => {
-          opt.selected = String(opt.value).toLowerCase() === "primary";
-        });
-      } else {
-        const hint = document.getElementById("filter-mc-default-note");
-        if (hint) {
-          hint.textContent = "Pre-selected from this run's --show_* settings; change freely.";
-          hint.style.display = "";
-        }
-      }
-    }
-  }
-
   // Pre-populate min TASS filter from the recommended best_cutoffs threshold.
   // CRITICAL: also push the value into the paired range slider — otherwise the
   // slider knob stays at its HTML default (70) while the number reads e.g. 20,
