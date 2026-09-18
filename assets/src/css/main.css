@@ -6596,6 +6596,118 @@ body.report-pdf-printing .longi-legend-pager {
   opacity: 0.4;
   cursor: default;
 }
+
+/* Run grouping in the Show / Hide panel: a segmented Runs|Samples switch above
+   the search, run rows with a caret, and their samples nested underneath. */
+#longi-sample-groupby {
+  display: flex;
+  margin-bottom: 0.45em;
+  border: 1px solid #ccd6e8;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+#longi-sample-groupby button {
+  font-family: inherit;
+  flex: 1;
+  border: 0;
+  background: #fff;
+  color: #546e7a;
+  font-size: 0.72em;
+  font-weight: 600;
+  padding: 3px 0;
+  cursor: pointer;
+}
+#longi-sample-groupby button + button {
+  border-left: 1px solid #ccd6e8;
+}
+#longi-sample-groupby button:hover:not(.active) {
+  background: #f1f7ff;
+  color: #1565c0;
+}
+#longi-sample-groupby button.active {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+.longi-sample-row,
+.longi-run-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+.longi-sample-row.nested {
+  margin-left: 15px;
+}
+.longi-sample-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(0, 0, 0, 0.15);
+}
+.longi-sample-label,
+.longi-run-label {
+  font-size: 0.78em;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.longi-sample-label input,
+.longi-run-label input {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.longi-run-row {
+  gap: 4px;
+}
+.longi-run-caret {
+  font-family: inherit;
+  border: 0;
+  background: none;
+  color: #78909c;
+  cursor: pointer;
+  padding: 0;
+  width: 11px;
+  flex-shrink: 0;
+  font-size: 0.7em;
+  line-height: 1;
+}
+.longi-run-caret:hover {
+  color: #1565c0;
+}
+.longi-run-label {
+  font-weight: 600;
+  color: #37474f;
+}
+.longi-run-count {
+  margin-left: auto;
+  padding-left: 3px;
+  font-weight: 400;
+  color: #90a4ae;
+  font-size: 0.92em;
+  flex-shrink: 0;
+}
+/* Member colours, so a collapsed run still says which samples it stands for. */
+.longi-run-strip {
+  display: flex;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(0, 0, 0, 0.15);
+}
+.longi-run-strip i {
+  flex: 1;
+}
 /* Shown in place of the chart when the legend search matches no series. */
 .longi-search-empty {
   text-align: center;

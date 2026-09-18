@@ -221,6 +221,30 @@ function _buildLongiSamplePanel(sampleNames) {
     });
 }
 
+/* Group a series' points into one segment per run, each ordered by date.
+
+   Do NOT assume points of the same run are adjacent in `pts`. `pts` is sorted
+   globally by date (run is only a tiebreak), so whenever two runs overlap in
+   time their points interleave -- R1 R2 R3 R4 R1 R2 ... A contiguous-run scan
+   over that array sees nothing but length-1 segments and draws no line at all,
+   which is why a 4-run study looked fine one run at a time and lost its lines
+   the moment every sample was shown.
+
+   Points with no run group together (matching the old scan, where consecutive
+   null-run points connected). Segments of one point are dropped: a line needs
+   two ends. The dot for such a point is still drawn by the caller. */
+function _longiRunSegments(pts, hasRunInfo) {
+  if (!pts || pts.length < 2) return [];
+  if (!hasRunInfo || !pts.some((p) => p.run != null)) return [pts];
+  const byRun = new Map();
+  pts.forEach((p) => {
+    const k = p.run == null ? "\u0000__norun__" : String(p.run);
+    if (!byRun.has(k)) byRun.set(k, []);
+    byRun.get(k).push(p);
+  });
+  return [...byRun.values()].map((seg) => seg.slice().sort((a, b) => a.date - b.date)).filter((seg) => seg.length > 1);
+}
+
 function _drawLongitudinalPlot() {
   const wrap = document.getElementById("longi-chart-wrap");
   const noData = document.getElementById("longi-no-data");
@@ -455,37 +479,16 @@ function _drawLongitudinalPlot() {
 
   // Draw one line + dots per organism
   series.forEach((s) => {
-    // Lines: if run info is present, segment so points from different runs don't connect
-    if (s.pts.length > 1) {
-      if (hasRunInfo && s.pts.some((p) => p.run != null)) {
-        // Split into contiguous same-run segments and draw each separately
-        let i = 0;
-        while (i < s.pts.length) {
-          const segRun = s.pts[i].run;
-          let j = i + 1;
-          while (j < s.pts.length && s.pts[j].run === segRun) j++;
-          const seg = s.pts.slice(i, j);
-          if (seg.length > 1) {
-            g.append("path")
-              .datum(seg)
-              .attr("fill", "none")
-              .attr("stroke", s.color)
-              .attr("stroke-width", 2.2)
-              .attr("opacity", 0.75)
-              .attr("d", lineGen);
-          }
-          i = j;
-        }
-      } else {
-        g.append("path")
-          .datum(s.pts)
-          .attr("fill", "none")
-          .attr("stroke", s.color)
-          .attr("stroke-width", 2.2)
-          .attr("opacity", 0.75)
-          .attr("d", lineGen);
-      }
-    }
+    // Lines: one path per run, so points from different runs never connect.
+    _longiRunSegments(s.pts, hasRunInfo).forEach((seg) => {
+      g.append("path")
+        .datum(seg)
+        .attr("fill", "none")
+        .attr("stroke", s.color)
+        .attr("stroke-width", 2.2)
+        .attr("opacity", 0.75)
+        .attr("d", lineGen);
+    });
 
     // Dots — bullseye: outer=organism color, white ring, inner=sample color
     // Zero/absent points stay as hollow dashed circles

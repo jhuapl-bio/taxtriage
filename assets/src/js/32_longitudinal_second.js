@@ -200,8 +200,76 @@ let _longiSampleQuery = "";
 let _longiSamplePage = 1;
 const _LONGI_SAMPLE_PAGE_SIZE = 8;
 
+/* ── Run grouping for the Show / Hide panel ─────────────────────────
+   The panel bins by run by default: one row per run that toggles the whole run
+   at once, expandable to its individual samples. A 4-run study then reads as
+   four rows instead of sixteen, and "drop run 3" is one click rather than four.
+   "Samples" switches back to the flat list. Individual checkboxes keep working
+   in both modes; the run row just shows a tri-state when a run is part on,
+   part off. With no run metadata the control hides itself and the list is
+   flat, since every sample would otherwise sit in one "(no run)" bucket.     */
+const _LONGI_NO_RUN = "(no run)";
+const _LONGI_RUN_PAGE_SIZE = 5;
+let _longiSampleGroupBy = "run"; // "run" | "sample"
+const _longiRunOpen = {}; // run label → expanded?
+
+/* sample → run label, from live RUN_META. Single source of truth: the plot's
+   line segmentation reads this same map, so a run row in the panel is exactly
+   one line on the chart. Accepts "run" (CSV/xlsx) or "run_id" (JSON metadata). */
+function _longiRunMap() {
+  const m = {};
+  (RUN_META || []).forEach((r) => {
+    const rv = r.run != null && String(r.run).trim() ? r.run : r.run_id;
+    if (rv != null && String(rv).trim()) m[r.sample_name] = String(rv).trim();
+  });
+  return m;
+}
+
+function _longiHasRunInfo() {
+  return Object.keys(_longiRunMap()).length > 0;
+}
+
+/* [{run, samples:[id]}] over every timed sample, natural order, "(no run)" last. */
+function _longiRunGroups() {
+  const runMap = _longiRunMap();
+  const groups = new Map();
+  _longiSampleNames.forEach((id) => {
+    const key = runMap[id] || _LONGI_NO_RUN;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(id);
+  });
+  return [...groups.entries()]
+    .map(([run, samples]) => ({ run, samples: samples.slice().sort() }))
+    .sort((a, b) =>
+      a.run === _LONGI_NO_RUN
+        ? 1
+        : b.run === _LONGI_NO_RUN
+          ? -1
+          : a.run.localeCompare(b.run, undefined, { numeric: true, sensitivity: "base" }),
+    );
+}
+
+/* Groups the search matches. A run matches on its own label — and then brings
+   all of its samples — or on any member sample, in which case only the matching
+   members are listed under it. */
+function _longiMatchedGroups() {
+  const match = _longiLegendMatcher(_longiSampleQuery);
+  const out = [];
+  _longiRunGroups().forEach((g) => {
+    if (!match || match(g.run)) {
+      out.push(g);
+      return;
+    }
+    const hits = g.samples.filter((id) => match(id));
+    if (hits.length) out.push({ run: g.run, samples: hits });
+  });
+  return out;
+}
+
 /* The samples the list is currently showing — i.e. what All / None act on. */
 function _longiMatchedSamples() {
+  if (_longiSampleGroupBy === "run" && _longiHasRunInfo())
+    return _longiMatchedGroups().flatMap((g) => g.samples);
   const match = _longiLegendMatcher(_longiSampleQuery);
   return match ? _longiSampleNames.filter((id) => match(id)) : _longiSampleNames.slice();
 }
@@ -238,7 +306,120 @@ function _buildLongiSamplePanel(sampleNames) {
       }
     });
   }
+  // Group-by control. Hidden outright when nothing carries a run, since then
+  // "Runs" is a single "(no run)" bucket wrapped around the whole list.
+  const gb = document.getElementById("longi-sample-groupby");
+  if (gb) {
+    const hasRuns = _longiHasRunInfo();
+    gb.style.display = hasRuns ? "" : "none";
+    if (!hasRuns) _longiSampleGroupBy = "sample";
+    if (!gb.getAttribute("data-wired")) {
+      gb.setAttribute("data-wired", "1");
+      gb.querySelectorAll("[data-gb]").forEach((b) => {
+        b.addEventListener("click", () => {
+          _longiSampleGroupBy = b.getAttribute("data-gb");
+          _longiSamplePage = 1;
+          _renderLongiSampleList();
+        });
+      });
+    }
+    gb.querySelectorAll("[data-gb]").forEach((b) => {
+      b.classList.toggle("active", b.getAttribute("data-gb") === _longiSampleGroupBy);
+    });
+  }
+
   _renderLongiSampleList();
+}
+
+/* One sample row: colour swatch, checkbox, truncated name. Shared by the flat
+   list and the samples nested under a run. */
+function _longiSampleRow(id, nested) {
+  const div = document.createElement("div");
+  div.className = "longi-sample-row" + (nested ? " nested" : "");
+
+  const swatch = document.createElement("span");
+  swatch.className = "longi-sample-swatch";
+  swatch.style.background = sampleColors[id] || "#1565c0";
+
+  const lbl = document.createElement("label");
+  lbl.className = "longi-sample-label";
+  lbl.title = id;
+
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.checked = !_longiHidden[id];
+  cb.addEventListener("change", (e) => {
+    _longiHidden[id] = !e.target.checked;
+    // Re-render in run mode so the parent row's tri-state follows its children.
+    if (_longiSampleGroupBy === "run") _renderLongiSampleList();
+    _drawLongitudinalPlot();
+  });
+
+  lbl.appendChild(cb);
+  lbl.appendChild(document.createTextNode(id.length > 18 ? id.slice(0, 17) + "\u2026" : id));
+  div.appendChild(swatch);
+  div.appendChild(lbl);
+  return div;
+}
+
+/* One run row: caret, tri-state checkbox over its samples, member colours,
+   name and a visible/total count. */
+function _longiRunRow(group) {
+  const { run, samples } = group;
+  const visible = samples.filter((id) => !_longiHidden[id]).length;
+  const open = !!_longiRunOpen[run];
+
+  const div = document.createElement("div");
+  div.className = "longi-run-row";
+
+  const caret = document.createElement("button");
+  caret.type = "button";
+  caret.className = "longi-run-caret";
+  caret.innerHTML = open ? "&#9662;" : "&#9656;";
+  caret.title = open ? "Hide this run's samples" : "Show this run's samples";
+  caret.setAttribute("aria-expanded", open ? "true" : "false");
+  caret.addEventListener("click", () => {
+    _longiRunOpen[run] = !open;
+    _renderLongiSampleList();
+  });
+
+  // Member colours, so a collapsed run still says which samples it stands for.
+  const strip = document.createElement("span");
+  strip.className = "longi-run-strip";
+  samples.slice(0, 4).forEach((id) => {
+    const seg = document.createElement("i");
+    seg.style.background = sampleColors[id] || "#90a4ae";
+    strip.appendChild(seg);
+  });
+
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.checked = visible > 0;
+  cb.indeterminate = visible > 0 && visible < samples.length;
+  cb.addEventListener("change", (e) => {
+    const hide = !e.target.checked;
+    samples.forEach((id) => {
+      _longiHidden[id] = hide;
+    });
+    _renderLongiSampleList();
+    _drawLongitudinalPlot();
+  });
+
+  const lbl = document.createElement("label");
+  lbl.className = "longi-run-label";
+  lbl.title = run + " \u2014 " + samples.join(", ");
+  lbl.appendChild(cb);
+  lbl.appendChild(document.createTextNode(run.length > 13 ? run.slice(0, 12) + "\u2026" : run));
+
+  const cnt = document.createElement("span");
+  cnt.className = "longi-run-count";
+  cnt.textContent = visible + "/" + samples.length;
+  lbl.appendChild(cnt);
+
+  div.appendChild(caret);
+  div.appendChild(strip);
+  div.appendChild(lbl);
+  return div;
 }
 
 function _renderLongiSampleList() {
@@ -246,58 +427,46 @@ function _renderLongiSampleList() {
   if (!list) return;
   list.innerHTML = "";
 
-  const shown = _longiMatchedSamples();
-  const totalPages = Math.max(1, Math.ceil(shown.length / _LONGI_SAMPLE_PAGE_SIZE));
+  const byRun = _longiSampleGroupBy === "run" && _longiHasRunInfo();
+  const shownSamples = _longiMatchedSamples();
+  // Pagination counts runs in run mode and samples in sample mode, so a page
+  // is always a page of rows the user is actually choosing between.
+  const units = byRun ? _longiMatchedGroups() : shownSamples;
+  const pageSize = byRun ? _LONGI_RUN_PAGE_SIZE : _LONGI_SAMPLE_PAGE_SIZE;
+
+  const totalPages = Math.max(1, Math.ceil(units.length / pageSize));
   if (_longiSamplePage > totalPages) _longiSamplePage = totalPages;
   if (_longiSamplePage < 1) _longiSamplePage = 1;
-  const start = (_longiSamplePage - 1) * _LONGI_SAMPLE_PAGE_SIZE;
-  const page = shown.slice(start, start + _LONGI_SAMPLE_PAGE_SIZE);
+  const start = (_longiSamplePage - 1) * pageSize;
+  const page = units.slice(start, start + pageSize);
 
   const countEl = document.getElementById("longi-sample-count");
   if (countEl)
     countEl.textContent =
-      shown.length === _longiSampleNames.length ? "" : `(${shown.length}/${_longiSampleNames.length})`;
+      shownSamples.length === _longiSampleNames.length ? "" : `(${shownSamples.length}/${_longiSampleNames.length})`;
 
   if (!page.length) {
     const empty = document.createElement("div");
     empty.className = "longi-sample-empty";
-    empty.textContent = _longiSampleQuery.trim() ? "No sample matches." : "No timed samples.";
+    empty.textContent = _longiSampleQuery.trim()
+      ? byRun
+        ? "No run or sample matches."
+        : "No sample matches."
+      : "No timed samples.";
     list.appendChild(empty);
   }
 
-  page.forEach((id) => {
-    const color = sampleColors[id] || "#1565c0";
-    const div = document.createElement("div");
-    div.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:5px";
-
-    const swatch = document.createElement("span");
-    swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;
-          background:${color};flex-shrink:0;border:1.5px solid rgba(0,0,0,.15)`;
-
-    const lbl = document.createElement("label");
-    lbl.style.cssText =
-      "font-size:0.78em;cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px";
-    lbl.title = id;
-
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = !_longiHidden[id];
-    cb.style.cssText = "flex-shrink:0;cursor:pointer";
-    cb.addEventListener("change", (e) => {
-      _longiHidden[id] = !e.target.checked;
-      _drawLongitudinalPlot();
+  if (byRun) {
+    page.forEach((g) => {
+      list.appendChild(_longiRunRow(g));
+      if (_longiRunOpen[g.run]) g.samples.forEach((id) => list.appendChild(_longiSampleRow(id, true)));
     });
+  } else {
+    page.forEach((id) => list.appendChild(_longiSampleRow(id, false)));
+  }
 
-    const txt = document.createTextNode(id.length > 18 ? id.slice(0, 17) + "…" : id);
-    lbl.appendChild(cb);
-    lbl.appendChild(txt);
-    div.appendChild(swatch);
-    div.appendChild(lbl);
-    list.appendChild(div);
-  });
-
-  // Reserve a full page of height only once there IS more than one page —
-  // a six-sample run shouldn't carry an empty half-panel around with it.
+  // Reserve a full page of height only once the list DOES page — a six-sample
+  // run shouldn't carry an empty half-panel around with it.
   list.classList.toggle("paged", totalPages > 1);
 
   const pager = document.getElementById("longi-sample-pager");
@@ -482,6 +651,30 @@ function _longiLegend(series) {
   return box;
 }
 
+/* Group a series' points into one segment per run, each ordered by date.
+
+   Do NOT assume points of the same run are adjacent in `pts`. `pts` is sorted
+   globally by date (run is only a tiebreak), so whenever two runs overlap in
+   time their points interleave -- R1 R2 R3 R4 R1 R2 ... A contiguous-run scan
+   over that array sees nothing but length-1 segments and draws no line at all,
+   which is why a 4-run study looked fine one run at a time and lost its lines
+   the moment every sample was shown.
+
+   Points with no run group together (matching the old scan, where consecutive
+   null-run points connected). Segments of one point are dropped: a line needs
+   two ends. The dot for such a point is still drawn by the caller. */
+function _longiRunSegments(pts, hasRunInfo) {
+  if (!pts || pts.length < 2) return [];
+  if (!hasRunInfo || !pts.some((p) => p.run != null)) return [pts];
+  const byRun = new Map();
+  pts.forEach((p) => {
+    const k = p.run == null ? "\u0000__norun__" : String(p.run);
+    if (!byRun.has(k)) byRun.set(k, []);
+    byRun.get(k).push(p);
+  });
+  return [...byRun.values()].map((seg) => seg.slice().sort((a, b) => a.date - b.date)).filter((seg) => seg.length > 1);
+}
+
 function _drawLongitudinalPlot() {
   const wrap = document.getElementById("longi-chart-wrap");
   const noData = document.getElementById("longi-no-data");
@@ -500,14 +693,13 @@ function _drawLongitudinalPlot() {
 
   // Rebuild time map and run map from live RUN_META
   const timeMap = {};
-  const runMap = {}; // sample_name → run label (if present)
   (RUN_META || []).forEach((r) => {
     const d = _parseLongiDate(r.collection_time);
     if (d) timeMap[r.sample_name] = d;
-    // Accept "run" (from CSV/xlsx) or "run_id" (from JSON metadata)
-    const rv = r.run || r.run_id || null;
-    if (rv != null) runMap[r.sample_name] = String(rv);
   });
+  // Same helper the Show / Hide panel bins by, so one run row there is exactly
+  // one line here. Accepts "run" (CSV/xlsx) or "run_id" (JSON metadata).
+  const runMap = _longiRunMap();
   const hasRunInfo = Object.keys(runMap).length > 0;
 
   // All visible samples that have a collection_time (used for zero-fill)
@@ -753,19 +945,7 @@ function _drawLongitudinalPlot() {
     // Area fill, when the toggle is on. Segmented the same way as the line
     // below, so a gap between runs stays a gap instead of a filled bridge.
     if (fillOn && s.pts.length > 1) {
-      const segs = [];
-      if (hasRunInfo && s.pts.some((p) => p.run != null)) {
-        let i = 0;
-        while (i < s.pts.length) {
-          const segRun = s.pts[i].run;
-          let j = i + 1;
-          while (j < s.pts.length && s.pts[j].run === segRun) j++;
-          if (j - i > 1) segs.push(s.pts.slice(i, j));
-          i = j;
-        }
-      } else {
-        segs.push(s.pts);
-      }
+      const segs = _longiRunSegments(s.pts, hasRunInfo);
       segs.forEach((seg) => {
         areaLayer
           .append("path")
@@ -777,37 +957,16 @@ function _drawLongitudinalPlot() {
       });
     }
 
-    // Lines: if run info is present, segment so points from different runs don't connect
-    if (s.pts.length > 1) {
-      if (hasRunInfo && s.pts.some((p) => p.run != null)) {
-        // Split into contiguous same-run segments and draw each separately
-        let i = 0;
-        while (i < s.pts.length) {
-          const segRun = s.pts[i].run;
-          let j = i + 1;
-          while (j < s.pts.length && s.pts[j].run === segRun) j++;
-          const seg = s.pts.slice(i, j);
-          if (seg.length > 1) {
-            g.append("path")
-              .datum(seg)
-              .attr("fill", "none")
-              .attr("stroke", s.color)
-              .attr("stroke-width", 2.2)
-              .attr("opacity", 0.75)
-              .attr("d", lineGen);
-          }
-          i = j;
-        }
-      } else {
-        g.append("path")
-          .datum(s.pts)
-          .attr("fill", "none")
-          .attr("stroke", s.color)
-          .attr("stroke-width", 2.2)
-          .attr("opacity", 0.75)
-          .attr("d", lineGen);
-      }
-    }
+    // Lines: one path per run, so points from different runs never connect.
+    _longiRunSegments(s.pts, hasRunInfo).forEach((seg) => {
+      g.append("path")
+        .datum(seg)
+        .attr("fill", "none")
+        .attr("stroke", s.color)
+        .attr("stroke-width", 2.2)
+        .attr("opacity", 0.75)
+        .attr("d", lineGen);
+    });
 
     // Dots — bullseye: outer=organism color, white ring, inner=sample color
     // Zero/absent points stay as hollow dashed circles

@@ -2724,11 +2724,19 @@
                        sidebar filters: plain text is a substring, a valid
                        regular expression is used as one. All / None act on
                        whatever the search currently matches. -->
+                  <!-- Bin the list by run (default) or list every sample flat.
+                       Hidden by the JS when no sample carries run metadata. -->
+                  <div id="longi-sample-groupby" role="group" aria-label="Group this list by">
+                    <button type="button" data-gb="run" title="One row per run; expand a run to reach its samples">
+                      Runs
+                    </button>
+                    <button type="button" data-gb="sample" title="List every sample individually">Samples</button>
+                  </div>
                   <input
                     type="search"
                     id="longi-sample-search"
-                    placeholder="Find a sample…"
-                    title="Filter this list — plain text or a regular expression, e.g. Site1|Site2_A. All / None apply to what matches."
+                    placeholder="Find a run or sample…"
+                    title="Filter this list — plain text or a regular expression, e.g. Site1|Site2_A. Matches run names too. All / None apply to what matches."
                   />
                   <div id="longi-sample-list"></div>
                   <div id="longi-sample-pager"></div>
