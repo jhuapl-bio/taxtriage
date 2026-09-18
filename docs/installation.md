@@ -2,8 +2,8 @@
 
 TaxTriage requires two primary dependencies:
 
-1. **Nextflow** — the workflow engine
-2. **Docker** or **Singularity** — for containerized module execution
+1. **Nextflow** - the workflow engine
+2. **Docker** or **Singularity** - for containerized module execution
 
 ---
 
@@ -47,7 +47,7 @@ You only need **one** of the following. Docker is recommended for local workstat
 
 Follow the OS-specific instructions at [docs.docker.com/engine/install](https://docs.docker.com/engine/install/).
 
-> **Windows users (WSL2):** Install Docker Desktop for Windows — it will be available automatically inside your WSL2 environment.
+> **Windows users (WSL2):** Install Docker Desktop for Windows - it will be available automatically inside your WSL2 environment.
 
 ### B. Singularity (HPC)
 

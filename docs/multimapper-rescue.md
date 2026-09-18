@@ -1,6 +1,6 @@
 # Ambiguous-Read (Multimapper) Rescue
 
-A read that aligns beautifully to a reference can still be assigned **MAPQ 0**. MAPQ does not measure how good an alignment is — it measures how confident the aligner is that it picked the _right_ reference. When two or more genomes in the reference set sit at 97–98% ANI, a read from any conserved region matches both equally well, the aligner cannot choose, and it reports MAPQ 0 by definition.
+A read that aligns beautifully to a reference can still be assigned **MAPQ 0**. MAPQ does not measure how good an alignment is - it measures how confident the aligner is that it picked the _right_ reference. When two or more genomes in the reference set sit at 97 - 98% ANI, a read from any conserved region matches both equally well, the aligner cannot choose, and it reports MAPQ 0 by definition.
 
 That creates a problem for a hard `--minmapq` cut. The reads being discarded are not bad reads; they are reads about which the _reference set_ is ambiguous. On a real sample this can remove three quarters of the true signal:
 
@@ -37,7 +37,7 @@ So at the default `--minmapq 5`, an ambiguous read aligning at 2% divergence sco
 
 ## What rescue does not do
 
-- **It does not rescue uniquely-placed reads.** A read at MAPQ 1–4 has one home and the aligner still doubts it — that is real evidence of a poor alignment, and it stays filtered. Only alignments at or below `--rescue_max_mapq` (default `0`, the true ties) are eligible.
+- **It does not rescue uniquely-placed reads.** A read at MAPQ 1 - 4 has one home and the aligner still doubts it - that is real evidence of a poor alignment, and it stays filtered. Only alignments at or below `--rescue_max_mapq` (default `0`, the true ties) are eligible.
 - **It does not multiply counts across the ANI cluster.** Only the primary record of each read is ever counted; secondary and supplementary alignments are skipped. A read matching three genomes remains **one** observation, not three.
 - **It does not invent information.** At 98% ANI, a short read from a conserved region genuinely does not contain enough signal to name its source genome. No BAM setting recovers that. Rescue keeps the read as evidence for the **cluster**; deciding whether one specific accession is present is what the separate metrics below are for.
 
@@ -70,8 +70,8 @@ Every reference in `*.paths.json` now reports the two kinds of evidence separate
 | Field                    | Meaning                                                                  |
 | ------------------------ | ------------------------------------------------------------------------ |
 | `numreads`               | All kept reads (unique + rescued)                                        |
-| `numreads_unique`        | Reads with MAPQ ≥ `--minmapq` — evidence favouring **this** accession    |
-| `numreads_rescued`       | Strong ambiguous reads — evidence for the **ANI cluster**                |
+| `numreads_unique`        | Reads with MAPQ ≥ `--minmapq` - evidence favouring **this** accession    |
+| `numreads_rescued`       | Strong ambiguous reads - evidence for the **ANI cluster**                |
 | `rescued_fraction`       | `numreads_rescued / numreads`                                            |
 | `mean_rescued_aln_phred` | Mean alignment phred of the rescued reads                                |
 | `highmapq_fraction`      | Fraction of mapped reads at MAPQ ≥ `--minmapq` (scales breadth and Gini) |
@@ -87,7 +87,7 @@ A defensible reading of a high-ANI cluster:
 | Broad, even coverage (low Gini)           | More convincing than a pile-up over conserved genes |
 | Target-specific SNPs / unique regions     | The strongest accession-level evidence available    |
 
-A reference whose reads are almost entirely rescued is a cluster-level call. Report it at the species or species-complex level and use the unique reads — and their genome-wide distribution — to decide whether that one accession is itself supported.
+A reference whose reads are almost entirely rescued is a cluster-level call. Report it at the species or species-complex level and use the unique reads - and their genome-wide distribution - to decide whether that one accession is itself supported.
 
 ---
 
@@ -106,7 +106,7 @@ A reference whose reads are almost entirely rescued is a cluster-level call. Rep
 
 ### Examples
 
-Default behaviour — one threshold, applied to MAPQ for unique reads and to alignment phred for ties:
+Default behaviour - one threshold, applied to MAPQ for unique reads and to alignment phred for ties:
 
 ```bash
 nextflow run jhuapl-bio/taxtriage --input samplesheet.csv --minmapq 5 ...
@@ -141,6 +141,6 @@ samtools view -c -F 0x904 \
 
 ## See also
 
-- [TASS Scoring](tass-scoring.md) — how `highmapq_fraction` scales breadth and Gini
-- [Detection Rescue](detection-rescue.md) — a different mechanism: re-surfacing below-cutoff organisms in the report
+- [TASS Scoring](tass-scoring.md) - how `highmapq_fraction` scales breadth and Gini
+- [Detection Rescue](detection-rescue.md) - a different mechanism: re-surfacing below-cutoff organisms in the report
 - [CLI Parameters](cli-parameters.md)

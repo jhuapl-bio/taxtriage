@@ -15,7 +15,7 @@ TaxTriage can be run on AWS cloud infrastructure using [Nextflow Tower / Seqera]
 
 ### Step 2: Request Access (JHU/APL Seqera Instance)
 
-Send a request to **brian.merritt@jhuapl.edu** — you will receive credentials for the S3 buckets and the compute environment.
+Send a request to **brian.merritt@jhuapl.edu** - you will receive credentials for the S3 buckets and the compute environment.
 
 ⚠️ If you are part of the internal development program, you can use the shared JHU/APL Seqera instance and stop here. Just wait on a confirmation email from JHU/APL devs. Otherwise, you will need to set up your own Seqera account and compute environment in the next step.
 
@@ -23,7 +23,7 @@ Send a request to **brian.merritt@jhuapl.edu** — you will receive credentials 
 
 If using the JHU/APL-provided Seqera instance, the compute environment is pre-configured. For your own Seqera account, follow the [official compute environment docs](https://abhi18av.github.io/nf-tower-docs-orgs-and-teams/21.04.temp3/compute-envs/overview/) to connect your AWS account and configure billing.
 
-> ⚠️ Ensure the compute environment matches the credentials you configured — mismatches cause job failures.
+> ⚠️ Ensure the compute environment matches the credentials you configured - mismatches cause job failures.
 
 <img src="../images/CloudBilling.png" width="70%">
 
@@ -73,10 +73,10 @@ Expand the pipeline parameters in the launch interface. All parameters match the
 
 ### Launch Options
 
-**Option A — Direct Launch:**
+**Option A - Direct Launch:**
 Click **Launch** to start immediately. You will be redirected to the running job list.
 
-**Option B — Launch Settings:**
+**Option B - Launch Settings:**
 Click **Launch Settings** to review the full JSON parameter set, change the Git branch, and customize the environment before submitting.
 
 ---
@@ -148,9 +148,9 @@ Your S3 bucket and compute environment must have the appropriate IAM permissions
 
 From within a running job you can:
 
-- **View module status** — each step shows a running/complete/failed icon
-- **Check Execution Log** — stdout/stderr streamed in real time
-- **Inspect individual modules** — click any module name to see the exact command, resource usage, and log
+- **View module status** - each step shows a running/complete/failed icon
+- **Check Execution Log** - stdout/stderr streamed in real time
+- **Inspect individual modules** - click any module name to see the exact command, resource usage, and log
 
 ### Relaunching a Failed Job
 

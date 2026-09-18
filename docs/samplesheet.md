@@ -29,8 +29,8 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 | `bam`                | OPTIONAL                            | Path to a pre-aligned `.bam`, `.cram` or `.sam` file. When set, the row skips QC, trimming, host removal, classification and reference download, and `fastq_1` is ignored. A sheet must have either this column or `fastq_1`. See [Pre-Aligned Input](#pre-aligned-input-bam-column).                                                                                                                                                                  |
 | `fastq_1`            | **MANDATORY** (unless `bam` is set) | Path to the primary input file. Accepts gzipped or uncompressed FASTQ (`.fastq.gz`, `.fq.gz`, `.fastq`, `.fq`) **or** FASTA (`.fa`, `.fasta`, `.fna`, `.fa.gz`, `.fasta.gz`, `.fna.gz`). May also be a directory of FASTQ files (ONT demux mode), **or an SRA/ENA accession** to download automatically. See [SRA / ENA Accessions](#sra--ena-accessions), [FASTA Input](#fasta-input) and [Multi-File Input](#multi-file-input) for extended options. |
 | `fastq_2`            | OPTIONAL                            | Path to the second FASTQ file for paired-end Illumina reads. Must be gzipped. Ignored when `fastq_1` is FASTA, contains multiple files, or is an accession.                                                                                                                                                                                                                                                                                            |
-| `sequencing_summary` | OPTIONAL                            | Path to a Nanopore sequencing summary file — enables pycoQC plots.                                                                                                                                                                                                                                                                                                                                                                                     |
-| `trim`               | OPTIONAL                            | `TRUE` or `FALSE` — whether to run adapter trimming on this sample.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `sequencing_summary` | OPTIONAL                            | Path to a Nanopore sequencing summary file - enables pycoQC plots.                                                                                                                                                                                                                                                                                                                                                                                     |
+| `trim`               | OPTIONAL                            | `TRUE` or `FALSE` - whether to run adapter trimming on this sample.                                                                                                                                                                                                                                                                                                                                                                                    |
 | `type`               | OPTIONAL (Recommended)              | Sample body site (e.g., `blood`, `stool`). Used for HMP-based filtering and pathogen annotation. See [Sample Types](#sample-types) below.                                                                                                                                                                                                                                                                                                              |
 | `minimap2_preset`    | OPTIONAL                            | Override the minimap2 alignment preset for this sample. See [minimap2 Presets](#minimap2-presets) below.                                                                                                                                                                                                                                                                                                                                               |
 | `positive`           | OPTIONAL                            | Name of the positive control sample (matching `sample` column) to compare against.                                                                                                                                                                                                                                                                                                                                                                     |
@@ -41,7 +41,7 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 
 ## SRA / ENA Accessions
 
-Instead of a file path, `fastq_1` may hold a public sequence archive accession. TaxTriage resolves it, downloads the reads, and feeds them into the pipeline exactly as if you had supplied local FASTQs. `fastq_2` is not used — whether a run is paired-end is read from the archive, not guessed.
+Instead of a file path, `fastq_1` may hold a public sequence archive accession. TaxTriage resolves it, downloads the reads, and feeds them into the pipeline exactly as if you had supplied local FASTQs. `fastq_2` is not used - whether a run is paired-end is read from the archive, not guessed.
 
 ```
 sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
@@ -59,7 +59,7 @@ whole_project,,PRJNA681875,,,FALSE,stool
 | Sample          | `SRS`, `ERS`, `DRS`, `SAMN`, `SAMEA`, `SAMD`   | One sample per child run                            |
 | Study / project | `SRP`, `ERP`, `DRP`, `PRJNA`, `PRJEB`, `PRJDB` | One sample per child run                            |
 
-When an accession expands to more than one run, each resulting sample is named `<sample>_<run_accession>` (e.g. `whole_project_SRR13191701`) so names stay unique and traceable. Every other column on that row — `trim`, `type`, `positive`/`negative`, `minimap2_preset`, metadata columns — is inherited by all of its runs.
+When an accession expands to more than one run, each resulting sample is named `<sample>_<run_accession>` (e.g. `whole_project_SRR13191701`) so names stay unique and traceable. Every other column on that row - `trim`, `type`, `positive`/`negative`, `minimap2_preset`, metadata columns - is inherited by all of its runs.
 
 ### Paired-end detection
 
@@ -67,18 +67,18 @@ Nothing needs to be declared. The pipeline reads ENA's file listing for the run:
 
 ### Platform
 
-Leave `platform` blank and the instrument platform reported by the archive is used — `ILLUMINA`, `OXFORD` (Oxford Nanopore) or `PACBIO` — which in turn drives the default minimap2 preset. Filling in the `platform` column overrides that.
+Leave `platform` blank and the instrument platform reported by the archive is used - `ILLUMINA`, `OXFORD` (Oxford Nanopore) or `PACBIO` - which in turn drives the default minimap2 preset. Filling in the `platform` column overrides that.
 
 ### How the download works
 
-1. **ENA first.** ENA mirrors most of SRA as ready-made `fastq.gz`, already split into `_1`/`_2`. These are downloaded directly and verified against ENA's md5 — no `.sra` archive, no conversion step.
+1. **ENA first.** ENA mirrors most of SRA as ready-made `fastq.gz`, already split into `_1`/`_2`. These are downloaded directly and verified against ENA's md5 - no `.sra` archive, no conversion step.
 2. **sra-tools fallback.** If ENA has no files for the run (very recent submissions, unmirrored runs), the accession is expanded via NCBI eutils and fetched with `prefetch` + `fasterq-dump`. Force this path for everything with `--sra_force_sratools`.
 
 ### Caching
 
-Downloads are written to `<outdir>/sra_downloads/<run_accession>/` and are **skipped entirely** on any later run where they already exist — both with `-resume` and on a fresh run. Set `--sra_cache_dir /shared/sra` to place the cache on shared storage so an accession is only ever downloaded once across projects or users.
+Downloads are written to `<outdir>/sra_downloads/<run_accession>/` and are **skipped entirely** on any later run where they already exist - both with `-resume` and on a fresh run. Set `--sra_cache_dir /shared/sra` to place the cache on shared storage so an accession is only ever downloaded once across projects or users.
 
-> ℹ️ A file that happens to be _named_ like an accession (e.g. `SRR13191702.fastq.gz`) is still treated as a local path. Only bare accessions — no dots, no slashes — trigger a download.
+> ℹ️ A file that happens to be _named_ like an accession (e.g. `SRR13191702.fastq.gz`) is still treated as a local path. Only bare accessions - no dots, no slashes - trigger a download.
 
 > ⚠️ **Controls and multi-run accessions.** The `positive`/`negative` columns match on final sample names. If a control is itself given as a project/experiment accession, its samples get the `_<run_accession>` suffix, so point the control columns at the suffixed name (or use a run accession for controls so the name stays exactly what you wrote).
 
@@ -151,7 +151,7 @@ Multiple input files for a single sample can be listed in `fastq_1` as a **semic
 
 ### Rules
 
-- All files in the list must be the **same type** — all FASTA or all FASTQ. Mixing raises a validation error.
+- All files in the list must be the **same type** - all FASTA or all FASTQ. Mixing raises a validation error.
 - Multi-file inputs are always treated as **single-end** (`fastq_2` is ignored if present).
 - Each path is validated individually at startup.
 
@@ -172,7 +172,7 @@ hifi_combined,PACBIO,pass1.fastq.gz;pass2.fastq.gz;pass3.fastq.gz
 ont_combined,OXFORD,run_a.fastq.gz;run_b.fastq.gz
 ```
 
-> ℹ️ For multi-file FASTQ, adapter trimming (TrimGalore / FASTP) expects 1–2 files and may not behave as intended. Set `trim=FALSE` for multi-file FASTQ samples if trimming is not needed.
+> ℹ️ For multi-file FASTQ, adapter trimming (TrimGalore / FASTP) expects 1 - 2 files and may not behave as intended. Set `trim=FALSE` for multi-file FASTQ samples if trimming is not needed.
 
 ---
 
@@ -233,7 +233,7 @@ Positive Control Miseq,ILLUMINA,examples/data/controls/positive/pos_R1.fastq.gz,
 Negative Control Miseq,ILLUMINA,examples/data/controls/negative/neg_R1.fastq.gz,examples/data/controls/negative/neg_R2.fastq.gz,,FALSE,nasal,,
 ```
 
-> ❗ A positive or negative control entry whose `sample` value doesn't appear in any other row is ignored — no comparison will occur for that row.
+> ❗ A positive or negative control entry whose `sample` value doesn't appear in any other row is ignored - no comparison will occur for that row.
 
 ---
 
@@ -366,5 +366,5 @@ A full example is provided in the repository at [`examples/Samplesheet.csv`](htt
 
 ## Next Steps
 
-- [Running the Pipeline](running-the-pipeline.md) — how to pass your samplesheet to TaxTriage
-- [CLI Parameters](cli-parameters.md) — full parameter reference
+- [Running the Pipeline](running-the-pipeline.md) - how to pass your samplesheet to TaxTriage
+- [CLI Parameters](cli-parameters.md) - full parameter reference

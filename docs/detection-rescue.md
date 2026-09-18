@@ -1,6 +1,6 @@
 # Detection Rescue & Report Surfacing
 
-TaxTriage hides low-confidence detections by default: an organism whose [TASS score](tass-scoring.md) falls below the cutoff is dropped from the tables, charts, and heatmap so the report stays readable. But "below the cutoff" is not the same as "absent" — a sub-threshold organism may still have reference reads aligned, carry virulence/AMR genes, or be placed by the reference-free [novelty](novelty-detection.md) branch.
+TaxTriage hides low-confidence detections by default: an organism whose [TASS score](tass-scoring.md) falls below the cutoff is dropped from the tables, charts, and heatmap so the report stays readable. But "below the cutoff" is not the same thing as "absent", a sub-threshold organism may still have reference reads aligned or carry virulence/AMR genes, or it can be placed by the reference-free [novelty](novelty-detection.md) branch.
 
 **Rescue** is the set of mechanisms that bring those suppressed-but-supported detections back into view _without_ changing any score. Every rescue is opt-in or clearly badged, lives only in the detection tables (the Summary tab's Detections view and the full Table tab), and never alters the KPIs, charts, or heatmap, which stay restricted to passing detections.
 
@@ -10,7 +10,7 @@ This page covers the three rescue toggles, the differentiating UI each uses, and
 
 ## The three rescue toggles
 
-All three live in the report sidebar under the filter controls. They are independent and can be combined; rows surfaced by more than one are de-duplicated.
+All three live in the report sidebar under the filter controls. They are independent and can be combined, rows surfaced by more then one gets de-duplicated.
 
 | Toggle (sidebar label)                                                      | Default | What it surfaces                                                                                                                                                                             |
 | --------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -20,15 +20,15 @@ All three live in the report sidebar under the filter controls. They are indepen
 
 ### 1. Threshold roll-up
 
-A high-confidence call at the genus or species level can vanish simply because no single strain underneath it cleared the cutoff. With roll-up on, a strain is kept visible when its parent species _or_ genus aggregate passes — so a strong genus call is never erased by strain-level dilution. Rescued rows are tagged with a coloured **↑ rollup** badge naming the level that rescued them (`↑ Species` / `↑ Genus`), and an amber bar in the charts.
+A high-confidence call at the genus or species level can vanish simply because no single strain underneath it cleared the cutoff. With roll-up on a strain is kept visible when it's parent species _or_ genus aggregate passes so a strong genus call is never erased by strain-level dilution. Rescued rows are tagged with a coloured **↑ rollup** badge naming the level that rescued them (`↑ Species` / `↑ Genus`), and an amber bar in the charts.
 
 ### 2. Below-cutoff VF/AMR
 
-When protein annotation is enabled (`--annotate`) and one or more VF or AMR genes were detected for an organism's genus **in the same sample**, this re-surfaces that organism as a faded row even though its score is below the cutoff — flagging potential pathogen signal the score alone would suppress. These rows carry a pink **↓ below cutoff** badge and a red rail.
+When protein annotation is enabled (`--annotate`) and one or more VF or AMR genes were detected for an organism's genus **in the same sample**, this re-surfaces that organism as a faded row even though its score is below the cutoff - flagging potential pathogen signal the score alone would suppress. These rows carry a pink **↓ below cutoff** badge and a red rail.
 
 ### 3. Sub-threshold & novelty-supported organisms
 
-This rescue handles the case the other two miss: a sample that _does_ have passing detections but also contains rows with sub-threshold or alignment-free signal. Consider a sample with three organisms — one above cutoff with alignments, one below cutoff with alignments, and one with no alignments at all that the novelty classifier nonetheless places at the genus/species level. The first is already shown; this toggle surfaces the other two:
+This rescue handles the case the other two miss: a sample that _does_ have passing detections but also contains rows with sub-threshold or alignment-free signal. Consider a sample with three organisms - one above cutoff with alignments, one below cutoff with alignments, and one with no alignments at all that the novelty classifier nonetheless places at the genus/species level. The first is already shown; this toggle surfaces the other two:
 
 | Surfaced row                                        | Condition                                                                                                             | Badge                                         | Rail   |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ------ |
@@ -43,14 +43,14 @@ The novelty match reuses the same per-row logic as the Novelty column, so the ba
 
 ## Annotation of unaligned samples
 
-VF/AMR annotation (`--annotate`) runs on the **de novo contigs** of every sample, producing `annotate/<sample>.annotate_report.tsv`. Previously these hits only reached the comparison report when they could be attached to an _aligned_ organism, so a sample with **no reference alignment** (e.g. a shallow dilution that assembled contigs but mapped nothing) lost its annotation entirely — the Novelty tab showed signal, but the Summary tab's Annotation Summary and the VF/AMR views were blank for that sample.
+VF/AMR annotation (`--annotate`) runs on the **de novo contigs** of every sample, producing `annotate/<sample>.annotate_report.tsv`. Previously these hits only reached the comparison report when they could be attached to an _aligned_ organism, so a sample with **no reference alignment** (e.g. a shallow dilution that assembled contigs but mapped nothing) lost its annotation entirely - the Novelty tab showed signal, but the Summary tab's Annotation Summary and the VF/AMR views were blank for that sample.
 
 The standalone `annotate_report.tsv` files are now plumbed directly into the comparison report:
 
 - The workflow collects every per-sample `annotate_report.tsv` and passes it to `CREATE_COMPARISON_REPORT` (`subworkflows/local/report.nf` → `modules/local/create_comparison_report.nf`).
 - `bin/make_report.py` gains `--annotate_reports`. For any sample **not already covered** by the merged annotation XLSX, it builds supplemental `per_gene_hits` / `amr_genes` / `genus_summary` rows from that sample's TSV, routing AMR vs. virulence by property, and lets the existing pathogen-by-taxid stamping resolve the canonical genus.
 
-The result: unaligned samples now show their VF/AMR annotation in the Summary tab, the VF/AMR tab, and the per-row Annotation column, consistent with the Novelty tab. This is automatic whenever `--annotate` is set — there is no extra user flag. (`--annotate_reports` is an internal `make_report.py` argument the module supplies; samples already represented by the merged XLSX are never double-counted.)
+The result: unaligned samples now show their VF/AMR annotation in the Summary tab, the VF/AMR tab, and the per-row Annotation column, consistent with the Novelty tab. This is automatic whenever `--annotate` is set - there is no extra user flag. (`--annotate_reports` is an internal `make_report.py` argument the module supplies; samples already represented by the merged XLSX are never double-counted.)
 
 ---
 
@@ -70,9 +70,9 @@ Each sample row that has few reads or no alignments shows an amber ⚠ icon. Hov
 
 The cross-sample views moved their numbers off the plot and onto hover to cut clutter:
 
-- **Feature Compare matrix** — cells are colour swatches only; hovering shows the exact value, the metric description, and the per-sample breakdown.
-- **Co-occurrence matrix** — cell tooltips now also list the shared / detected sample names.
-- **Genera Comparison Across Samples** — a **Show values** checkbox toggles numeric labels back on. Per-segment numbers are drawn only where they fit (so they never overlap), the per-genus total sits once at the bar end, and the chart scrolls horizontally if a bar runs wide. With values off, the full breakdown is on hover.
+- **Feature Compare matrix** - cells are colour swatches only; hovering shows the exact value, the metric description, and the per-sample breakdown.
+- **Co-occurrence matrix** - cell tooltips now also list the shared / detected sample names.
+- **Genera Comparison Across Samples** - a **Show values** checkbox toggles numeric labels back on. Per-segment numbers are drawn only where they fit (so they never overlap), the per-genus total sits once at the bar end, and the chart scrolls horizontally if a bar runs wide. With values off, the full breakdown is on hover.
 
 ---
 

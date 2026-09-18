@@ -31,7 +31,7 @@ If you use TaxTriage in your research, please cite the following:
 
 > Di Tommaso P, Chatzou M, Floden EW, Barja PP, Palumbo E, Notredame C.  
 > **Nextflow enables reproducible computational workflows.**  
-> _Nat Biotechnol._ 2017 Apr 11;35(4):316–319. doi: [10.1038/nbt.3820](https://doi.org/10.1038/nbt.3820). PMID: 28398311.
+> _Nat Biotechnol._ 2017 Apr 11;35(4):316 - 319. doi: [10.1038/nbt.3820](https://doi.org/10.1038/nbt.3820). PMID: 28398311.
 
 ---
 
@@ -46,7 +46,7 @@ If you use TaxTriage in your research, please cite the following:
 
 > Ewels P, Magnusson M, Lundin S, Käller M.  
 > **MultiQC: summarize analysis results for multiple tools and samples in a single report.**  
-> _Bioinformatics._ 2016 Oct 1;32(19):3047–8. doi: [10.1093/bioinformatics/btw354](https://doi.org/10.1093/bioinformatics/btw354). PMID: 27312411.
+> _Bioinformatics._ 2016 Oct 1;32(19):3047 - 8. doi: [10.1093/bioinformatics/btw354](https://doi.org/10.1093/bioinformatics/btw354). PMID: 27312411.
 
 ---
 
@@ -61,13 +61,13 @@ If you use TaxTriage in your research, please cite the following:
 
 > Grüning B, Dale R, Sjödin A, et al.  
 > **Bioconda: sustainable and comprehensive software distribution for the life sciences.**  
-> _Nat Methods._ 2018 Jul;15(7):475–476. doi: [10.1038/s41592-018-0046-7](https://doi.org/10.1038/s41592-018-0046-7). PMID: 29967506.
+> _Nat Methods._ 2018 Jul;15(7):475 - 476. doi: [10.1038/s41592-018-0046-7](https://doi.org/10.1038/s41592-018-0046-7). PMID: 29967506.
 
 ### BioContainers
 
 > da Veiga Leprevost F, Grüning B, Aflitos SA, et al.  
 > **BioContainers: an open-source and community-driven framework for software standardization.**  
-> _Bioinformatics._ 2017 Aug 15;33(16):2580–2582. doi: [10.1093/bioinformatics/btx192](https://doi.org/10.1093/bioinformatics/btx192). PMID: 28379341.
+> _Bioinformatics._ 2017 Aug 15;33(16):2580 - 2582. doi: [10.1093/bioinformatics/btx192](https://doi.org/10.1093/bioinformatics/btx192). PMID: 28379341.
 
 ### Docker
 

@@ -21,7 +21,7 @@ there. It lives at `/stable/`, is labelled **`stable (X.Y.Z)`** in the version
 dropdown (`stable (3.3.10)`), and matches the revision `nextflow run ... -r stable` resolves to.
 `latest` is kept as an **alias** of it, so every old `/latest/...` URL still
 works. Releasing `v3.4.0` therefore publishes twice from the same tag: the
-frozen copy **`3.4.0`** (the exact patch — no minor-series aliases) and a
+frozen copy **`3.4.0`** (the exact patch - no minor-series aliases) and a
 refreshed `stable`.
 
 The first deploy after this change deletes the old standalone `latest`
@@ -41,7 +41,7 @@ build scripts, `assets/heatmap.html`, `assets/pages.js`,
 so a typo fix or a report tweak is live the same day instead of waiting for the
 next release. Such a push cannot make the docs describe pipeline behaviour the
 release does not have. The site is then built from `main`, but two things stay
-pinned to the release tag: the Pathogen Sheet, and the **Demo Report** — its
+pinned to the release tag: the Pathogen Sheet, and the **Demo Report** - its
 report source (`assets/heatmap.html`, `assets/src/`) and its dataset
 (`assets/pages.js`) are checked out from the tag before the dist is built, so
 `stable`'s demo is the released iteration of the report rather than a copy of
@@ -49,7 +49,7 @@ development's. The footer records the ref actually built. Any push that also
 touches pipeline code updates `main` only.
 
 Every page footer stamps the version label, the ref it was built from and the
-commit, each linking back to GitHub — so a reader can always tell exactly which
+commit, each linking back to GitHub - so a reader can always tell exactly which
 revision they are reading. The workflow composes that line and exports it as
 `DOCS_COPYRIGHT`, which `mkdocs.yml` reads via `!ENV`; Material renders
 `copyright` as raw HTML, so no theme template is overridden. The copyright text
@@ -64,7 +64,7 @@ so real release docs are safe.
 ### Rebuilding a version
 
 Retargeting a GitHub Release at a newer commit fires `release: edited`, which
-the workflow listens for — it rebuilds that version from the tag's new commit
+the workflow listens for - it rebuilds that version from the tag's new commit
 and overwrites the existing directory in place. No duplicate entry is created.
 
 Force-moving a tag with `git push -f` alone does **not** fire a release event.
@@ -75,11 +75,11 @@ To rebuild in that case (or any other), run the Docs workflow manually:
 | `version` | `3.3.9`, `main`, or `stable` (blank = `stable`)                   |
 | `ref`     | blank uses `v<version>` for a number, the newest tag for `stable` |
 
-Because `edited` covers every release edit — including title and body — a
+Because `edited` covers every release edit - including title and body - a
 cosmetic tweak also triggers a rebuild. That is harmless: the deploy is
 idempotent.
 
-`gh-pages` contains **only rendered HTML/CSS/JS** — no source, no `mkdocs.yml`,
+`gh-pages` contains **only rendered HTML/CSS/JS** - no source, no `mkdocs.yml`,
 no scripts. It is entirely machine-generated; never commit to it by hand.
 
 ## Branch model
@@ -100,7 +100,7 @@ without deploying, so breakage is caught in review.
 
 The **Pathogen Sheet** ships in every version. The CSV is fetched from GitHub
 when the page opens rather than bundled, and `scripts/write_docs_ref.py` pins
-which ref it reads — so the `3.3.9` docs show the sheet that shipped in v3.3.9
+which ref it reads - so the `3.3.9` docs show the sheet that shipped in v3.3.9
 while `stable` shows the newest release. Costs nothing to publish per version.
 
 The **Demo Report** ships only in the two moving versions (`stable` and
@@ -131,7 +131,7 @@ mkdir -p docs/demo && cp _site/index.html docs/demo/index.html
 mkdocs serve                                           # http://127.0.0.1:8000
 ```
 
-`mkdocs serve` renders a single unversioned copy — the version selector only
+`mkdocs serve` renders a single unversioned copy - the version selector only
 appears on the deployed site. To preview the versioned layout:
 
 ```bash
@@ -160,7 +160,7 @@ worst time to find out it is broken.
 
 `test_built_links.py` exists because `--strict` only validates Markdown links.
 Raw HTML (`<img src>`, `<iframe src>`) and JS-built URLs are invisible to it,
-and those resolve against the page's directory URL — a common source of 404s
+and those resolve against the page's directory URL - a common source of 404s
 that only appear once deployed.
 
 `test_pathogen_table.js` builds its ground truth with a second, independent CSV
@@ -192,13 +192,13 @@ themselves. Override the input with `PATHOGEN_CSV=/path/to/sheet.csv`.
   records `git-tracked`, _Download_ records `external-local`, and `APL-derived`
   is reserved for maintainer-curated entries. The builder shows the full
   vocabulary in a **disabled** control so the values are visible without
-  implying a choice, and the value is stamped at submit time — a conflicting
+  implying a choice, and the value is stamped at submit time - a conflicting
   value forced past the control is overwritten. Tests cover both routes.
 - **Requests can be downloaded instead of filed.** The builder's **Download**
   button writes the same content as the issue body to a `.md` file, for cases
   where the request should not be public.
 - **Batch requests are built in the page, not the issue form.** GitHub issue
-  forms are static — they cannot repeat a field group, so "Add another" is
+  forms are static - they cannot repeat a field group, so "Add another" is
   impossible in `add_organism.yml`. The builder in `pathogen_table.js` stages
   entries and opens one issue prefilled via `?body=`, capped at `MAX_URL` so a
   long batch fails loudly instead of being silently truncated. `REQUEST_FIELDS`
@@ -210,7 +210,7 @@ themselves. Override the input with `PATHOGEN_CSV=/path/to/sheet.csv`.
   If a change is deployed but not visible, check for a stale asset before
   assuming the deploy failed.
 - **The request entry points are version-gated.** It appears only when
-  the docs version is not a numbered `X.Y.Z` release — so `stable`, PR previews
+  the docs version is not a numbered `X.Y.Z` release - so `stable`, PR previews
   and local `mkdocs serve` show it, frozen releases do not. Gating lives in
   `pathogen_table.js` (`IS_CURRENT`), not in the build, so there is one place to
   change it. It targets `.github/ISSUE_TEMPLATE/add_organism.yml`, whose fields

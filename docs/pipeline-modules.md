@@ -1,6 +1,6 @@
 # Pipeline Modules
 
-This page describes each step in the TaxTriage workflow in execution order — what it does, which tool is used, and what it produces.
+This page describes each step in the TaxTriage workflow in execution order - what it does, which tool is used, and what it produces.
 
 ![TaxTriage Pipeline Schematic](images/taxtriage_schematics.png)
 
@@ -50,7 +50,7 @@ Reduces each sample to N reads before any downstream processing. Useful for a fa
 
 ---
 
-## Step 1: Quality Control — Part 1
+## Step 1: Quality Control - Part 1
 
 ### Illumina
 
@@ -101,7 +101,7 @@ Reads that align to the host reference (e.g., human genome) are removed. Unclass
 **Tool:** Kraken2 (default) or Centrifuge  
 **Parameters:** `--db`, `--k2_confidence`, `--skip_kraken2`, `--centrifuge`
 
-Each read is classified against the Kraken2 (or Centrifuge) database. Results are summarized in a Kraken2 report and visualized as interactive Krona plots — the most important early output for understanding abundance from a metagenomics perspective.
+Each read is classified against the Kraken2 (or Centrifuge) database. Results are summarized in a Kraken2 report and visualized as interactive Krona plots - the most important early output for understanding abundance from a metagenomics perspective.
 
 > ⚠️ Always consider the limitations of your database. Organisms absent from the database cannot be classified. See [available databases](cli-parameters.md#supported-downloadable-databases).
 
@@ -111,7 +111,7 @@ Each read is classified against the Kraken2 (or Centrifuge) database. Results ar
 
 **Parameters:** `--top_hits_count`, `--top_per_taxa`, `--pathogens`, `--add_irregular_top_hits`
 
-Not all classified organisms are aligned — only "top hits" proceed to alignment. The selection follows this decision tree:
+Not all classified organisms are aligned - only "top hits" proceed to alignment. The selection follows this decision tree:
 
 ![Top Hits Decision Tree](images/TASSDiagram.png)
 
@@ -183,11 +183,11 @@ Output: `bcftools/<sample>.<taxid>.vcf.gz` and `bcftools/<sample>.consensus.fa`
 
 The final reporting stage combines all intermediate data:
 
-- **MultiQC** (`report/multiqc_report.html`) — raw alignment stats, FastQC, version info
-- **Organism Discovery Report PDF** (`report/<sample>.organisms.report.pdf` and `report/all.organisms.report.pdf`) — confidence-ranked organism table for each sample and combined across all samples
-- **Interactive Multi-Run Comparison Report** (`report/all.comparison.report.html`) — multi-sample comparison
-- **Krona Plot** (`report/combined_krona_kreports.html`) — interactive radial abundance visualization
-- **Microbial Sheet** (`report/<sample|all>.report.txt`) — tabular output of all TASS metrics
+- **MultiQC** (`report/multiqc_report.html`) - raw alignment stats, FastQC, version info
+- **Organism Discovery Report PDF** (`report/<sample>.organisms.report.pdf` and `report/all.organisms.report.pdf`) - confidence-ranked organism table for each sample and combined across all samples
+- **Interactive Multi-Run Comparison Report** (`report/all.comparison.report.html`) - multi-sample comparison
+- **Krona Plot** (`report/combined_krona_kreports.html`) - interactive radial abundance visualization
+- **Microbial Sheet** (`report/<sample|all>.report.txt`) - tabular output of all TASS metrics
 
 ---
 
@@ -195,7 +195,7 @@ The final reporting stage combines all intermediate data:
 
 **Parameters:** All `--*_weight` and `--*_threshold` parameters
 
-After alignment, each organism receives a TASS score (0–1). Higher scores indicate greater confidence that the organism is genuinely present. The score combines:
+After alignment, each organism receives a TASS score (0 - 1). Higher scores indicate greater confidence that the organism is genuinely present. The score combines:
 
 - Breadth of coverage (genome coverage fraction)
 - Gini coefficient (inequality of depth distribution)

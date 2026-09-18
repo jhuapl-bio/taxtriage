@@ -10,9 +10,9 @@ The TASS (Threat Agnostic Sentinel Surveillance) pipeline takes raw sequencing a
 
 The pipeline scripts that contribute to the TASS scoring mentioned below are available [here](https://github.com/jhuapl-bio/taxtriage/tree/main/bin):
 
-1. **Input parsing & per-reference stats** — Pull alignment metrics from BAM, depth/bedgraph, and FASTA files (`match_paths.py`)
-2. **Conflict resolution & signature comparison** — Find and handle cases where reads map ambiguously to multiple organisms (`conflict_regions.py`)
-3. **Score computation** — Calculate individual features and combine them into a final TASS score (`optimize_weights.py`)
+1. **Input parsing & per-reference stats** - Pull alignment metrics from BAM, depth/bedgraph, and FASTA files (`match_paths.py`)
+2. **Conflict resolution & signature comparison** - Find and handle cases where reads map ambiguously to multiple organisms (`conflict_regions.py`)
+3. **Score computation** - Calculate individual features and combine them into a final TASS score (`optimize_weights.py`)
 
 ### Input Files
 
@@ -33,10 +33,10 @@ The pipeline scripts that contribute to the TASS scoring mentioned below are ava
 
 The BAM file is read using `pysam`. For each reference, we extract:
 
-- **`numreads`** — Number of primary, non-supplementary alignments
-- **`meanmapq`** — Average mapping quality across all aligned reads
-- **`highmapq_fraction`** — Fraction of reads with MAPQ ≥ threshold (e.g., MAPQ ≥ 5)
-- **`covered_regions`** — List of `(start, end, depth)` from the bedgraph
+- **`numreads`** - Number of primary, non-supplementary alignments
+- **`meanmapq`** - Average mapping quality across all aligned reads
+- **`highmapq_fraction`** - Fraction of reads with MAPQ ≥ threshold (e.g., MAPQ ≥ 5)
+- **`covered_regions`** - List of `(start, end, depth)` from the bedgraph
 
 \*_Note:_ When `--compare_references` is active, coverage is estimated from BAM index statistics instead of a bedgraph file (see Section 3.8). Additionally, we will use the term _contig_ interchangeably with reference accessions be they scaffolds, plasmids, contigs, or full chromosomes.
 
@@ -64,7 +64,7 @@ RPKM = numreads / ((total_reads / 1,000,000) × (reference_length / 1,000))
 
 ### 2.4 MAPQ Normalization
 
-From `utils.py::normalize_mapq()`. This rescales mapping quality to a 0–1 range:
+From `utils.py::normalize_mapq()`. This rescales mapping quality to a 0 - 1 range:
 
 ```
 mapq_score = (mapq - min_mapq) / (max_mapq - min_mapq)
@@ -140,10 +140,10 @@ $$
 
 Where:
 
-- **MAPQ** — raw mapping quality reported by the aligner (0–60)
-- $w_{AS}$ — alignment-score weight (default `0.0`; AS tie-breaks only when enabled)
-- $N_{\text{alt}}$ — number of competing references that share at least one high-ANI window with this contig; $w_{pen} = 50.0$ by default
-- $\Omega_{\text{ani}}$ — **ANI dominance term** (see below); $w_{ani} = 10.0$ by default
+- **MAPQ** - raw mapping quality reported by the aligner (0 - 60)
+- $w_{AS}$ - alignment-score weight (default `0.0`; AS tie-breaks only when enabled)
+- $N_{\text{alt}}$ - number of competing references that share at least one high-ANI window with this contig; $w_{pen} = 50.0$ by default
+- $\Omega_{\text{ani}}$ - **ANI dominance term** (see below); $w_{ani} = 10.0$ by default
 
 #### ANI Dominance Term $\Omega_{\text{ani}}$
 
@@ -155,10 +155,10 @@ $$
 
 Where:
 
-- $A$ — the set of competing contigs that share at least one window with this contig
-- $J_{\max}(\text{contig}, \text{alt})$ — the maximum window-level Jaccard similarity observed between the contig and that competitor (from the shared-window index). Jaccard 1.0 = nearly identical sequence; 0.1 = only slightly similar
-- $N_{\text{contig}}$, $N_{\text{alt}}$ — pre-removal read counts for the respective references (minimum 1 to avoid log(0))
-- $\log_2(N_{\text{contig}} / N_{\text{alt}})$ — the log-ratio of read counts. This is positive when our reference has more reads than the competitor (reward) and negative when it has fewer (penalty)
+- $A$ - the set of competing contigs that share at least one window with this contig
+- $J_{\max}(\text{contig}, \text{alt})$ - the maximum window-level Jaccard similarity observed between the contig and that competitor (from the shared-window index). Jaccard 1.0 = nearly identical sequence; 0.1 = only slightly similar
+- $N_{\text{contig}}$, $N_{\text{alt}}$ - pre-removal read counts for the respective references (minimum 1 to avoid log(0))
+- $\log_2(N_{\text{contig}} / N_{\text{alt}})$ - the log-ratio of read counts. This is positive when our reference has more reads than the competitor (reward) and negative when it has fewer (penalty)
 
 **Worked example, O104:H4 vs Shigella:** Suppose O104:H4 has 80,000 reads and a Shigella contig has 5,000, and they share a window with $J_{\max} = 0.95$:
 
@@ -188,7 +188,7 @@ In `--compare_references` mode the ANI dominance term ($\Omega_{\text{ani}}$) do
 
 #### CLI flags that control removal
 
-The weights above are internal. These `match_paths.py` flags are what you actually set on the command line to change, disable, or audit removal: Two of them — `--no_read_removal` and `--taxid_removal_stats` — are also exposed as pipeline parameters, so they work with `nextflow run`; the rest apply only when calling `match_paths.py` directly.
+The weights above are internal. These `match_paths.py` flags are what you actually set on the command line to change, disable, or audit removal: Two of them - `--no_read_removal` and `--taxid_removal_stats` - are also exposed as pipeline parameters, so they work with `nextflow run`; the rest apply only when calling `match_paths.py` directly.
 
 | Flag                                       | Default | Effect                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -199,7 +199,7 @@ The weights above are internal. These `match_paths.py` flags are what you actual
 
 !!! tip "On/off TASS comparison"
 
-    `--no_read_removal` is the flag to reach for when post-removal coverage collapses and you want to know how much of the score change is removal and how much is the organism. Run the same sample twice — once normally, once with `--no_read_removal` — and diff the resulting TASS scores. Because conflict detection still runs, the `removal_stats` reports from the second run tell you exactly which reads *would* have been removed.
+    `--no_read_removal` is the flag to reach for when post-removal coverage collapses and you want to know how much of the score change is removal and how much is the organism. Run the same sample twice - once normally, once with `--no_read_removal` - and diff the resulting TASS scores. Because conflict detection still runs, the `removal_stats` reports from the second run tell you exactly which reads *would* have been removed.
 
 !!! warning "Removal protection interacts with roll-up"
 
@@ -235,7 +235,7 @@ Where $N_{\text{pre}}$ and $N_{\text{post}}$ are read counts before and after re
 | `Shared Windows`   | Number of tiled windows on this reference that overlap at least one window on another reference |
 | `Conflicting Refs` | Count of distinct other references sharing at least one window                                  |
 | `Mean Shared ANI`  | Average Jaccard similarity across all shared windows (proxy for ANI; 0→1)                       |
-| `Max Shared ANI`   | Highest single-window Jaccard seen for this reference — flags the most similar competitor       |
+| `Max Shared ANI`   | Highest single-window Jaccard seen for this reference - flags the most similar competitor       |
 | `Shared BP`        | Approximate total base-pairs covered by shared windows (windows may overlap)                    |
 
 `Δ⁻¹ Breadth` and `Δ All%` are passed directly into the minhash score (see Section 7). The ANI summary columns are informational in the xlsx but their per-window Jaccard values feed the ANI dominance term $\Omega_{\text{ani}}$ during read removal (Section 3.6).
@@ -246,18 +246,18 @@ When `--compare_references` is passed to `match_paths.py`, an alternative and mo
 
 #### How it works
 
-1. **Tiling** — Each reference FASTA is divided into windows of `--window_size` bp (default: 900,000 bp) with a step of `--step_size` bp (default: 900,000 bp; set to `window_size/2` for 50% overlap). Windows with more than 5% N-bases are skipped.
-2. **Sketching** — Each window is converted to a MinHash signature (k-mer size 31, scaled 200 by default).
-3. **Pairwise search** — A `ProcessPoolExecutor` is used to compare all query windows against all target windows from other FASTAs. Pairs with Jaccard ≥ `jaccard_threshold` (default 0.10) are recorded as shared.
+1. **Tiling** - Each reference FASTA is divided into windows of `--window_size` bp (default: 900,000 bp) with a step of `--step_size` bp (default: 900,000 bp; set to `window_size/2` for 50% overlap). Windows with more than 5% N-bases are skipped.
+2. **Sketching** - Each window is converted to a MinHash signature (k-mer size 31, scaled 200 by default).
+3. **Pairwise search** - A `ProcessPoolExecutor` is used to compare all query windows against all target windows from other FASTAs. Pairs with Jaccard ≥ `jaccard_threshold` (default 0.10) are recorded as shared.
 
 #### Performance design
 
 `report_shared_windows_across_fastas()` is optimised to minimise inter-process communication overhead at scale:
 
-- **Worker initializer** — Target window hash-sets are sent to each worker process _once_ via the pool initializer (`_init_search_worker`). They are deserialized and stored in a module-level dict (`_SEARCH_WORKER_TARGETS`), keyed by FASTA label. Subsequent job submissions carry only the query chunk, so the targets are never pickled again on a per-job basis.
-- **Frozenset Jaccard** — Similarity is computed with Python's native `frozenset &` intersection (C-level), not via `MinHash` objects. This avoids Python-object construction overhead on every comparison: $J = |A \cap B| / |A \cup B|$ where $A$ and $B$ are `frozenset`s of hash values. An early-exit is applied when $|A \cap B| = 0$.
-- **Intra-FASTA skip** — Same-FASTA comparisons are skipped in $O(1)$ by checking the FASTA label key before entering the inner loop.
-- **Job granularity** — One job per query chunk (chunk size = ceil(N_queries / n_workers)), compared to the earlier approach of N_tiles × chunk jobs. This reduces scheduler overhead for large databases.
+- **Worker initializer** - Target window hash-sets are sent to each worker process _once_ via the pool initializer (`_init_search_worker`). They are deserialized and stored in a module-level dict (`_SEARCH_WORKER_TARGETS`), keyed by FASTA label. Subsequent job submissions carry only the query chunk, so the targets are never pickled again on a per-job basis.
+- **Frozenset Jaccard** - Similarity is computed with Python's native `frozenset &` intersection (C-level), not via `MinHash` objects. This avoids Python-object construction overhead on every comparison: $J = |A \cap B| / |A \cup B|$ where $A$ and $B$ are `frozenset`s of hash values. An early-exit is applied when $|A \cap B| = 0$.
+- **Intra-FASTA skip** - Same-FASTA comparisons are skipped in $O(1)$ by checking the FASTA label key before entering the inner loop.
+- **Job granularity** - One job per query chunk (chunk size = ceil(N_queries / n_workers)), compared to the earlier approach of N_tiles × chunk jobs. This reduces scheduler overhead for large databases.
 
 #### Parameters
 
@@ -292,8 +292,8 @@ After the shared-window search, `compute_shared_window_stats()` aggregates the p
 
 | Field                 | Computation                                                                      |
 | --------------------- | -------------------------------------------------------------------------------- |
-| `n_shared_windows`    | `len(windows)` — count of tiled windows on this ref that have at least one match |
-| `n_conflicting_refs`  | `len({w.alt_contig for w in windows})` — distinct competitors                    |
+| `n_shared_windows`    | `len(windows)` - count of tiled windows on this ref that have at least one match |
+| `n_conflicting_refs`  | `len({w.alt_contig for w in windows})` - distinct competitors                    |
 | `mean_window_jaccard` | `statistics.mean([w.jaccard for w in windows])`                                  |
 | `max_window_jaccard`  | `max(w.jaccard for w in windows)`                                                |
 | `shared_bp`           | `sum(w.end - w.start for w in windows)` (windows may overlap; approximate)       |
@@ -310,7 +310,7 @@ Three groups of `match_paths.py` flags sit alongside the removal machinery. They
 | -------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--exclude_descriptions <regex> [...]` | none    | One or more regex patterns matched against the reference **descriptions** taken from `--match`. Any accession whose description matches **any** pattern is dropped from the analysis and its reads discarded. Passing the flag with no patterns filters nothing, as does omitting it. |
 
-This runs before conflict detection, so excluded accessions never compete for reads. The usual targets are database entries that are technically valid references but scientifically noisy — unplaced scaffolds, organelle sequences, plasmid-only records:
+This runs before conflict detection, so excluded accessions never compete for reads. The usual targets are database entries that are technically valid references but scientifically noisy - unplaced scaffolds, organelle sequences, plasmid-only records:
 
 ```bash
 match_paths.py ... --exclude_descriptions 'unplaced genomic scaffold' 'mitochondrion'
@@ -360,7 +360,7 @@ All component scores are computed in `compute_scores_per()` and combined in `com
 
 The breadth score captures how much of the reference genome has at least one read aligned to it. If reads are spread across the genome, that's a good sign the organism is genuinely present. If reads pile up in just one spot, it's more likely cross-mapping or contamination.
 
-This fraction is passed through a sigmoid curve to produce a 0–1 confidence value.
+This fraction is passed through a sigmoid curve to produce a 0 - 1 confidence value.
 
 ### 5.2 Sigmoid Function
 
@@ -560,7 +560,7 @@ The conflict detection pipeline produces per-reference metrics at the species le
 
 The raw minhash score blends two retention signals, breadth retention and read retention, to differentiate true positives from false positives, particularly within high-ANI conflict groups (e.g. _E. coli_ vs _Shigella_) where $B_r$ alone is nearly identical for every member:
 
-- **`Δ⁻¹ Breadth`** ($B_r$): fraction of genome breadth surviving conflict removal (0–1).
+- **`Δ⁻¹ Breadth`** ($B_r$): fraction of genome breadth surviving conflict removal (0 - 1).
 - **Read retention** ($R_r$): fraction of reads surviving conflict removal, i.e. `Pass Filtered Reads / Total Reads`.
 
 $$
@@ -757,10 +757,10 @@ The base percentile is then adjusted based on how far from normal it is:
 
 | Z-score range          | Adjusted percentile               | What it means                     |
 | ---------------------- | --------------------------------- | --------------------------------- |
-| $z < -1.0$             | $P_{\text{base}}^2$               | Penalize — below typical          |
-| $-1.0 \leq z \leq 1.0$ | $P_{\text{base}}$                 | Neutral — near expected           |
-| $1.0 < z \leq 2.0$     | $1 - (1 - P_{\text{base}})^{1.5}$ | Boost — above typical             |
-| $z > 2.0$              | $1 - (1 - P_{\text{base}})^{2}$   | Strong boost — well above typical |
+| $z < -1.0$             | $P_{\text{base}}^2$               | Penalize - below typical          |
+| $-1.0 \leq z \leq 1.0$ | $P_{\text{base}}$                 | Neutral - near expected           |
+| $1.0 < z \leq 2.0$     | $1 - (1 - P_{\text{base}})^{1.5}$ | Boost - above typical             |
+| $z > 2.0$              | $1 - (1 - P_{\text{base}})^{2}$   | Strong boost - well above typical |
 
 ### 8.2 Plasmid Score
 
@@ -1050,14 +1050,14 @@ create_report.py \
 
 ## 11. Aggregation Levels
 
-TASS answers two related but distinct questions: **how strong is the evidence for this exact reference or strain**, and **if the strain cannot be resolved, how strong is the evidence for the containing species or genus?** Closely related references share large portions of their genomes, so one read may align equally well to several strains. That ambiguity should reduce confidence in an exact strain, but it should not automatically erase valid evidence for the shared species or genus. Sections 11.4–11.8 cover the conceptual model; 11.1–11.3 cover the mechanics.
+TASS answers two related but distinct questions: **how strong is the evidence for this exact reference or strain**, and **if the strain cannot be resolved, how strong is the evidence for the containing species or genus?** Closely related references share large portions of their genomes, so one read may align equally well to several strains. That ambiguity should reduce confidence in an exact strain, but it should not automatically erase valid evidence for the shared species or genus. Sections 11.4 - 11.8 cover the conceptual model; 11.1 - 11.3 cover the mechanics.
 
 Scores are computed at multiple taxonomic levels:
 
-1. **Accession level** — Raw per-reference statistics
-2. **Strain level** (key) — Accessions grouped by strain; plasmid accessions are tagged and scored separately
-3. **Species level** (subkey) — Aggregated across strains; minhash comparison operates at this level
-4. **Genus level** (toplevelkey) — Highest aggregation, used for HMP lookups and final reporting. You can adjust this for higher level lookups such as order or family.
+1. **Accession level** - Raw per-reference statistics
+2. **Strain level** (key) - Accessions grouped by strain; plasmid accessions are tagged and scored separately
+3. **Species level** (subkey) - Aggregated across strains; minhash comparison operates at this level
+4. **Genus level** (toplevelkey) - Highest aggregation, used for HMP lookups and final reporting. You can adjust this for higher level lookups such as order or family.
 
 At each level, metrics are either summed (`numreads`, `covered_bases`), averaged (MAPQ), or re-computed from scratch (`gini`, `breadth` from merged regions). The toplevelkey can also be adjusted with the `--rank` parameter in TaxTriage.
 
@@ -1094,11 +1094,11 @@ That single value is not confined to the breadth term. `agg['coverage']` is cons
 | Consumer                           | With true breadth (0.019 %) | With the scaffold maximum (93.6 %)   |
 | ---------------------------------- | --------------------------- | ------------------------------------ |
 | `breadth_log_score` (5.4)          | 0.000                       | 1.000                                |
-| minhash `_breadth_gate` (7.3)      | 0.000 — gate shut           | 1.000 — gate open, minhash 0 → 0.958 |
+| minhash `_breadth_gate` (7.3)      | 0.000 - gate shut           | 1.000 - gate open, minhash 0 → 0.958 |
 | `_depth_conc_penalty` (6)          | crushed                     | efficiency looks ideal               |
-| dominant-organism gate floor (7.4) | —                           | raised                               |
+| dominant-organism gate floor (7.4) | -                           | raised                               |
 
-Species TASS lands at **~89** for an organism that is not present. The strain-level rows are unaffected and score correctly (2.6–5.0), which is the diagnostic signature: **a species scoring 80+ while every one of its strains scores below 10 is this bug.**
+Species TASS lands at **~89** for an organism that is not present. The strain-level rows are unaffected and score correctly (2.6 - 5.0), which is the diagnostic signature: **a species scoring 80+ while every one of its strains scores below 10 is this bug.**
 
 **The guard.** An accession may set its group's maximum only if it is large enough to plausibly stand in for the whole genome. It has to clear **either** of these two bars:
 
@@ -1118,7 +1118,7 @@ The two guards are independent and complementary: size eligibility stops the fab
 
 |                         | before    | after                        |
 | ----------------------- | --------- | ---------------------------- |
-| representative override | 0.9360    | none — no eligible accession |
+| representative override | 0.9360    | none - no eligible accession |
 | `coverage`              | 0.9360    | 0.000187                     |
 | `breadth_log_score`     | 1.0000    | 0.0000                       |
 | `minhash_reduction`     | 0.9580    | 0.0000                       |
@@ -1155,7 +1155,7 @@ _Conceptual poxvirus example._ One poxvirus is present, but conserved reads alig
 | Strain E  |       330 | narrow coverage in conserved loci                  |
 | Strain F  |       310 | narrow coverage in conserved loci                  |
 
-Strain A should retain the strongest breadth, evenness and read support; B–F should lose confidence to the extent their support sits in shared regions. If no reference has convincing strain-specific evidence, every strain score may stay modest even while the parent taxon is well supported. None of this is poxvirus-specific. It falls out of the general shared-sequence, dominance, breadth and rank-aware logic described above.
+Strain A should retain the strongest breadth, evenness and read support; B - F should lose confidence to the extent their support sits in shared regions. If no reference has convincing strain-specific evidence, every strain score may stay modest even while the parent taxon is well supported. None of this is poxvirus-specific. It falls out of the general shared-sequence, dominance, breadth and rank-aware logic described above.
 
 **Parent scores are recalculated, not inherited.** After strain-level processing, `match_paths.py` groups strains into species (`subkey`) and genus (`toplevelkey`) records; `calculate_normalized_groups()` reconstructs aggregate evidence and the group then passes through `calculate_aggregate_scores()` and `compute_tass_score()`. A parent score is therefore _not_ `mean(child TASS)` and _not_ `max(child TASS)`. It is `TASS(reconstructed parent-level evidence)`, computed from parent-level retained reads, breadth, Gini, minhash retention, MAPQ reliability, abundance and sibling disparity. This is the reason weak strain resolution does not imply weak species or genus detection.
 
@@ -1244,8 +1244,8 @@ The design goal is **not** "always promote ambiguous strains to a high parent sc
 
 When ground-truth labels are available (e.g., simulated data where read names encode their true origin), the pipeline can automatically optimize scoring weights using:
 
-1. [**Differential Evolution**](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html) — broad search across the full weight space
-2. [**SLSQP**](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html) — local refinement starting from the best solution found above
+1. [**Differential Evolution**](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html) - broad search across the full weight space
+2. [**SLSQP**](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html) - local refinement starting from the best solution found above
 
 The objective is to maximize the score gap between true positives and false positives, while keeping weights within valid ranges. Optimized weights are written back into the pipeline arguments for the final scoring pass.
 
@@ -1307,19 +1307,19 @@ In words: add up all the weighted component scores, toss in the plasmid bonus, o
 
 Common math symbols you'll see in the doc:
 
-- **∈** — means "is in the range of" or "falls between." For example, `D ∈ [0, 1]` just means D can be any value from 0 to 1.
-- **Greek letters** — these are just variable names, like nicknames for values:
-  - **α** (alpha) — a scaling multiplier
-  - **β** (beta) — a weighting factor that controls how much influence something has
-  - **σ²** (sigma squared) — the variance, which tells you how spread out values are from the average
-  - **μ** (mu) — the average (mean) of a set of values
-  - **Φ** (Phi) — the standard normal cumulative distribution function (basically: "what percentile does this value fall at on a bell curve?")
-  - **Δ** (delta) — means "change in" or "difference"
-- **Σ** (capital sigma) — means "add up all the values." For example, `Σ wᵢ x xᵢ` means "multiply each weight by its matching score, then add them all together."
-- **log₁₀** — the base-10 log. It answers "10 raised to what power gives me this number?" For example, log₁₀(1000) = 3 because 10³ = 1000. We use logs to compress big ranges of values into more manageable ones.
-- **e** — Euler's number (~2.718), a mathematical constant used in sigmoid ("S-shaped") curves.
-- **clamp(value, 0, 1)** — if the value goes below 0, force it to 0; if it goes above 1, force it to 1. Think of it as a buffer that keep a number from going too high.
-- **min(a, b)** — whichever value is smaller.
+- **∈** - means "is in the range of" or "falls between." For example, `D ∈ [0, 1]` just means D can be any value from 0 to 1.
+- **Greek letters** - these are just variable names, like nicknames for values:
+  - **α** (alpha) - a scaling multiplier
+  - **β** (beta) - a weighting factor that controls how much influence something has
+  - **σ²** (sigma squared) - the variance, which tells you how spread out values are from the average
+  - **μ** (mu) - the average (mean) of a set of values
+  - **Φ** (Phi) - the standard normal cumulative distribution function (basically: "what percentile does this value fall at on a bell curve?")
+  - **Δ** (delta) - means "change in" or "difference"
+- **Σ** (capital sigma) - means "add up all the values." For example, `Σ wᵢ x xᵢ` means "multiply each weight by its matching score, then add them all together."
+- **log₁₀** - the base-10 log. It answers "10 raised to what power gives me this number?" For example, log₁₀(1000) = 3 because 10³ = 1000. We use logs to compress big ranges of values into more manageable ones.
+- **e** - Euler's number (~2.718), a mathematical constant used in sigmoid ("S-shaped") curves.
+- **clamp(value, 0, 1)** - if the value goes below 0, force it to 0; if it goes above 1, force it to 1. Think of it as a buffer that keep a number from going too high.
+- **min(a, b)** - whichever value is smaller.
 
 ---
 

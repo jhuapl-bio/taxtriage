@@ -90,7 +90,7 @@ Anything detected that has no row in the pathogen sheet, and no annotated ancest
 | Primary       | `primary`       | 452  | 🟥 `#E85F50` / 🟧 `#E67E22` | ✅ always                  | 4             | Act on it                  |
 | Opportunistic | `opportunistic` | 541  | 🟨 `#ffe6a8`                | ❌ `--show_opportunistics` | 3             | Depends on site & host     |
 | Potential     | `potential`     | 557  | 🟦 `#ADD8E6`                | ❌ `--show_potentials`     | 2             | Investigate further        |
-| Unknown       | _(absent)_      | —    | ⬜ `#FFFFFF`                | ❌ `--show_unidentified`   | 1             | Un-curated; check manually |
+| Unknown       | _(absent)_      | -    | ⬜ `#FFFFFF`                | ❌ `--show_unidentified`   | 1             | Un-curated; check manually |
 | Commensal     | `commensal`     | 152  | 🟩 `#90EE90`                | ❌ `--show_commensals`     | 0             | Expected background        |
 
 The **severity rank** (`_category_severity()` in `create_report.py`) is what breaks ties when a species roll-up has to choose one label for several strains, and what orders rows within a table. Note that `Unknown` outranks `Commensal`, because an un-curated organism is treated as more interesting than a confirmed normal-flora one.
@@ -227,15 +227,15 @@ The separate `high_consequence` column (179 of 1,702 rows: select agents, catego
 
 | Organism                     | `general_classification` | `pathogenic_sites` | `commensal_sites` | Sample type | Resolved category                              | `annClass` | Why                                                          |
 | ---------------------------- | ------------------------ | ------------------ | ----------------- | ----------- | ---------------------------------------------- | ---------- | ------------------------------------------------------------ |
-| _Salmonella enterica_        | `primary`                | `stool, blood`     | —                 | stool       | **Primary**                                    | Direct     | Site matches `pathogenic_sites`                              |
-| _Salmonella enterica_        | `primary`                | `stool, blood`     | —                 | nasal       | **Primary**                                    | Derived    | No site evidence; general class applies                      |
+| _Salmonella enterica_        | `primary`                | `stool, blood`     | -                 | stool       | **Primary**                                    | Direct     | Site matches `pathogenic_sites`                              |
+| _Salmonella enterica_        | `primary`                | `stool, blood`     | -                 | nasal       | **Primary**                                    | Derived    | No site evidence; general class applies                      |
 | _Cutibacterium acnes_        | `commensal`              | `blood`            | `skin`            | skin        | **Commensal**                                  | Direct     | Site matches `commensal_sites`                               |
 | _Cutibacterium acnes_        | `commensal`              | `blood`            | `skin`            | blood       | **Primary (sterile-ish)** + `[skin flora]` tag | Direct     | Sterile-site rule promotes; flora tag warns of contamination |
 | _Thomasclavelia ramosa_      | `commensal`              | `blood`            | `gut, stool`      | stool       | **Commensal**                                  | Direct     | gut↔stool equivalence                                       |
 | _Escherichia coli_           | `opportunistic`          | `urine, blood`     | `gut`             | urine       | **Primary**                                    | Direct     | `pathogenic_sites` match promotes to Primary                 |
 | _Escherichia coli_           | `opportunistic`          | `urine, blood`     | `gut`             | stool       | **Commensal**                                  | Direct     | gut↔stool equivalence demotes                               |
-| Un-curated _Rhodococcus_ sp. | _(absent)_               | —                  | —                 | sputum      | **Opportunistic**                              | Derived    | Genus row matched via lineage walk                           |
-| Un-curated environmental sp. | _(absent)_               | —                  | —                 | any         | **Unknown**                                    | Direct     | No row, no annotated ancestor                                |
+| Un-curated _Rhodococcus_ sp. | _(absent)_               | -                  | -                 | sputum      | **Opportunistic**                              | Derived    | Genus row matched via lineage walk                           |
+| Un-curated environmental sp. | _(absent)_               | -                  | -                 | any         | **Unknown**                                    | Direct     | No row, no annotated ancestor                                |
 
 ---
 

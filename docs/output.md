@@ -82,8 +82,8 @@ These are the outputs you should review first after a successful run:
 
 Standard FastQC outputs for Illumina samples:
 
-- `*_fastqc.html` — Interactive quality metrics report
-- `*_fastqc.zip` — Archived report with raw data
+- `*_fastqc.html` - Interactive quality metrics report
+- `*_fastqc.zip` - Archived report with raw data
 
 > Note: FastQC in the MultiQC report shows **untrimmed** reads and may contain adapter sequences.
 
@@ -115,27 +115,27 @@ The main deliverable. Example report:
 
 Each table row is one detected organism with the following key columns:
 
-| Column                 | Description                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------- |
-| **Organism**           | Detected organism with associated annotation, taxID, and taxonomic rank                           |
-| **TASS Score**         | Confidence score for organism detection (0–100), with higher values indicating greater confidence |
-| **Classifier Reads**   | Number of reads assigned to the organism by Kraken2/Centrifuge                                    |
-| **Aligned Reads**      | Number and percentage of total sample reads that align to the organism's reference genome         |
-| **RPM**                | Reads Per Million (RPM), a normalized abundance metric that enables comparison across samples     |
-| **% Coverage**         | Percentage of the organism's genome covered by aligned reads                                      |
-| **Control Comparison** | Displays an organism's TASS score relative to control samples                                     |
+| Column                 | Description                                                                                         |
+| ---------------------- | --------------------------------------------------------------------------------------------------- |
+| **Organism**           | Detected organism with associated annotation, taxID, and taxonomic rank                             |
+| **TASS Score**         | Confidence score for organism detection (0 - 100), with higher values indicating greater confidence |
+| **Classifier Reads**   | Number of reads assigned to the organism by Kraken2/Centrifuge                                      |
+| **Aligned Reads**      | Number and percentage of total sample reads that align to the organism's reference genome           |
+| **RPM**                | Reads Per Million (RPM), a normalized abundance metric that enables comparison across samples       |
+| **% Coverage**         | Percentage of the organism's genome covered by aligned reads                                        |
+| **Control Comparison** | Displays an organism's TASS score relative to control samples                                       |
 
 See [TASS Scoring](TASS-Scoring) for full definitions of each metric.
 
 ### Interactive Comparison Report (`report/all.odr.html`)
 
-A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, coverage/sunburst/explore views, a per-sample-type TASS cutoff slider, species/genus roll-up views, whole-sample QC flags, and a built-in Export-to-PDF button. No server is required — the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
+A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, coverage/sunburst/explore views, a per-sample-type TASS cutoff slider, species/genus roll-up views, whole-sample QC flags, and a built-in Export-to-PDF button. No server is required - the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
 
 Samples flagged by a QC rule (`--report_flag_*`, or rules added in the report itself) are marked here, not removed: the file still carries every sample's data, so clearing a rule brings a hidden sample straight back. See [Interactive Report → Sample QC flags](interactive-report.md#sample-qc-flags).
 
-### Combined Data Export (`report/export_data/`) — Optional
+### Combined Data Export (`report/export_data/`) - Optional
 
-Written only with `--export_data`. Holds the interactive report's tables as spreadsheets — detections, per-sample summary, cross-sample organism rollup, coverage, VF/AMR, novelty, run metadata, geography and in-silico — so the data is usable without opening the HTML. The shape depends on `--export_data_formats`: a single `taxtriage.combined.xlsx` (a sheet per table), `taxtriage.wide.xlsx` / `.csv` (everything joined on Specimen ID × Organism), one CSV per table, `taxtriage.stacked.csv`, and/or `taxtriage.pivot.*` (detections crosstabbed against a metadata field). See [CLI Parameters → Combined Data Export](cli-parameters.md#combined-data-export).
+Written only with `--export_data`. Holds the interactive report's tables as spreadsheets - detections, per-sample summary, cross-sample organism rollup, coverage, VF/AMR, novelty, run metadata, geography and in-silico - so the data is usable without opening the HTML. The shape depends on `--export_data_formats`: a single `taxtriage.combined.xlsx` (a sheet per table), `taxtriage.wide.xlsx` / `.csv` (everything joined on Specimen ID × Organism), one CSV per table, `taxtriage.stacked.csv`, and/or `taxtriage.pivot.*` (detections crosstabbed against a metadata field). See [CLI Parameters → Combined Data Export](cli-parameters.md#combined-data-export).
 
 ### Microbial Sheet (`report/<sample>.odr.txt`)
 
@@ -161,7 +161,7 @@ Per-taxid breakdown of how many reads were removed during conflict resolution, i
 
 Per-reference coverage summary produced by `samtools coverage` for each top-hit organism.
 
-### Variant Files (`bcftools/`) — Optional
+### Variant Files (`bcftools/`) - Optional
 
 Available when `--reference_assembly` is enabled:
 
@@ -178,16 +178,16 @@ The pipeline uses a curated pathogen annotation sheet with ~1,600 taxa at [`asse
 
 You can modify the sheet or provide your own with `--pathogens`. Required columns:
 
-1. `name` — Organism name (doesn't need to match NCBI exactly)
-2. `taxid` — NCBI taxonomy ID
-3. `general_classification` — `Primary`, `Opportunistic`, `Potential`, or `Commensal` (see [Microbial Categories](microbial-categories.md) for definitions, site-aware resolution, and interpretation)
-4. `high_consequence` — `TRUE`/`FALSE` — always shown in PDF regardless of TASS score
+1. `name` - Organism name (doesn't need to match NCBI exactly)
+2. `taxid` - NCBI taxonomy ID
+3. `general_classification` - `Primary`, `Opportunistic`, `Potential`, or `Commensal` (see [Microbial Categories](microbial-categories.md) for definitions, site-aware resolution, and interpretation)
+4. `high_consequence` - `TRUE`/`FALSE` - always shown in PDF regardless of TASS score
 
 Optional but recommended:
 
-- `pathogenic_sites` — Comma-separated body sites where this organism is pathogenic
-- `commensal_sites` — Sites where this organism is commensal (overrides general classification for those sites)
-- `assembly_accession` — Curated `GCF_*` / `GCA_*` assembly to pin for this organism. When set, it is downloaded directly (accession-first) instead of the pipeline picking an assembly by taxid; see [Assembly Selection Order](cli-parameters.md#assembly-selection-order). Auto-generated during the database build and kept as the last column; leave blank to let TaxTriage choose.
+- `pathogenic_sites` - Comma-separated body sites where this organism is pathogenic
+- `commensal_sites` - Sites where this organism is commensal (overrides general classification for those sites)
+- `assembly_accession` - Curated `GCF_*` / `GCA_*` assembly to pin for this organism. When set, it is downloaded directly (accession-first) instead of the pipeline picking an assembly by taxid; see [Assembly Selection Order](cli-parameters.md#assembly-selection-order). Auto-generated during the database build and kept as the last column; leave blank to let TaxTriage choose.
 
 To request new organisms be added to the default sheet, open a GitHub issue.
 

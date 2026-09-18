@@ -1,6 +1,6 @@
 # Geneious Plugin
 
-Dave O'Connor's Laboratory at the University of Wisconsin-Madison developed a custom **Geneious Prime plugin** that allows TaxTriage analyses to be run directly from within the Geneious bioinformatics platform — no command-line knowledge required.
+Dave O'Connor's Laboratory at the University of Wisconsin-Madison developed a custom **Geneious Prime plugin** that allows TaxTriage analyses to be run directly from within the Geneious bioinformatics platform - no command-line knowledge required.
 
 The plugin integrates with Docker and Nextflow to execute the full TaxTriage workflow, accepting file inputs through Geneious's GUI and importing results back into the project.
 
@@ -11,9 +11,9 @@ The plugin integrates with Docker and Nextflow to execute the full TaxTriage wor
 ### Required Software
 
 - **Geneious Prime** version 2024.0.2 or later
-- **Docker** — must be installed and running on your system
-- **Nextflow** — pulled automatically via Docker on first run
-- **TaxTriage databases** — downloaded automatically by the workflow on first run
+- **Docker** - must be installed and running on your system
+- **Nextflow** - pulled automatically via Docker on first run
+- **TaxTriage databases** - downloaded automatically by the workflow on first run
 
 ---
 
@@ -49,8 +49,8 @@ Go to **Tools > TaxTriage Analysis** in Geneious.
 
 Choose one of:
 
-- **Input Files** — Click "Browse" to select individual FASTQ/FASTA files
-- **Input Directory** — Click "Browse" to select a folder of sequence files
+- **Input Files** - Click "Browse" to select individual FASTQ/FASTA files
+- **Input Directory** - Click "Browse" to select a folder of sequence files
 
 ### Configure Sequencing Preset
 

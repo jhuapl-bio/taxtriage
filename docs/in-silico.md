@@ -14,7 +14,7 @@ This page describes the in-silico read simulation workflow in TaxTriage, from sp
       re-pull so a cached copy of the revision is not silently reused.
     - **`-profile test,docker`** runs the bundled test configuration under Docker. The
       `test` profile supplies small example inputs and capped resources, so **drop it**
-      once you are pointing at your own `--input` and database — leave it in and you
+      once you are pointing at your own `--input` and database - leave it in and you
       may be running against test data or test-sized limits. Swap `docker` for
       `singularity` on an HPC, or `conda` where neither is available, and add `local`
       or your institution's profile as appropriate.
@@ -25,15 +25,15 @@ The in silico simulation pipeline makes synthetic (simulated) sequencing reads f
 
 Two simulators are supported and can be run either separately or together:
 
-- [**InSilicoSeq (ISS)**](https://github.com/HadrienG/InSilicoSeq) — Illumina paired-end reads with realistic error profiles
-- [**NanoSim**](https://github.com/bcgsc/NanoSim) — Oxford Nanopore long reads with configurable error models
+- [**InSilicoSeq (ISS)**](https://github.com/HadrienG/InSilicoSeq) - Illumina paired-end reads with realistic error profiles
+- [**NanoSim**](https://github.com/bcgsc/NanoSim) - Oxford Nanopore long reads with configurable error models
 
 When both are enabled, each produces a separate insilico sample per non control sample, and the report makes one metrics table per simulator.
 
 ## Choosing an experiment
 
 Everything on this page is one of two questions, and it is worth being clear which
-one you are asking before picking flags — they have different truth sets, different
+one you are asking before picking flags - they have different truth sets, different
 axes, and different statistics in the report.
 
 | You want to know                                                                   | Vary                 | Mode                                   | Truth set                              |
@@ -69,7 +69,7 @@ is part of the truth.
 
 ### 2. A dilution series of a community you define
 
-Same thing, but the composition comes from you rather than from the classifier —
+Same thing, but the composition comes from you rather than from the classifier -
 useful when you want the same community across runs, or organisms the samples do not
 contain:
 
@@ -136,7 +136,7 @@ pass builds the spiked FASTQ; the second treats it as an ordinary matrix and dil
 it:
 
 ```bash
-# pass 1 — spike, and keep the mixed FASTQs
+# pass 1 - spike, and keep the mixed FASTQs
 nextflow run jhuapl-bio/taxtriage \
     -r main -latest \
     -profile test,docker \
@@ -146,7 +146,7 @@ nextflow run jhuapl-bio/taxtriage \
     --spikein_sheet spikein.csv \
     --sim_keep_subsampled_fastq
 
-# pass 2 — dilute one spiked level across a depth series
+# pass 2 - dilute one spiked level across a depth series
 nextflow run jhuapl-bio/taxtriage \
     -r main -latest \
     -profile test,docker \
@@ -158,7 +158,7 @@ nextflow run jhuapl-bio/taxtriage \
 
 `--sim_keep_subsampled_fastq` is what publishes the mixed FASTQs; without it they
 exist only in the work directory. Note that the second pass has no spike sheet, so
-its truth set reverts to "whatever is recovered at full depth" — the spiked organisms
+its truth set reverts to "whatever is recovered at full depth" - the spiked organisms
 are simply part of that matrix now.
 
 **You want a defined community diluted, with no real background.** That is scenario
@@ -167,15 +167,15 @@ the simulated pool. You lose the real matrix, and gain exact control of composit
 
 ## Subsampling: spike-in / dilution series datasets
 
-`--sim_subsample` takes the master pool — synthetic (scenarios 1–2) or real
-(scenario 3) — and cuts it into datasets at each read count in the series. Each
+`--sim_subsample` takes the master pool - synthetic (scenarios 1 - 2) or real
+(scenario 3) - and cuts it into datasets at each read count in the series. Each
 dataset enters the pipeline as its own sample, named
 `<parent>_ss_<mode>_c<count>_r<replicate>`, and is scored exactly like any other.
 
 | Parameter                                                     | Effect                                                                                                                                                                                                 |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--sim_subsample`                                             | Enable the series.                                                                                                                                                                                     |
-| `--sim_subsample_mode`                                        | `randomized` — every dataset sampled independently. `consistent` — nested prefixes, so each dataset is a superset of the smaller ones (isolates the effect of depth from the effect of _which_ reads). |
+| `--sim_subsample_mode`                                        | `randomized` - every dataset sampled independently. `consistent` - nested prefixes, so each dataset is a superset of the smaller ones (isolates the effect of depth from the effect of _which_ reads). |
 | `--sim_series_counts`                                         | Explicit list, e.g. `'100,500,1000,5000'`.                                                                                                                                                             |
 | `--sim_series_start` / `--sim_series_step` / `--sim_series_n` | Generator alternative: evenly spaced counts.                                                                                                                                                           |
 | `--sim_series_replicates`                                     | Datasets per count (randomized mode), so the report can show spread rather than a single draw.                                                                                                         |
@@ -183,7 +183,7 @@ dataset enters the pipeline as its own sample, named
 | `--sim_keep_subsampled_fastq`                                 | Publish the FASTQs. Off by default: only the read-index files and manifest are kept, and any dataset can be rebuilt with `bin/reconstruct_insilico_reads.py`.                                          |
 
 For paired-end input an index refers to a read **pair**, so a count of 1000 means
-1000 pairs — the report labels the unit accordingly.
+1000 pairs - the report labels the unit accordingly.
 
 ## Natural background dilution series (real reads)
 
@@ -200,7 +200,7 @@ tab under a **Natural background (real reads)** chip.
 | `--background_reads2`     | Background R2 for paired-end input; omit for single-end.                                                                                                                                        |
 | `--background_platform`   | `ILLUMINA` / `OXFORD` / `PACBIO`. Defaults to ILLUMINA when paired, else OXFORD.                                                                                                                |
 | `--background_name`       | Sample id for the background, and the prefix of its dataset names. Default `background`.                                                                                                        |
-| `--background_from_sheet` | Take backgrounds from the samplesheet's `background` column instead — useful when the matrix is already in the run as a negative control. The column is inert unless a simulation param is set. |
+| `--background_from_sheet` | Take backgrounds from the samplesheet's `background` column instead - useful when the matrix is already in the run as a negative control. The column is inert unless a simulation param is set. |
 
 The series knobs are the same ones scenario 1 uses (`--sim_subsample_mode`,
 `--sim_series_*`, `--sim_series_replicates`, `--sim_subsample_seed`).
@@ -258,7 +258,7 @@ MAKE_SIMULATED_SAMPLES
                  │
         Injected into ch_reads as NEW SAMPLES
                  │
-        ALIGNMENT (standard pipeline — same containers as real samples)
+        ALIGNMENT (standard pipeline - same containers as real samples)
                  │
         REPORT (3-way branch: control / insilico / non-control)
           ├── Insilico --> ALIGNMENT_PER_SAMPLE_INSILICO --> insilico JSONs
@@ -275,17 +275,17 @@ MAKE_SIMULATED_SAMPLES
 
 The `make_simulated_samples.py` script takes 3 inputs per sample:
 
-1. **top_report.tsv** — Kraken2 classification report with columns including `taxid`, `rank`, `clade_fragments_covered`, `abundance`, and `number_fragments_assigned`
-2. **merged_taxid.tsv** — Reference prep mapping file with columns: `Acc`, `Assembly`, `Organism_Name`, `Description`, `Mapped_Value` (taxid)
-3. **Reference FASTA files** — The downloaded reference sequences or those provided with the `--reference_fasta` param.
+1. **top_report.tsv** - Kraken2 classification report with columns including `taxid`, `rank`, `clade_fragments_covered`, `abundance`, and `number_fragments_assigned`
+2. **merged_taxid.tsv** - Reference prep mapping file with columns: `Acc`, `Assembly`, `Organism_Name`, `Description`, `Mapped_Value` (taxid)
+3. **Reference FASTA files** - The downloaded reference sequences or those provided with the `--reference_fasta` param.
 
 #### Organism Selection
 
 The script uses a 2 step method to find all organisms to simulate:
 
-**Source 1: Kraken2 top_report** — Organisms are included if they match the specified ranks (default: `S, S1, S2, S3`), have `clade_fragments_covered >= --sim_minreads`, and their taxid is not in the exclusion list.
+**Source 1: Kraken2 top_report** - Organisms are included if they match the specified ranks (default: `S, S1, S2, S3`), have `clade_fragments_covered >= --sim_minreads`, and their taxid is not in the exclusion list.
 
-**Source 2: FASTA-first discovery** — The `discover_organisms_from_fasta()` function cross-references the accessions present in the reference FASTA with the merged_taxid.tsv mapping. This captures organisms that have downloaded reference sequences but may not appear in the Kraken2 report at the expected rank level (e.g., strain level accessions when the report only has species level entries). Newly discovered organisms receive a default abundance of `max(1.0, --sim_minreads)`.
+**Source 2: FASTA-first discovery** - The `discover_organisms_from_fasta()` function cross-references the accessions present in the reference FASTA with the merged_taxid.tsv mapping. This captures organisms that have downloaded reference sequences but may not appear in the Kraken2 report at the expected rank level (e.g., strain level accessions when the report only has species level entries). Newly discovered organisms receive a default abundance of `max(1.0, --sim_minreads)`.
 
 The two sources are merged, ensuring every organism with reference sequences gets simulated.
 
@@ -341,14 +341,14 @@ Nanosim requires a preparation step that converts the accessions abundance file 
 
 Converts the ISS style abundance file into NanoSim's metagenome format:
 
-**genome_list.tsv** — Maps organism names to individual FASTA files:
+**genome_list.tsv** - Maps organism names to individual FASTA files:
 
 ```
 Escherichia_coli    genomes/Escherichia_coli.fasta
 Zika_virus          genomes/Zika_virus.fasta
 ```
 
-**size_file.tsv** — Header line with total read count, then organism level abundances as percentages:
+**size_file.tsv** - Header line with total read count, then organism level abundances as percentages:
 
 ```
 Size    2500
@@ -394,14 +394,14 @@ Tagged metadata:
 
 The pipeline creates the necessary supporting data for each insilico sample by cloning the parent sample's reference prep data:
 
-- **Reference FASTA files** — Same as sample
-- **Mapping file** — Same as sample (merged_taxid.tsv)
-- **Kraken2 report** — Placeholder NO_FILE (insilico samples skip classification)
-- **Assembly analysis** — Placeholder NO_FILE2
+- **Reference FASTA files** - Same as sample
+- **Mapping file** - Same as sample (merged_taxid.tsv)
+- **Kraken2 report** - Placeholder NO_FILE (insilico samples skip classification)
+- **Assembly analysis** - Placeholder NO_FILE2
 
 This means insilico reads align against the **full reference set** (not just the organisms used to generate them), which is needed for detecting false positives.
 
-### Step 4: Report Stage — 3-Way Branch
+### Step 4: Report Stage - 3-Way Branch
 
 In the reporting step, all results from alignment are split into branches:
 
@@ -415,27 +415,27 @@ alignments.branch {
 
 **Branch processing:**
 
-1. **Control samples** → `ALIGNMENT_PER_SAMPLE_CONTROLS` — Processed first, outputs collected as control JSONs
-2. **Insilico samples** → `ALIGNMENT_PER_SAMPLE_INSILICO` — Processed independently, outputs collected as insilico JSONs keyed by `parent_id`
-3. **Non-control samples** → `ALIGNMENT_PER_SAMPLE` — Receives both lab control JSONs and insilico JSONs as inputs
+1. **Control samples** → `ALIGNMENT_PER_SAMPLE_CONTROLS` - Processed first, outputs collected as control JSONs
+2. **Insilico samples** → `ALIGNMENT_PER_SAMPLE_INSILICO` - Processed independently, outputs collected as insilico JSONs keyed by `parent_id`
+3. **Non-control samples** → `ALIGNMENT_PER_SAMPLE` - Receives both lab control JSONs and insilico JSONs as inputs
 
 When a parent sample has multiple insilico children (one ISS, one NanoSim), all their JSONs are collected into a list and passed together via `--insilico_controls`.
 
 ### What simulated datasets output
 
-Simulated datasets — ISS, NanoSim and spike-into-background alike, i.e. anything
-carrying `meta.insilico` — are **comparison inputs, not deliverables**. They are
+Simulated datasets - ISS, NanoSim and spike-into-background alike, i.e. anything
+carrying `meta.insilico` - are **comparison inputs, not deliverables**. They are
 deliberately held to text and JSON:
 
 | Output                                           | Real / control samples | Simulated datasets                                   |
 | ------------------------------------------------ | ---------------------- | ---------------------------------------------------- |
-| `alignment/<id>.paths.json`                      | yes                    | **yes** — the file real samples are compared against |
+| `alignment/<id>.paths.json`                      | yes                    | **yes** - the file real samples are compared against |
 | `report/<id>.odr.txt`                            | yes                    | **yes**, under `report/insilico/`                    |
 | `report/<id>.odr.pdf`                            | yes                    | no                                                   |
 | `report/<id>.odr.xlsx`                           | yes                    | no                                                   |
 | `alignment/<id>_removal_stats_by_taxid.xlsx`     | yes                    | no                                                   |
 | rows in merged `all.odr.txt` / `.pdf` / `.xlsx`  | yes                    | no                                                   |
-| rows in `all.odr.json` + the In-Silico suite tab | —                      | **yes**                                              |
+| rows in `all.odr.json` + the In-Silico suite tab | -                      | **yes**                                              |
 | MultiQC aggregation                              | yes                    | no                                                   |
 
 How it is enforced:
@@ -465,10 +465,10 @@ For each non control sample, `match_paths.py` receives the insilico JSON(s) and 
 
 All insilico JSONs are loaded into a single point. For each organism in the sample, the script does:
 
-- **`insilico_tass`** — The insilico sample's TASS score for this organism
-- **`insilico_reads`** — The insilico sample's read count for this organism
-- **`tass_fold_over_insilico`** — Ratio: sample TASS / insilico TASS
-- **`reads_fold_over_insilico`** — Ratio: sample reads / insilico reads
+- **`insilico_tass`** - The insilico sample's TASS score for this organism
+- **`insilico_reads`** - The insilico sample's read count for this organism
+- **`tass_fold_over_insilico`** - Ratio: sample TASS / insilico TASS
+- **`reads_fold_over_insilico`** - Ratio: sample reads / insilico reads
 
 #### Per-Simulator-Type Annotation
 
@@ -610,7 +610,7 @@ _Scenario 4 in [Choosing an experiment](#choosing-an-experiment)._
 
 The dilution series varies **sequencing depth**: how deep must I sequence to still
 catch this organism? A spike-in series asks the other half of the limit-of-detection
-question — **how much organism must be present before we call it?** — by holding the
+question - **how much organism must be present before we call it?** - by holding the
 background at full depth and mixing in a defined number of reads from each spike
 organism's own reference.
 
@@ -702,14 +702,14 @@ nextflow run . \
    replicates draw different reads rather than the same set.
 4. `SPIKE_INTO_BACKGROUND` draws the exact count for each (level, replicate) from those
    pools and concatenates them onto the background. The background is byte-identical in
-   every dataset — that is what makes this a spike-in rather than a dilution — so it is
+   every dataset - that is what makes this a spike-in rather than a dilution - so it is
    concatenated in the shell and never read into memory.
 
 Spiked reads are renamed `<dataset>_spike_<accession>_<i>`, so they are identifiable in
 the BAM and can never collide with background read names.
 
-Datasets are named `<background>_background_ss_<mode>_c<level>_r<rep>` — the same grammar
-the dilution series uses — so they flow through the existing injection path and appear in
+Datasets are named `<background>_background_ss_<mode>_c<level>_r<rep>` - the same grammar
+the dilution series uses - so they flow through the existing injection path and appear in
 the In-Silico report tab with no extra wiring. The manifest records `kind=spikein` plus the
 per-organism `spike_detail`, which is how the report knows `c<N>` is a spike amount rather
 than a depth, and what was truly spiked at each level.
@@ -721,8 +721,8 @@ For a spike-in group the In-Silico tab relabels itself throughout: the x axis be
 group header carries a `spike-in series` chip plus the fixed background size.
 
 The Detections **⚗** cross-reference flips with it. Instead of placing the real sample at
-its sequencing depth, it inverts the series — given this organism's read count, what spike
-level would produce it? — and places the sample at that **equivalent spike level**. The
+its sequencing depth, it inverts the series - given this organism's read count, what spike
+level would produce it? - and places the sample at that **equivalent spike level**. The
 verdict becomes whether that load clears the LoD, and whether the sample's TASS matches
 what the series scored at the same load.
 
