@@ -15,7 +15,7 @@ Make sure you have installed:
 
 ## Test Run (Recommended First Step)
 
-This command pulls test data from GitHub and runs the full pipeline. It takes approximately **10–15 minutes**.
+This command pulls test data from GitHub and runs the full pipeline. It takes approximately **10 - 15 minutes**.
 
 ```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
@@ -50,7 +50,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 
 ## Running on a Public SRA Accession
 
-No local reads needed — put a bare accession in `fastq_1` and TaxTriage downloads
+No local reads needed - put a bare accession in `fastq_1` and TaxTriage downloads
 it for you. `SRR13191702` is a small nasal-swab run, which makes it a good first
 real dataset.
 
@@ -75,7 +75,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 Leave `platform` blank and the instrument platform is taken from the archive.
 Paired-end is detected from the files themselves, so nothing needs declaring.
 Downloads land in `<outdir>/sra_downloads/<run_accession>/` and are skipped on
-later runs — see [Samplesheet](samplesheet.md#sra--ena-accessions) for accession
+later runs - see [Samplesheet](samplesheet.md#sra--ena-accessions) for accession
 types and caching.
 
 ---
@@ -172,7 +172,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
   -resume --demux
 ```
 
-> ⚠️ Using `--skip_kraken2` with a local FASTA **only performs alignment** — metagenomics classification is skipped.
+> ⚠️ Using `--skip_kraken2` with a local FASTA **only performs alignment** - metagenomics classification is skipped.
 
 ---
 

@@ -8,7 +8,7 @@ This page covers common questions, error messages, and debugging strategies for 
 
 ### Reading the Nextflow Log
 
-Red text and `ERROR` messages in the Nextflow log do **not** always mean the pipeline failed — many steps emit warnings as part of normal operation. Look for these indicators of an actual failure:
+Red text and `ERROR` messages in the Nextflow log does **not** always mean the pipeline failed, alot of steps emit warnings as part of normal operation. Look for these indicators of an actual failure:
 
 ```
 ERROR ~ Error executing process > 'NFCORE_TAXTRIAGE:TAXTRIAGE:<MODULE_NAME>'
@@ -25,11 +25,11 @@ Command error:
 
 Several steps are inherently slow:
 
-- **MultiQC** (final step) — especially with many samples
-- **NanoPlot** — can be very slow for ONT data; disable with `--skip_plots` if not needed
-- **Alignment** — more top hits = more reference FASTAs = longer alignment
-- **De novo / reference assembly** — avoid unless needed (`--use_denovo`, `--reference_assembly`)
-- **Kraken2 loading** — use `--low_memory` if RAM is limited, but this is much slower
+- **MultiQC** (final step) - specially with alot of samples
+- **NanoPlot** - can be very slow for ONT data; disable with `--skip_plots` if not needed
+- **Alignment** - more top hits = more reference FASTAs = longer alignment
+- **De novo / reference assembly** - avoid unless needed (`--use_denovo`, `--reference_assembly`)
+- **Kraken2 loading** - use `--low_memory` if RAM is limited but this is much slower
 
 ---
 
@@ -50,8 +50,8 @@ The `fastq_1` column in your samplesheet is missing a value on that row. Each ro
 
 ### What is the difference between `--remove_taxids` and `--genome`/`--remove_reference_file`?
 
-- `--remove_taxids "9606"` — removes reads **classified by Kraken2** as human (post-classification). Does not catch reads that Kraken2 missed.
-- `--remove_reference_file` / `--genome` — aligns all reads against a host reference and removes those that map (pre-classification). More comprehensive but requires a host FASTA or iGenomes key.
+- `--remove_taxids "9606"` - removes reads **classified by Kraken2** as human (post-classification). Does not catch reads that Kraken2 missed.
+- `--remove_reference_file` / `--genome` - aligns all reads against a host reference and removes those that map (pre-classification). More comprehensive but requires a host FASTA or iGenomes key.
 
 > Neither option guarantees complete host removal. Review data privacy requirements before sharing processed data.
 
@@ -70,8 +70,8 @@ Command error:
 
 **Causes and fixes:**
 
-- Read quality is lower than `--minq` threshold — lower `--minq` or use `--skip_fastp`
-- FASTQ file path is wrong or the file is empty — check your samplesheet paths
+- Read quality is lower than `--minq` threshold - lower `--minq` or use `--skip_fastp`
+- FASTQ file path is wrong or the file is empty - check your samplesheet paths
 
 ### KRAKEN2_KRAKEN2
 
@@ -83,8 +83,8 @@ Command error:
 ```
 
 - The Kraken2 database is larger than available RAM.
-- Solution A: `--low_memory` — reads the DB from disk (much slower)
-- Solution B: `--max_memory 13GB` — explicitly set memory limit (Nextflow 24.x–25.x; on 26+ set `process.resourceLimits` in a config instead — see [CLI Parameters](cli-parameters.md#workflow-control-and-execution))
+- Solution A: `--low_memory` - reads the DB from disk (much slower)
+- Solution B: `--max_memory 13GB` - explicitly set memory limit (Nextflow 24.x - 25.x; on 26+ set `process.resourceLimits` in a config instead - see [CLI Parameters](cli-parameters.md#workflow-control-and-execution))
 
 **Invalid or corrupt database:**
 
@@ -104,8 +104,8 @@ If any are missing or the directory is empty, re-download the database.
 download/<sample>.dwnld.references.fasta  (empty or missing)
 ```
 
-- If using Kraken2 (default), check internet connectivity — NCBI FASTA downloads use `curl`
-- Check `top/<sample>.top_report.tsv` — it must have at least one line of data
+- If using Kraken2 (default), check internet connectivity - NCBI FASTA downloads use `curl`
+- Check `top/<sample>.top_report.tsv` - it must have at least one line of data
 - If the file exists but is empty: you may be behind a firewall; use `--reference_fasta` with a local FASTA instead
 
 **Minimap2: `no SQ lines in header` / `Parse error`:**
@@ -202,18 +202,18 @@ This gap is itself the diagnosis: strain-level scores are computed directly from
 
 **Confirm it** by comparing two columns of the same species row in the interactive report:
 
-| Column      | Suspicious pattern    |
-| ----------- | --------------------- |
-| `Coverage`  | high — 80–100         |
-| `Breadth %` | near zero — 0.00–0.05 |
+| Column      | Suspicious pattern      |
+| ----------- | ----------------------- |
+| `Coverage`  | high - 80 - 100         |
+| `Breadth %` | near zero - 0.00 - 0.05 |
 
 Those two describe the same organism and should not disagree. `Breadth %` is honest (covered bases ÷ full genome length); `Coverage` is the roll-up override. If `Coverage` is high while `Breadth %` is ~0, the override has latched onto a small accession.
 
-**Why it happens.** The species-level coverage override takes the maximum breadth fraction across member accessions, and an accession is one BAM reference — one _contig_. For chromosome-level assemblies one accession is the genome and this is correct. For scaffold-level draft assemblies (many eukaryotic references, and any `GCA_` assembly still in thousands of pieces) a single read covering one ~900 bp scaffold yields a 0.94 breadth fraction that is then applied to the whole genome. That value drives the breadth term _and_ opens the minhash gate — the two heaviest default weights — so TASS lands near 90 for an organism that is absent.
+**Why it happens.** The species-level coverage override takes the maximum breadth fraction across member accessions, and an accession is one BAM reference - one _contig_. For chromosome-level assemblies one accession is the genome and this is correct. For scaffold-level draft assemblies (many eukaryotic references, and any `GCA_` assembly still in thousands of pieces) a single read covering one ~900 bp scaffold yields a 0.94 breadth fraction that is then applied to the whole genome. That value drives the breadth term _and_ opens the minhash gate - the two heaviest default weights - so TASS lands near 90 for an organism that is absent.
 
-**What to do.** Current defaults (`--rep_breadth_min_frac 0.01`, `--rep_breadth_min_len 50000`) already require an accession to be a meaningful fraction of the genome before it can set the group maximum. If you still see the pattern, the offending accession is clearing those bars — raise either value and re-run the scoring step. Check the `[LCA] representative-breadth eligibility:` line in the `match_paths.py` log to see how many accessions were excluded.
+**What to do.** Current defaults (`--rep_breadth_min_frac 0.01`, `--rep_breadth_min_len 50000`) already require an accession to be a meaningful fraction of the genome before it can set the group maximum. If you still see the pattern, the offending accession is clearing those bars - raise either value and re-run the scoring step. Check the `[LCA] representative-breadth eligibility:` line in the `match_paths.py` log to see how many accessions were excluded.
 
-Legitimate low-breadth detections do exist — a genuine sterile-site pathogen at very low titre. Distinguish them by checking whether reads are spread across _many_ large accessions (real) or concentrated on a few tiny ones (artefact), and by whether the same organism scores consistently across replicate samples.
+Legitimate low-breadth detections do exist - a genuine sterile-site pathogen at very low titre. Distinguish them by checking whether reads are spread across _many_ large accessions (real) or concentrated on a few tiny ones (artefact), and by whether the same organism scores consistently across replicate samples.
 
 See [TASS Scoring 11.3](tass-scoring.md#113-size-eligibility-for-the-representative-coverage-maximum) for the full mechanism.
 
@@ -230,7 +230,7 @@ different places. Check them in this order:
 | Hidden **by hand**, via the eye icon on its sidebar row | Its row in the Samples list is dimmed with a crossed-out eye                                                                | Click the eye icon again, or use **Hide All / Show All**                                                                                   |
 | The **sidebar search** auto-hide                        | A query is present in the Samples search box and **Hide filtered-out samples** is ticked                                    | Clear the search box, or untick that option                                                                                                |
 
-None of these delete anything — the sample's data is still in the file, and the
+None of these delete anything - the sample's data is still in the file, and the
 Metadata & Mapping table keeps listing it as part of the run inventory. Only the
 red **trash icon** on a sidebar row actually removes a sample from the loaded
 dataset, and even that leaves the file on disk untouched.
@@ -240,7 +240,7 @@ report: check that its `<sample>.paths.json` was produced by the run, and see
 [Interactive Report](interactive-report.md) for what a sample with no
 alignments looks like.
 
-If the flags were not something you configured, they came from the pipeline —
+If the flags were not something you configured, they came from the pipeline -
 see [Report Sample-QC Flags](cli-parameters.md#report-sample-qc-flags) for the
 `--report_flag_*` parameters that seed them.
 

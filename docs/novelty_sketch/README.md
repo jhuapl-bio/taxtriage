@@ -1,4 +1,4 @@
-# Novelty detection branch — sketch
+# Novelty detection branch - sketch
 
 Reference-free / open-set detection of organisms with **no near neighbor in the DB**, so
 taxtriage can (a) recover a **genus-or-higher** call for divergent organisms and (b) emit a
@@ -37,11 +37,11 @@ nextflow run main.nf <your usual args> \
 ```
 
 `--detect_novelty` is the master switch; `--novelty_db` points at a prebuilt mmseqs
-seqTaxDB (build once, cache — see DB note). Everything else has defaults.
+seqTaxDB (build once, cache - see DB note). Everything else has defaults.
 
 ## The score
 
-Transparent, weighted, z-scored — sits next to your custom scoring instead of replacing it:
+Transparent, weighted, z-scored - sits next to your custom scoring instead of replacing it:
 
 ```
 novelty = w_dark * z(dark_fraction)
@@ -49,11 +49,11 @@ novelty = w_dark * z(dark_fraction)
         + w_idnt * z(lowident_tail_mass)
 ```
 
-- **dark_fraction** — reads explained by _nothing_ (not K2-classified, not ref-aligned, not
+- **dark_fraction** - reads explained by _nothing_ (not K2-classified, not ref-aligned, not
   protein-assigned). A spike vs. baseline = "the DB doesn't have anything like this."
-- **highrank_only_fraction** — reads the translated search places only at genus/family/
+- **highrank_only_fraction** - reads the translated search places only at genus/family/
   order, never species. This is the direct "we see it at the genus level" signal.
-- **lowident_tail_mass** — share of best hits below ~50% aa identity: divergent-but-
+- **lowident_tail_mass** - share of best hits below ~50% aa identity: divergent-but-
   homologous content (a candidate new genus/family rather than pure dark matter).
 
 `z()` is taken against negative/no-template **controls** when available, otherwise the
@@ -63,8 +63,8 @@ you can tune per platform without code changes.
 
 Outputs per sample:
 
-- `*.novelty.summary.tsv` — one row, joins to your mqc/confidence tables by sample id.
-- `*.novelty.candidates.tsv` — one row per genus+ candidate taxon with read support.
+- `*.novelty.summary.tsv` - one row, joins to your mqc/confidence tables by sample id.
+- `*.novelty.candidates.tsv` - one row per genus+ candidate taxon with read support.
 
 ## Wiring into `workflows/taxtriage.nf`
 
@@ -88,7 +88,7 @@ if (params.detect_novelty) {
 ```
 
 Place this just after the `ASSEMBLY(...)` block (so `ch_denovo` exists). If `--detect_novelty`
-is set without `--use_denovo`, `ch_denovo` may be empty — the subworkflow's `remainder: true`
+is set without `--use_denovo`, `ch_denovo` may be empty - the subworkflow's `remainder: true`
 join handles that and falls back to unmapped-reads-only.
 
 **Join into the report.** Add `NOVELTY.out.summary` to the `input_alignment_files` join with
@@ -126,18 +126,18 @@ single-pass version; the `run_summaries` input is already plumbed for the 2-pass
 
 ## Build order (matches the earlier recommendation)
 
-1. `MMSEQS_TAXONOMY` on unmapped reads + `dark_fraction`/`highrank_only` scoring — answers
+1. `MMSEQS_TAXONOMY` on unmapped reads + `dark_fraction`/`highrank_only` scoring - answers
    both "give me a genus call" and "flag the weird sample" with minimal change.
 2. Add `lowident_tail_mass` once `convertalis`/diamond pident is flowing.
 3. Pool in de novo contigs (already emitted by ASSEMBLY) for more signal on flagged samples.
 4. Later: RdRp palmprint (palmscan) / phylogenetic placement (EPA-ng) for _characterizing_
-   the flagged novelty — a separate module that consumes `candidates.tsv`.
+   the flagged novelty - a separate module that consumes `candidates.tsv`.
 
 ## DB note
 
 `MMSEQS_TAXONOMY` needs a prebuilt mmseqs **seqTaxDB**. UniRef50 + NCBI taxonomy is a good
 default (sensitive, manageable size); build once and cache, point `params.novelty_db` at it.
-Kaiju (nr_euk or RVDB) is a drop-in alternative — swap the module, see the commented block
+Kaiju (nr_euk or RVDB) is a drop-in alternative - swap the module, see the commented block
 at the bottom of `mmseqs_taxonomy.nf`. For Kaiju, use match-length/read-length as the
 divergence proxy instead of pident in `novelty_score.py`.
 

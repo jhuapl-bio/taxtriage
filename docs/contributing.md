@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in contributing to TaxTriage! We manage tasks and bugs through GitHub issues and welcome contributions of all kinds — bug reports, feature requests, documentation improvements, and code.
+Thank you for your interest in contributing to TaxTriage! We manage tasks and bugs through GitHub issues and welcome contributions of all kinds - bug reports, feature requests, documentation improvements, and code.
 
 ---
 
@@ -21,7 +21,7 @@ Search [existing issues](https://github.com/jhuapl-bio/taxtriage/issues) to avoi
 
 ### 2. Fork and Branch
 
-[Fork](https://help.github.com/en/github/getting-started-with-github/fork-a-repo) the [jhuapl-bio/taxtriage repository](https://github.com/jhuapl-bio/taxtriage) to your GitHub account, then create a feature branch from `main`. Name it after the issue it closes — `226-metadata-module` — so the issue closes automatically when the PR merges.
+[Fork](https://help.github.com/en/github/getting-started-with-github/fork-a-repo) the [jhuapl-bio/taxtriage repository](https://github.com/jhuapl-bio/taxtriage) to your GitHub account, then create a feature branch from `main`. Name it after the issue it closes - `226-metadata-module` - so the issue closes automatically when the PR merges.
 
 ### 3. Make Changes
 
@@ -67,7 +67,7 @@ The pipeline is tested end-to-end on a minimal test dataset. Tests run against b
 
 - All new processes should use containers from [Biocontainers](https://biocontainers.pro/) where possible
 - New parameters should be documented in `nextflow_schema.json` (via `nf-core schema build`)
-- Follow DSL2 conventions — one container per process
+- Follow DSL2 conventions - one container per process
 - Add test coverage for any new feature using the minimal test dataset
 
 ---
@@ -87,8 +87,8 @@ In the rare event a release contains a bug:
 The curated pathogen sheet (`assets/pathogen_sheet.csv`) can be extended without code changes:
 
 1. Add new rows to the CSV with at minimum: `name`, `taxid`, `general_classification`, `high_consequence`
-2. Optionally add `pathogenic_sites` and `commensal_sites` columns for site-specific annotation. Prefer these over changing `general_classification` — they make the annotation conditional on body site instead of global. See [Microbial Categories](microbial-categories.md#8-curating-categories) for curation guidance.
-3. Optionally set `assembly_accession` (`GCF_*` / `GCA_*`) to pin a specific validated genome for that organism — it is used **accession-first** at download time, falling back to taxid-based selection when blank (see [Assembly Selection Order](cli-parameters.md#assembly-selection-order)). This column is appended last and regenerated automatically when the database is rebuilt, so hand-edits to it may be overwritten.
+2. Optionally add `pathogenic_sites` and `commensal_sites` columns for site-specific annotation. Prefer these over changing `general_classification` - they make the annotation conditional on body site instead of global. See [Microbial Categories](microbial-categories.md#8-curating-categories) for curation guidance.
+3. Optionally set `assembly_accession` (`GCF_*` / `GCA_*`) to pin a specific validated genome for that organism - it is used **accession-first** at download time, falling back to taxid-based selection when blank (see [Assembly Selection Order](cli-parameters.md#assembly-selection-order)). This column is appended last and regenerated automatically when the database is rebuilt, so hand-edits to it may be overwritten.
 4. Open a GitHub issue to request additions to the default sheet
 
 ---

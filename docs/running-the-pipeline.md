@@ -1,6 +1,6 @@
 # Running the Pipeline
 
-This page covers the core execution patterns for TaxTriage — from the standard run command to profiles, offline mode, cloud execution, and background operation.
+This page covers the core execution patterns for TaxTriage, from the standard run command to profiles, offline mode, cloud execution and background operation.
 
 ---
 
@@ -14,7 +14,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
   -resume
 ```
 
-> ⚠️ For laptops and workstations, start with `-profile local,docker` to apply conservative resource defaults before tuning parameters manually.
+> ⚠️ For laptops and workstations start with `-profile local,docker` to apply conservative resource defaults before you tune the parameters manually.
 
 Nextflow creates the following in your working directory:
 
@@ -106,7 +106,7 @@ Pass `--reference_fasta` pointing at whatever the alignment was made against whe
 
 ## Profiles
 
-Profiles control resource allocation and container runtime. Multiple profiles can be chained with commas (order matters — later profiles override earlier ones):
+Profiles control resource allocation and container runtime. Multiple profiles can be chained with commas (order matters - later profiles override earlier ones):
 
 ```bash
 -profile test,docker
@@ -188,7 +188,7 @@ Override memory and CPU defaults:
 --low_memory         # Read Kraken2 DB from disk instead of loading into RAM (slower)
 ```
 
-!!! warning "`--max_memory` / `--max_cpus` / `--max_time` apply to Nextflow 24.x–25.x"
+!!! warning "`--max_memory` / `--max_cpus` / `--max_time` apply to Nextflow 24.x - 25.x"
 
     They are deprecated from Nextflow 26 onward. Nextflow 24.04 added the native `process.resourceLimits` directive, which is what this pipeline uses internally (`conf/base.config`), and the `max_*` parameters are simply fed into it. On Nextflow 26+, set the ceiling directly instead of using these flags:
 
@@ -199,7 +199,7 @@ Override memory and CPU defaults:
     }
     ```
 
-    `--low_memory` is unaffected — it changes how Kraken2 reads its database, not how resources are capped.
+    `--low_memory` is unaffected - it changes how Kraken2 reads its database, not how resources are capped.
 
     See [CLI Parameters → Workflow Control and Execution](cli-parameters.md#workflow-control-and-execution) for the full note.
 
@@ -221,7 +221,7 @@ To remove human reads before classification:
 
 Ensure specific organisms are always aligned, regardless of Kraken2 results:
 
-**Option A — Local FASTA file** (header must follow `>accession description` format):
+**Option A - Local FASTA file** (header must follow `>accession description` format):
 
 ```fasta
 >NC_003663.2 Cowpox virus, complete genome
@@ -231,7 +231,7 @@ Ensure specific organisms are always aligned, regardless of Kraken2 results:
 --reference_fasta ./my_references.fasta
 ```
 
-**Option B — NCBI taxids** (requires internet):
+**Option B - NCBI taxids** (requires internet):
 
 ```bash
 --organisms "10243 2331"
@@ -306,6 +306,6 @@ Many HPC clusters have pre-configured profiles at [nf-core/configs](https://gith
 
 ## Next Steps
 
-- [CLI Parameters](cli-parameters.md) — complete parameter reference
-- [Cloud & Seqera](cloud-and-seqera.md) — AWS/Seqera Tower execution
-- [Output](output.md) — understanding your results
+- [CLI Parameters](cli-parameters.md) - complete parameter reference
+- [Cloud & Seqera](cloud-and-seqera.md) - AWS/Seqera Tower execution
+- [Output](output.md) - understanding your results

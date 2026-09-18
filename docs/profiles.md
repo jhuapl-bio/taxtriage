@@ -50,8 +50,8 @@ asking for more than the machine has.
 
 | If your situation is…                               | Start with          | Why                                                                                                                                  |
 | --------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| "I just installed this and want to see it run"      | `test,docker`       | Downloads ~112 MB, finishes in 10–15 minutes, needs no samplesheet of your own.                                                      |
-| Laptop, 8–16 GB RAM, a handful of samples           | `low,docker`        | The 8 GB capped database plus `--low_memory` is the only combination that reliably fits. Expect reduced species-level resolution.    |
+| "I just installed this and want to see it run"      | `test,docker`       | Downloads ~112 MB, finishes in 10 - 15 minutes, needs no samplesheet of your own.                                                    |
+| Laptop, 8 - 16 GB RAM, a handful of samples         | `low,docker`        | The 8 GB capped database plus `--low_memory` is the only combination that reliably fits. Expect reduced species-level resolution.    |
 | Outbreak/clinical question that is viral only       | `viral,docker`      | Skips the cost of a bacterial database entirely and drops the alignment floor to 1 read so low-titre virus is not filtered out.      |
 | Office workstation, 32 GB RAM, routine surveillance | `desktop,docker`    | Widest taxonomic coverage that still fits in a capped 16 GB index, with annotation enabled.                                          |
 | HPC node or big workstation, 128 GB+ RAM            | `local,singularity` | Full standard database resident in RAM the accuracy baseline.                                                                        |
@@ -114,7 +114,7 @@ for the current figures, and see the
 | `pluspfp`   | 100 GB+                     | Full standard plus protozoa, fungi, plant            |
 | `core_nt`   | 100 GB+                     | Broadest, effectively HPC-only                       |
 
-The capped `_8gb` / `_16gb` builds are not smaller downloads of the same data —
+The capped `_8gb` / `_16gb` builds are not smaller downloads of the same data -
 they are lossy, minimised indexes. They trade sensitivity and species-level
 resolution for fitting on the machine. A species missing from a `standard8` run is
 not evidence of absence.

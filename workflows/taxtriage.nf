@@ -132,6 +132,49 @@ def dropEmptyReads(ch, String stage) {
     }
 }
 
+// Keep a sample alive when an optional read-QC step fails for just that sample.
+// TRIMGALORE / FASTP run with errorStrategy 'ignore' (see conf/modules.config), so
+// a sample whose task still fails after its retries emits nothing and silently
+// disappears from the rest of the run. Instead, left-join the step's output back
+// onto its own input and fall back to the INPUT FASTQs -- the previous iteration of
+// the reads, e.g. the de-hosted reads for fastp -- for any sample missing from the
+// output. Kraken2 and everything downstream then still see that sample, just
+// untrimmed. Samples that succeeded are passed through untouched.
+// ch_ran is a non-optional output of the same process (fastp's json, trimgalore's
+// report) and marks the samples whose task actually completed. A sample missing from
+// ch_out but present in ch_ran ran fine and simply had nothing left to emit -- that
+// one is still dropped, as before, rather than silently resurrected.
+def fallbackOnFailure(ch_in, ch_out, ch_ran, String stage) {
+    ch_in
+        .map { meta, reads -> [meta.id, meta, reads] }
+        .join(ch_out.map { meta, reads -> [meta.id, reads] }, by: 0, remainder: true)
+        .filter { row -> row[1] != null }   // guard: output-only rows carry a null meta
+        .join(ch_ran.map { meta, f -> [meta.id, true] }, by: 0, remainder: true)
+        .filter { row -> row[1] != null }
+        .map { row ->
+            def meta      = row[1]
+            def reads_in  = row[2]
+            def reads_out = row.size() > 3 ? row[3] : null
+            def ran_ok    = row.size() > 4 ? row[4] : null
+            def missing   = reads_out == null || (reads_out instanceof List && reads_out.isEmpty())
+            if (missing && ran_ok) {
+                println "WARNING: ${stage} completed for sample '${meta.id}' but left no " +
+                        "reads -- skipping this sample. The rest of the run continues."
+                return null
+            }
+            if (missing) {
+                println "WARNING: ${stage} produced no output for sample '${meta.id}' -- " +
+                        "falling back to the reads that went into ${stage} so the sample " +
+                        "is not dropped. Downstream results for this sample are based on " +
+                        "un-${stage}-processed reads."
+                meta.put("${stage}_failed".toString(), true)
+                return [meta, reads_in]
+            }
+            return [meta, reads_out]
+        }
+        .filter { it != null }
+}
+
 
 workflow TAXTRIAGE {
     // ── Initialisation ───────────────────────────────────────────────────────────
@@ -774,9 +817,13 @@ workflow TAXTRIAGE {
     // // // // MODULE: Run Porechop / Trimgalore
     // // //
     nontrimmed_reads = ch_reads.filter { !it[0].trim }
+    ch_trimgalore_in = ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
     TRIMGALORE(
-        ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
+        ch_trimgalore_in
     )
+    // Samples whose trimgalore task failed (after its retries) fall back to the
+    // reads that were handed to trimgalore rather than dropping out of the run.
+    ch_trimgalore_reads = fallbackOnFailure(ch_trimgalore_in, TRIMGALORE.out.reads, TRIMGALORE.out.log, 'trimgalore')
 
     ch_multiqc_files = ch_multiqc_files.mix(realOnly(TRIMGALORE.out.reads).collect { it[1] }.ifEmpty([]) )
 
@@ -784,7 +831,7 @@ workflow TAXTRIAGE {
         ch_reads.filter { (it[0].platform == 'OXFORD' || it[0].platform == "PACBIO") && it[0].trim  }
     )
     ch_porechop_out  = PORECHOP.out.reads
-    trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
+    trimmed_reads = ch_trimgalore_reads.mix(PORECHOP.out.reads)
     ch_reads = nontrimmed_reads.mix(trimmed_reads)
     ch_multiqc_files = ch_multiqc_files.mix(realOnly(ch_porechop_out).collect { it[1] }.ifEmpty([]))
 
@@ -809,13 +856,16 @@ workflow TAXTRIAGE {
     )
     //////////////////// RUN FASTP to get qc plots and output reads ////////////////////
     if (!params.skip_fastp) {
+        ch_fastp_in = ch_reads
         FASTP(
-            ch_reads,
+            ch_fastp_in,
             [],
             false,
             false
         )
-        ch_reads = FASTP.out.reads
+        // Same fallback as trimgalore: a sample fastp could not process keeps the
+        // reads it was given (de-hosted / trimmed) instead of vanishing before kraken2.
+        ch_reads = fallbackOnFailure(ch_fastp_in, FASTP.out.reads, FASTP.out.json, 'fastp')
         ch_fastp_reads = FASTP.out.json
         ch_fastp_html = FASTP.out.html
         ch_multiqc_files = ch_multiqc_files.mix(realOnly(FASTP.out.json).collect { it[1] }.ifEmpty([]))
