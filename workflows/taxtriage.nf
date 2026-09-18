@@ -151,28 +151,34 @@ def fallbackOnFailure(ch_in, ch_out, ch_ran, String stage) {
         .filter { row -> row[1] != null }   // guard: output-only rows carry a null meta
         .join(ch_ran.map { meta, f -> [meta.id, true] }, by: 0, remainder: true)
         .filter { row -> row[1] != null }
+        // Drop the "ran fine but legitimately emitted nothing" case HERE, with filter.
+        // A map closure must never return null: Nextflow cannot bind a null into a
+        // channel, so returning one from map aborts the run.
+        .filter { row ->
+            def missing = row.size() <= 3 || row[3] == null || (row[3] instanceof List && row[3].isEmpty())
+            def ran_ok  = row.size() > 4 && row[4]
+            if (missing && ran_ok) {
+                println "WARNING: ${stage} completed for sample '${row[1].id}' but left no " +
+                        "reads, skipping this sample. The rest of the run continues."
+                return false
+            }
+            return true
+        }
         .map { row ->
             def meta      = row[1]
             def reads_in  = row[2]
             def reads_out = row.size() > 3 ? row[3] : null
-            def ran_ok    = row.size() > 4 ? row[4] : null
             def missing   = reads_out == null || (reads_out instanceof List && reads_out.isEmpty())
-            if (missing && ran_ok) {
-                println "WARNING: ${stage} completed for sample '${meta.id}' but left no " +
-                        "reads -- skipping this sample. The rest of the run continues."
-                return null
-            }
             if (missing) {
-                println "WARNING: ${stage} produced no output for sample '${meta.id}' -- " +
-                        "falling back to the reads that went into ${stage} so the sample " +
-                        "is not dropped. Downstream results for this sample are based on " +
-                        "un-${stage}-processed reads."
+                println "WARNING: ${stage} produced no output for sample '${meta.id}', " +
+                        "falling back to the reads that went into ${stage} so the sample is " +
+                        "not dropped. Downstream results for this sample use reads that were " +
+                        "not ${stage}-processed."
                 meta.put("${stage}_failed".toString(), true)
                 return [meta, reads_in]
             }
             return [meta, reads_out]
         }
-        .filter { it != null }
 }
 
 
