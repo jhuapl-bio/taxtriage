@@ -244,8 +244,8 @@ function _longiRunGroups() {
       a.run === _LONGI_NO_RUN
         ? 1
         : b.run === _LONGI_NO_RUN
-          ? -1
-          : a.run.localeCompare(b.run, undefined, { numeric: true, sensitivity: "base" }),
+        ? -1
+        : a.run.localeCompare(b.run, undefined, { numeric: true, sensitivity: "base" }),
     );
 }
 
@@ -268,8 +268,7 @@ function _longiMatchedGroups() {
 
 /* The samples the list is currently showing — i.e. what All / None act on. */
 function _longiMatchedSamples() {
-  if (_longiSampleGroupBy === "run" && _longiHasRunInfo())
-    return _longiMatchedGroups().flatMap((g) => g.samples);
+  if (_longiSampleGroupBy === "run" && _longiHasRunInfo()) return _longiMatchedGroups().flatMap((g) => g.samples);
   const match = _longiLegendMatcher(_longiSampleQuery);
   return match ? _longiSampleNames.filter((id) => match(id)) : _longiSampleNames.slice();
 }
