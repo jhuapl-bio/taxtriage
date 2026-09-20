@@ -1100,19 +1100,19 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "max_cpus": {
-                    "type": "string",
+                    "type": ["number", "null"],
                     "description": "Maximum number of CPUs to use for the pipeline",
                     "fa_icon": "fas fa-microchip",
                     "default": null
                 },
                 "max_memory": {
-                    "type": "string",
+                    "type": ["string", "null"],
                     "description": "Maximum amount of memory to use for the pipeline",
                     "fa_icon": "fas fa-memory",
                     "default": null
                 },
                 "force_mem": {
-                    "type": ["number", "string", "null"],
+                    "type": ["string", "null"],
                     "description": "Force the aligners and kraken2 to use a specific amount of memory rather than the max/process default",
                     "fa_icon": "fas fa-memory",
                     "help_text": "This is a string that is a number followed by GB or MB e.g. 10GB or 100MB. If left empty it opts for the default memory of the process or the max_memory (if specified), whichever is smaller.",
