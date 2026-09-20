@@ -1100,13 +1100,13 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "max_cpus": {
-                    "type": ["number", "null"],
+                    "type": "string",
                     "description": "Maximum number of CPUs to use for the pipeline",
                     "fa_icon": "fas fa-microchip",
                     "default": null
                 },
                 "max_memory": {
-                    "type": ["number", "null"],
+                    "type": "string",
                     "description": "Maximum amount of memory to use for the pipeline",
                     "fa_icon": "fas fa-memory",
                     "default": null
