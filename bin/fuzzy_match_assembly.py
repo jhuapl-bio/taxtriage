@@ -28,7 +28,7 @@ from determine_priority_assembly import determine_priority_assembly, format_desc
 def parse_args():
     parser = argparse.ArgumentParser(description="Fetch assembly accessions for a list of nuccore accessions.")
     parser.add_argument("-i", "--input", required=True, help="Path to a file containing nuccore accessions, one per line.")
-    parser.add_argument("-a", "--assembly", required=True, help="Path to a file of assembly refseq information")
+    parser.add_argument("-a", "--assembly", required=True, nargs="+", help="Path(s) to assembly summary files (RefSeq first, then optional GenBank)")
     parser.add_argument("-p", "--pathogens", required=False, help="OPTIONAL - if assembly mapping fails for an organism, attempt to query using the  pathogen sheet's name and or taxid columns")
     parser.add_argument("-o", "--output", required=True, help="Output File for GCFs")
     return parser.parse_args()
@@ -91,34 +91,34 @@ def main():
                         )
     parent_taxids = dict()
     taxids = dict()
-    with open(args.assembly, 'r') as assembly_file:
-        lines = assembly_file.readlines()
-        for line in lines:
-            if line.startswith("#"):
-                continue  # skip NCBI assembly_summary header/comment lines
-            # Split strictly on tab: fields such as asm_submitter may contain
-            # multiple consecutive spaces and must not be split on whitespace.
-            cols = line.rstrip("\r\n").split("\t")
-            if len(cols) > 7:
-                name = cols[7]
-                strain = cols[8]
-                strain = strain.split("=")[1] if "=" in strain else strain
-                if strain == "na":
-                    strain = "None"
-                ## set 2d list for [name] in the assemblies dict
-                if name not in gcfs:
-                    gcfs[name] = dict()
-                if  name in assemblies and assemblies[name] == 0:
-                    continue
-                priority = determine_priority_assembly(line)
-                if name not in assemblies or (name in assemblies and priority < assemblies[name]):
-                    assemblies[name] = priority
-                    taxid = cols[5]
-                    # extract value of strain=value. If strain=value is not present, set to just the same value for strain
-                    gcfs[name] = cols[0]
-                    taxids[taxid] = cols[0]
-                    parent_taxids[taxid] = cols[6]
-    assembly_file.close()
+    for assembly_path in args.assembly:
+        with open(assembly_path, 'r') as assembly_file:
+            lines = assembly_file.readlines()
+            for line in lines:
+                if line.startswith("#"):
+                    continue  # skip NCBI assembly_summary header/comment lines
+                # Split strictly on tab: fields such as asm_submitter may contain
+                # multiple consecutive spaces and must not be split on whitespace.
+                cols = line.rstrip("\r\n").split("\t")
+                if len(cols) > 7:
+                    name = cols[7]
+                    strain = cols[8]
+                    strain = strain.split("=")[1] if "=" in strain else strain
+                    if strain == "na":
+                        strain = "None"
+                    ## set 2d list for [name] in the assemblies dict
+                    if name not in gcfs:
+                        gcfs[name] = dict()
+                    if  name in assemblies and assemblies[name] == 0:
+                        continue
+                    priority = determine_priority_assembly(line)
+                    if name not in assemblies or (name in assemblies and priority < assemblies[name]):
+                        assemblies[name] = priority
+                        taxid = cols[5]
+                        # extract value of strain=value. If strain=value is not present, set to just the same value for strain
+                        gcfs[name] = cols[0]
+                        taxids[taxid] = cols[0]
+                        parent_taxids[taxid] = cols[6]
     accessions = dict()
     total = 0
     count = 0

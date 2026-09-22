@@ -25,6 +25,7 @@ process GET_ASSEMBLIES {
 
     output:
         path("assembly_summary_refseq.txt"), optional: false, emit: assembly
+        path("assembly_summary_genbank.txt"), optional: true, emit: genbank
         path "versions.yml"           , emit: versions
 
     when:

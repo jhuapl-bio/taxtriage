@@ -397,7 +397,18 @@ workflow TAXTRIAGE {
         // GET_ASSEMBLIES takes no input, so it runs once and its outputs are VALUE
         // channels — already broadcast to every consumer (the per-fasta and
         // per-sample mapping processes each get their own copy).
-        GET_ASSEMBLIES.out.assembly.map {  record -> record }.set { ch_assembly_txt }
+        if (params.enable_genbank) {
+            // RefSeq first, GenBank second: downstream consumers treat element [0]
+            // as the primary summary and scan the rest as supplements (same shape
+            // as --assembly + --assembly_summary_genbank).
+            GET_ASSEMBLIES.out.assembly
+                .combine(GET_ASSEMBLIES.out.genbank)
+                .map { refseq, genbank -> [refseq, genbank] }
+                .collect()
+                .set { ch_assembly_txt }
+        } else {
+            GET_ASSEMBLIES.out.assembly.map {  record -> record }.set { ch_assembly_txt }
+        }
     }
 
     // One normalised VALUE channel carrying just the primary assembly_summary

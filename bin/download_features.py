@@ -53,6 +53,7 @@ def parse_args(argv=None):
         "-a",
         "--assembly_file",
         type=Path,
+        nargs="+",
         help="Assembly refseq file to download from, with taxid and accession in the header",
     )
     parser.add_argument(
@@ -161,20 +162,20 @@ def main():
     f.close()
     assembly_urls = dict()
     maptaixd = dict()
-    with open(assembly_file, 'r') as f:
-        for line in f:
-            if line.startswith("#"):
-                continue
-            # Strip only the line ending, then split strictly on tab so that
-            # fields containing multiple spaces (e.g. asm_submitter) are not
-            # broken across columns.
-            line = line.rstrip("\r\n").split("\t")
-            gcf = line[0]
-            url = line[19]
-            taxid = line[5]
-            maptaixd[gcf] = taxid
-            assembly_urls[gcf] = url
-    f.close()
+    for assembly_path in assembly_file:
+        with open(assembly_path, 'r') as f:
+            for line in f:
+                if line.startswith("#"):
+                    continue
+                # Strip only the line ending, then split strictly on tab so that
+                # fields containing multiple spaces (e.g. asm_submitter) are not
+                # broken across columns.
+                line = line.rstrip("\r\n").split("\t")
+                gcf = line[0]
+                url = line[19]
+                taxid = line[5]
+                maptaixd[gcf] = taxid
+                assembly_urls[gcf] = url
 
     if args.mapfile:
         mfa = open(args.mapfile, 'w')

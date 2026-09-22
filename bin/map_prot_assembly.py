@@ -75,6 +75,7 @@ def parse_args(argv=None):
         "-a",
         "--assembly",
         required=False,
+        nargs="+",
         metavar="ASSEMBLY",
         help="Optional assembly file to retrieve assembly files from taxid column",
     )
@@ -145,21 +146,22 @@ def main(argv=None):
     # Load the assembly map
     assembly = defaultdict(set)
     if args.assembly:
-        # Open the file and read the data
-        with open(args.assembly, mode='r') as file:
-            reader = csv.reader(file, delimiter='\t')
+        for assembly_path in args.assembly:
+            # Open the file and read the data
+            with open(assembly_path, mode='r') as file:
+                reader = csv.reader(file, delimiter='\t')
 
-            # Skip the first row
-            next(reader)
+                # Skip the first row
+                next(reader)
 
-            # Read the second row as the header and remove the starting '#'
-            header = next(reader)
-            header = [col.lstrip('#') for col in header]
+                # Read the second row as the header and remove the starting '#'
+                header = next(reader)
+                header = [col.lstrip('#') for col in header]
 
-            # Read the rest of the rows
-            for row in reader:
-                assembly[row[5]].add(row[0])
-                assembly[row[6]].add(row[0])
+                # Read the rest of the rows
+                for row in reader:
+                    assembly[row[5]].add(row[0])
+                    assembly[row[6]].add(row[0])
     # Load the diamond output
     diamond = defaultdict(list)
     with open(args.doutput, 'r') as f:
