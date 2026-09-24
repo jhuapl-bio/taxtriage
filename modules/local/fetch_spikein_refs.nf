@@ -2,7 +2,7 @@
 //
 // Accepts an assembly accession (GCF_/GCA_) or a nuccore accession, and resolves
 // it in the order that is cheapest and most reproducible first:
-//   1. a row in the assembly_summary the pipeline already downloads -> direct FTP
+//   1. a row in any assembly_summary given (RefSeq, then GenBank) -> direct FTP
 //   2. the NCBI `datasets` CLI, when the image has it
 //   3. Entrez efetch (the only route for a bare nuccore accession)
 // A local FASTA path in the accession column is passed straight through, so a
@@ -17,7 +17,9 @@ process FETCH_SPIKEIN_REFS {
         'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
-    tuple val(accession), path(assembly_summary)
+    // One or more assembly_summary tables (RefSeq, GenBank). Staged into numbered
+    // dirs so two files with the same basename cannot collide.
+    tuple val(accession), path(assembly_summaries, stageAs: 'asm_summary_??/*')
 
     output:
     tuple val(accession), path("refs/*.fasta"), emit: reference
@@ -47,20 +49,26 @@ process FETCH_SPIKEIN_REFS {
         esac
     fi
 
-    # (1) assembly_summary -> FTP directory -> <basename>_genomic.fna.gz
-    if [ ! -s \$OUT ] && [ -s "${assembly_summary}" ] && [ "${assembly_summary}" != "NO_FILE" ]; then
-        FTP=\$(awk -F'\\t' -v acc="${accession}" '\$1 == acc {print \$20; exit}' ${assembly_summary} || true)
-            # assembly_summary columns: 6 = taxid, 7 = species_taxid, 8 = organism_name
-            awk -F'\\t' -v acc="${accession}" '\$1 == acc {printf "%s\\t%s\\t%s\\n", acc, \$6, \$8; exit}' \\
-                ${assembly_summary} > \$TAXOUT || true
-        if [ -n "\$FTP" ] && [ "\$FTP" != "na" ]; then
+    # (1) assembly_summary (RefSeq, then GenBank) -> FTP directory -> <basename>_genomic.fna.gz
+    #     GCA_ accessions only appear in the GenBank summary, so scan every table.
+    for SUMMARY in ${assembly_summaries}; do
+        [ -s \$OUT ] && break
+        [ -s "\$SUMMARY" ] || continue
+        [ "\$(basename \$SUMMARY)" = "NO_FILE" ] && continue
+        FTP=\$(awk -F'\\t' -v acc="${accession}" '\$1 == acc {print \$20; exit}' "\$SUMMARY" || true)
+        [ -n "\$FTP" ] || continue
+        echo "[spikein-refs] ${accession}: found in \$(basename \$SUMMARY)" >&2
+        # assembly_summary columns: 6 = taxid, 7 = species_taxid, 8 = organism_name
+        awk -F'\\t' -v acc="${accession}" '\$1 == acc {printf "%s\\t%s\\t%s\\n", acc, \$6, \$8; exit}' \\
+            "\$SUMMARY" > \$TAXOUT || true
+        if [ "\$FTP" != "na" ]; then
             BASE=\$(basename "\$FTP")
             HTTP=\$(echo "\$FTP" | sed 's|^ftp://|https://|')
             echo "[spikein-refs] ${accession}: assembly_summary -> \$HTTP" >&2
             curl -sSL --retry 3 --retry-delay 2 "\$HTTP/\${BASE}_genomic.fna.gz" -o ref.fna.gz \\
                 && zcat ref.fna.gz > \$OUT || true
         fi
-    fi
+    done
 
     # (2) NCBI datasets CLI, when present.
     if [ ! -s \$OUT ] && command -v datasets >/dev/null 2>&1; then

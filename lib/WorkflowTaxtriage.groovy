@@ -499,17 +499,29 @@ class WorkflowTaxtriage {
     // --assembly (+ optional --assembly_summary_genbank) -> a Path, a List of Paths,
     // or null when the summaries should be downloaded instead.
     //
+    // Local RefSeq summary: --assembly or its alias --assembly_summary_refseq.
+    public static String localRefseqSummary(params) {
+        return params.assembly ?: params.assembly_summary_refseq ?: null
+    }
+
+    // Returns the local summary file(s) when NOTHING needs downloading, else null
+    // (GET_ASSEMBLIES then downloads whatever is missing and the workflow mixes
+    // in any local files). RefSeq is always element [0], GenBank [1].
     public static Object resolveAssemblyFiles(params) {
-        if (!params.assembly) {
-            println 'No assembly file given, downloading the standard NCBI RefSeq summary' +
-                    (params.enable_genbank ? ' and GenBank summary (--enable_genbank)' : ' (GenBank pulling disabled; enable with --enable_genbank)')
+        def refseq  = localRefseqSummary(params)
+        def genbank = params.assembly_summary_genbank
+        def need_genbank_download = params.enable_genbank && !genbank
+        if (!refseq || need_genbank_download) {
+            println 'Assembly summaries: ' +
+                (refseq  ? "RefSeq local (${refseq})" : 'RefSeq download') + ', ' +
+                (genbank ? "GenBank local (${genbank})" : (params.enable_genbank ? 'GenBank download' : 'GenBank disabled (enable with --enable_genbank or --assembly_summary_genbank)'))
             return null
         }
-        println "Assembly file present, using it to pull genomes from... ${params.assembly}"
-        def files = [Nextflow.file(params.assembly, checkIfExists: true)]
-        if (params.assembly_summary_genbank) {
-            println "GenBank assembly file also provided: ${params.assembly_summary_genbank}"
-            files << Nextflow.file(params.assembly_summary_genbank, checkIfExists: true)
+        println "Assembly file present, using it to pull genomes from... ${refseq}"
+        def files = [Nextflow.file(refseq, checkIfExists: true)]
+        if (genbank) {
+            println "GenBank assembly file also provided: ${genbank}"
+            files << Nextflow.file(genbank, checkIfExists: true)
         }
         return files.size() == 1 ? files[0] : files
     }

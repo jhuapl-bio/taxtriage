@@ -488,6 +488,12 @@
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "assembly_summary_refseq": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Optional path to a local RefSeq assembly summary file (assembly_summary_refseq.txt). Alias of --assembly; when set, the RefSeq summary is not downloaded.",
+                    "help_text": "Download from https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt"
+                },
                 "assembly_summary_genbank": {
                     "type": "string",
                     "format": "file-path",
