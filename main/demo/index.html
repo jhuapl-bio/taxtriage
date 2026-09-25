@@ -5529,7 +5529,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
 }
 
 /* ── Sidebar summary ─────────────────────────────────────────────────────── */
-#flag-summary {
+#flag-summary,
+#oflag-summary {
   margin: 0 0 0.7em;
   font-size: 0.78em;
 }
@@ -5596,7 +5597,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
     that is a squeeze (≈193px of usable width), which is why the button label
     is short and neither control carries a caption; below about 200px the row
     wraps to two full-width rows rather than clipping either control. */
-#flag-summary-actions {
+#flag-summary-actions,
+#oflag-summary-actions {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -5604,7 +5606,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   gap: 0.3em;
   margin-top: 0.4em;
 }
-#flag-open-btn {
+#flag-open-btn,
+#oflag-open-btn {
   flex: 0 1 auto;
   white-space: nowrap;
   font-size: 0.95em;
@@ -5617,7 +5620,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   font-weight: 600;
   line-height: 1.5;
 }
-#flag-open-btn.has-flags {
+#flag-open-btn.has-flags,
+#oflag-open-btn.has-flags {
   border-color: #d99400;
   background: #fff4e0;
   color: #8a5300;
@@ -5635,7 +5639,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
 }
 /*  #sidebar label / #sidebar select both carry an id + type selector, which
     outranks a bare id — hence the #sidebar prefixes here. */
-#sidebar #flag-view-mode-lbl {
+#sidebar #flag-view-mode-lbl,
+#sidebar #oflag-view-mode-lbl {
   display: flex;
   align-items: stretch;
   align-self: stretch;
@@ -5647,7 +5652,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   color: #7b8794;
   cursor: pointer;
 }
-#sidebar #flag-view-mode {
+#sidebar #flag-view-mode,
+#sidebar #oflag-view-mode {
   flex: 1 1 auto;
   min-width: 0;
   width: auto;
@@ -5662,7 +5668,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   color: #3e4c59;
   cursor: pointer;
 }
-#sidebar #flag-view-mode:focus-visible {
+#sidebar #flag-view-mode:focus-visible,
+#sidebar #oflag-view-mode:focus-visible {
   outline: 2px solid #1565c0;
   outline-offset: 1px;
 }
@@ -5670,14 +5677,17 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
     the same amber the flag badges use, so it is obvious why a sample is gone. */
 /*  No bold here: at 220px the row has ~2px of slack and a bolder face clips
     "Only flagged". Colour alone carries it. */
-#sidebar #flag-view-mode.filtering {
+#sidebar #flag-view-mode.filtering,
+#sidebar #oflag-view-mode.filtering {
   border-color: #d99400;
   background: #fff4e0;
   color: #8a5300;
 }
 /*  "Only flagged" is inert with nothing flagged — greyed, not hidden. */
 #flag-view-mode option:disabled,
-#flag-view-mode-modal option:disabled {
+#flag-view-mode-modal option:disabled,
+#oflag-view-mode option:disabled,
+#oflag-view-mode-modal option:disabled {
   color: #9aa5b1;
 }
 .flag-exclude-lbl input[type="text"] {
@@ -5764,7 +5774,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   font-size: 0.95em;
 }
 /*  Same amber cue as the sidebar copy of this control. */
-.flag-modal-top select#flag-view-mode-modal.filtering {
+.flag-modal-top select#flag-view-mode-modal.filtering,
+.flag-modal-top select#oflag-view-mode-modal.filtering {
   border-color: #d99400;
   background: #fff4e0;
   color: #8a5300;
@@ -5774,7 +5785,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   gap: 0.4em;
 }
 
-#flag-rule-list {
+#flag-rule-list,
+#oflag-rule-list {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -5871,7 +5883,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   flex-wrap: wrap;
   margin: 0.7em 0 0.2em;
 }
-#flag-add-rule {
+#flag-add-rule,
+#oflag-add-rule {
   border: 1px solid #1565c0;
   border-radius: 5px;
   background: #1565c0;
@@ -5888,7 +5901,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   color: #8595a6;
   font-size: 0.94em;
 }
-.flag-preset {
+.flag-preset,
+.oflag-preset {
   border: 1px solid #c5d5e8;
   border-radius: 9px;
   background: #f7f9fc;
@@ -5897,13 +5911,15 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   font-size: 0.95em;
   cursor: pointer;
 }
-.flag-preset:hover {
+.flag-preset:hover,
+.oflag-preset:hover {
   border-color: #1565c0;
   background: #f0f7ff;
   color: #0d47a1;
 }
 
-#flag-preview {
+#flag-preview,
+#oflag-preview {
   margin-top: 0.9em;
   border-top: 1px solid #e4ebf5;
   padding-top: 0.7em;
@@ -5981,6 +5997,129 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
 text.hm-flag-label {
   fill: #a35c00;
   font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ORGANISM QC — per-detection flags (48/49_organism_flags*.js)
+   Same amber language as the sample flags, applied to single rows: a left
+   rule on the organism cell plus a small "QC" badge, never a full-row wash
+   (the high-consequence red and the rescued-orange tints live there).
+   ═══════════════════════════════════════════════════════════════════════════ */
+.tt-oflag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 5px;
+  padding: 0 5px;
+  border: 1px solid #f0b429;
+  border-radius: 8px;
+  background: #fff4e0;
+  color: #a35c00;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.55;
+  vertical-align: middle;
+  white-space: nowrap;
+  cursor: help;
+}
+.tt-oflag-badge.tt-flag-hidden {
+  border-color: #e0a2a2;
+  background: #fdeaea;
+  color: #a12b2b;
+}
+tr.org-flagged > td:first-child {
+  box-shadow: inset 3px 0 0 #f0b429;
+  background-image: linear-gradient(90deg, #fff6e6, rgba(255, 246, 230, 0) 60%);
+}
+.hm-oflag-corner {
+  fill: #d99400;
+  stroke: #fff;
+  stroke-width: 0.6;
+}
+#sidebar .oflag-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  margin: 0;
+  font-size: 0.95em;
+  font-weight: 400;
+  color: #52606d;
+  cursor: pointer;
+}
+#sidebar .oflag-switch input {
+  margin: 0;
+}
+#oflag-rule-list {
+  gap: 8px;
+}
+.oflag-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 7px 7px;
+  border: 1px solid #d6e0ee;
+  border-radius: 7px;
+  background: #f9fbfe;
+}
+.oflag-card.off {
+  opacity: 0.55;
+}
+.oflag-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #37474f;
+}
+.oflag-card-head label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  cursor: pointer;
+}
+.oflag-card-spacer {
+  flex: 1 1 auto;
+}
+.oflag-card-head select {
+  border: 1px solid #c5d5e8;
+  border-radius: 4px;
+  padding: 0.18em 0.35em;
+  background: #fff;
+  font-size: 0.95em;
+}
+.oflag-card .oflag-cond {
+  border-color: #e6ecf4;
+}
+.oflag-card input.oflag-value[type="text"] {
+  flex: 1 1 170px;
+}
+.oflag-card .oflag-peer {
+  flex: 0 0 auto;
+}
+.oflag-add-cond {
+  align-self: flex-start;
+  margin-left: 52px;
+  border: 1px dashed #b0c4dc;
+  border-radius: 4px;
+  background: #fff;
+  color: #3f5f86;
+  font-size: 0.9em;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.oflag-add-cond:hover {
+  border-color: #1565c0;
+  color: #0d47a1;
+}
+.oflag-preview-sample {
+  font-weight: 400;
+  font-size: 0.88em;
+  color: #7b8794;
+}
+.flag-preview-row.quiet {
+  color: #90a4ae;
+  background: #fff;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -11517,6 +11656,39 @@ body.tt-map-maximised-body #banner {
           </div>
         </div>
 
+        <h3 style="display: flex; align-items: center; gap: 0.4em">
+          Organism QC / Flags
+          <button
+            class="info-tip-btn"
+            id="oflag-tip-btn"
+            aria-label="Organism QC help"
+            data-tip="&lt;b&gt;Organism QC rules&lt;/b&gt; — filters that act on individual DETECTIONS (organism rows) rather than whole samples.&lt;br&gt;&lt;br&gt;Each rule is one or more conditions that must all hold, e.g. &lt;i&gt;Genus is one of Streptococcus, Staphylococcus&lt;/i&gt; &lt;b&gt;and&lt;/b&gt; &lt;i&gt;# Reads Aligned &amp;lt; 50&lt;/i&gt;. Conditions can test any detection column or the organism&#39;s in-sample context: &lt;b&gt;shared ANI&lt;/b&gt; with another (stronger) hit in the same sample (needs &lt;code&gt;--enable_matrix&lt;/code&gt;), its genus&#39;s reads, its share / rank within the genus, aligned vs classifier reads, prevalence and lineage.&lt;br&gt;&lt;br&gt;A matching row is &lt;b&gt;flagged&lt;/b&gt; (amber badge in the Summary and Table, amber corner on the heatmap cell) or &lt;b&gt;flagged and hidden&lt;/b&gt; (removed from every chart and table). The dropdown switches the whole report between highlighting, hiding the flagged rows, or showing only them &mdash; nothing is deleted from the data.&lt;br&gt;&lt;br&gt;Defaults come from the pipeline&#39;s &lt;code&gt;--report_org_flag_*&lt;/code&gt; parameters and are saved with the session state."
+          >
+            &#x24D8;
+          </button>
+        </h3>
+        <div id="oflag-summary">
+          <div id="oflag-summary-line" class="flag-line quiet"></div>
+          <div id="oflag-summary-actions">
+            <label class="oflag-switch" title="Turn every organism rule on or off without deleting them">
+              <input type="checkbox" id="oflag-enabled-side" checked /> On
+            </label>
+            <button type="button" id="oflag-open-btn" title="Open the organism filter / flag rule builder">
+              <i class="fas fa-flag"></i> Filter Organisms
+            </button>
+            <label
+              id="oflag-view-mode-lbl"
+              title="Highlight flagged organism rows, hide them from every view, or show nothing but them"
+            >
+              <select id="oflag-view-mode">
+                <option value="all">Highlight flagged</option>
+                <option value="hide">Hide flagged</option>
+                <option value="only">Only flagged</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         <h3 style="display: flex; align-items: center; justify-content: space-between; gap: 0.4em">
           Samples
           <span style="display: flex; gap: 0.3em; flex-shrink: 0">
@@ -12302,6 +12474,92 @@ body.tt-map-maximised-body #banner {
           </button>
           <button type="button" id="flag-clear-btn">Remove all rules</button>
           <button type="button" id="flag-apply-btn" class="primary">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ Organism QC: filter / flag rule builder ════════════════════════ -->
+    <div id="oflag-modal-overlay" class="export-modal-overlay" aria-hidden="true">
+      <div class="export-modal flag-modal" role="dialog" aria-modal="true" aria-labelledby="oflag-modal-title">
+        <header>
+          <i class="fas fa-flag"></i>
+          <span id="oflag-modal-title">Organism filters &amp; flags</span>
+          <button type="button" id="oflag-modal-close" aria-label="Close">&times;</button>
+        </header>
+        <div class="flag-modal-body">
+          <p class="flag-modal-intro">
+            These rules act on <b>individual detections</b> (one organism in one sample). Every condition in a rule must
+            hold for it to match; separate rules are independent. A matching row is <b>flagged</b> &mdash; badged in the
+            Summary and Table, cornered on the heatmap &mdash; or <b>flagged and hidden</b>, which removes it from every
+            view. <b>In-sample context</b> fields compare an organism with the other hits of the same sample at the same
+            level: shared ANI (needs <code>--enable_matrix</code>), its genus's reads, its share and rank within the
+            genus. Values come from the full dataset, not from what the current filters display. Changes apply as you
+            make them.
+          </p>
+          <div class="flag-modal-top">
+            <label title="Turn the whole rule set off without deleting it">
+              <input type="checkbox" id="oflag-enabled" checked /> Rules active
+            </label>
+            <label
+              title="Highlight: rules with a 'hide' action still hide their own matches. Hide flagged: every flagged row is hidden. Only flagged: show nothing but the flagged rows."
+            >
+              Show
+              <select id="oflag-view-mode-modal">
+                <option value="all">everything, flagged highlighted</option>
+                <option value="hide">everything except flagged</option>
+                <option value="only">only flagged rows</option>
+              </select>
+            </label>
+          </div>
+          <div id="oflag-rule-list"></div>
+          <div class="flag-modal-addrow">
+            <button type="button" id="oflag-add-rule"><i class="fas fa-plus"></i> Add rule</button>
+            <span class="flag-preset-wrap">
+              Presets:
+              <button type="button" class="oflag-preset" data-preset="lowreads">Few reads</button>
+              <button type="button" class="oflag-preset" data-preset="lowtass">Low TASS</button>
+              <button
+                type="button"
+                class="oflag-preset"
+                data-preset="ani"
+                title="Flag the weaker of two hits in the same sample that share at least 99% ANI"
+              >
+                Shared ANI with a stronger hit
+              </button>
+              <button
+                type="button"
+                class="oflag-preset"
+                data-preset="genuslow"
+                title="Organisms in the genera you list AND with fewer than 50 reads"
+              >
+                Genus + few reads
+              </button>
+              <button
+                type="button"
+                class="oflag-preset"
+                data-preset="genusminor"
+                title="Not the top hit of its genus in the sample, and under 5% of the genus's reads"
+              >
+                Minor member of a genus
+              </button>
+              <button
+                type="button"
+                class="oflag-preset"
+                data-preset="k2only"
+                title="Classifier called it loudly but under 5% of those reads aligned"
+              >
+                Classifier-only
+              </button>
+            </span>
+          </div>
+          <div id="oflag-preview"></div>
+        </div>
+        <div class="export-modal-actions">
+          <button type="button" id="oflag-reset-btn" title="Restore the rules the pipeline shipped with this report">
+            Reset to pipeline defaults
+          </button>
+          <button type="button" id="oflag-clear-btn">Remove all rules</button>
+          <button type="button" id="oflag-apply-btn" class="primary">Done</button>
         </div>
       </div>
     </div>
@@ -13322,6 +13580,7 @@ function filteredData(opts) {
     watchFilterMode,
     watchFilterMode === "all" ? "" : Array.from(watchlist).sort().join(","),
     typeof _hashSpecimenMerge === "function" ? _hashSpecimenMerge() : "",
+    typeof ttOFlagFilterKey === "function" ? ttOFlagFilterKey() : "",
   ].join("\u0001");
   const _slot = _ignoreThr ? _FD_CACHE_ALL : _FD_CACHE;
   if (_slot.key === cacheKey && _slot.value) return _slot.value;
@@ -13345,8 +13604,11 @@ function filteredData(opts) {
   const anyRescale = _hasAnyRescale();
 
   // Base (non-level, non-threshold) predicates shared by every view.
+  const _oflagGate = typeof ttOFlagFilterKey === "function" && ttOFlagFilterKey() !== "";
   function _basePass(r) {
     if (sampleHidden[r["Specimen ID"]]) return false;
+    // Organism QC rules (48_organism_flags.js) with a hide action / view.
+    if (_oflagGate && ttOFlagRowHidden(r)) return false;
     if (rx) {
       // Match both the raw library id and its current specimen label. Without
       // this, a user-created merged name could be displayed but not searched.
@@ -13722,10 +13984,33 @@ function applyRescale(r) {
 function _rescaleVal(r, v) {
   return _hasAnyRescale() && sampleRescale[r["Specimen ID"]] ? v * 100 : v;
 }
+/* ── Sample-type keys for the TASS cutoff ────────────────────────────
+   A row with no sample type (blank or "unknown") gets the key "unknown".
+   When the run mixes typed and untyped samples, "unknown" is listed as its
+   own per-type cutoff. Previously untyped rows fell back to the global
+   slider, which is HIDDEN whenever per-type controls are shown, so an
+   untyped sample (e.g. a spike-in background) was filtered at a cutoff the
+   user could neither see nor change.                                     */
+const UNKNOWN_SAMPLE_TYPE = "unknown";
+function _sampleTypeKey(raw) {
+  const t = (raw || "").trim().toLowerCase();
+  return t || UNKNOWN_SAMPLE_TYPE;
+}
+/** Sample types that get their own cutoff control. Typed samples always;
+ *  "unknown" only alongside at least one typed sample (a run with no types
+ *  keeps the single global slider). */
+function _tassTypeList() {
+  const all = new Set(DATA.map((r) => _sampleTypeKey(r["Sample Type"])));
+  const typed = Array.from(all)
+    .filter((t) => t !== UNKNOWN_SAMPLE_TYPE)
+    .sort();
+  if (typed.length && all.has(UNKNOWN_SAMPLE_TYPE)) typed.push(UNKNOWN_SAMPLE_TYPE);
+  return typed;
+}
 function thresholdForRow(r) {
   const minV = parseFloat(document.getElementById("filter-min").value) || 0;
-  const _st = (r["Sample Type"] || "").trim().toLowerCase();
-  return _st && _st !== "unknown" && perTypeTass[_st] != null ? perTypeTass[_st] : minV;
+  const _st = _sampleTypeKey(r["Sample Type"]);
+  return perTypeTass[_st] != null ? perTypeTass[_st] : minV;
 }
 function rowPassInfo(r) {
   const thr = thresholdForRow(r);
@@ -14843,9 +15128,7 @@ async function _renderXsForPdf() {
 /* ── TASS cutoff summary (shared by the KPI card logic + the PDF legend) ──
          Returns { mode:"byType"|"global", items:[{type,applied,def}], global, recommended }. */
 function _tassCutoffSummary() {
-  const types = Array.from(
-    new Set(DATA.map((r) => (r["Sample Type"] || "").trim().toLowerCase()).filter((t) => t && t !== "unknown")),
-  ).sort();
+  const types = _tassTypeList();
   const globalFallback = parseFloat((document.getElementById("filter-min") || {}).value) || 0;
   const recommended = BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH) ? Number(BEST_TASS_THRESH) : null;
   if (types.length) {
@@ -16256,9 +16539,13 @@ function buildSampleList() {
  *  inspecting SAMPLE_META entries that share the same type, then taking
  *  the median of their per-sample best_cutoffs thresholds. */
 function _defaultTassForType(sampleType) {
-  const t = (sampleType || "").toLowerCase().trim();
+  // Untyped samples ("unknown" or blank) are grouped under one key and get the
+  // median of THEIR OWN recommended cutoffs — the same value their
+  // .odr.txt/.xlsx/.pdf "Passes Threshold" column uses — rather than the
+  // run-level minimum, which is another sample type's cutoff.
+  const t = _sampleTypeKey(sampleType);
   const vals = Object.values(SAMPLE_META)
-    .filter((m) => (m.sample_type || "").toLowerCase().trim() === t)
+    .filter((m) => _sampleTypeKey(m.sample_type) === t)
     .map((m) => {
       const gran = m.preferred_granularity || "subkey";
       return ((m.best_cutoffs || {})[gran] || {}).best_threshold;
@@ -16282,9 +16569,7 @@ function buildPerTypeTassUI() {
   const setAllBtn = document.getElementById("per-type-set-all-btn");
   if (!wrap || !rowsEl) return;
 
-  const types = Array.from(
-    new Set(DATA.map((r) => (r["Sample Type"] || "").trim().toLowerCase()).filter((t) => t && t !== "unknown")),
-  ).sort();
+  const types = _tassTypeList();
 
   if (!types.length) {
     wrap.style.display = "none";
@@ -16349,7 +16634,8 @@ function buildPerTypeTassUI() {
       ";transition:opacity 0.15s,transform 0.2s;flex-shrink:0;width:12px;text-align:center";
 
     const lblEl = document.createElement("span");
-    lblEl.textContent = t;
+    lblEl.textContent = t === UNKNOWN_SAMPLE_TYPE ? "unknown / untyped" : t;
+    if (t === UNKNOWN_SAMPLE_TYPE) lblEl.title = "Samples with no sample type (blank or 'unknown')";
     lblEl.style.cssText =
       "flex:1;text-transform:capitalize;font-weight:500;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
 
@@ -16822,6 +17108,8 @@ function drawHeatmap() {
     samples.forEach((sp) => {
       const r = lookup[`${sp}|||${org}`];
       const v = r ? num(r[col]) : null;
+      // Organism QC flag for this cell (48_organism_flags.js).
+      const _of = r && typeof ttOFlagStateFor === "function" ? ttOFlagStateFor(r) : null;
       const cell = svg
         .append("rect")
         .attr("x", xScale(sp))
@@ -16842,7 +17130,12 @@ function drawHeatmap() {
           showTip(
             `<b>${org}</b>${hc}<br>Sample: ${sp}<br>${col}: <b>${
               v !== null ? v.toLocaleString() : "n/a"
-            }</b><br>TASS: ${tass.toFixed(1)} · ${rankLabel(r, rank)}`,
+            }</b><br>TASS: ${tass.toFixed(1)} · ${rankLabel(r, rank)}` +
+              (_of
+                ? `<br><span style="color:#ffcc80"><i class="fas fa-flag"></i> Organism QC: ${_of.hits
+                    .map((h) => _ttOFlagEsc(h.text))
+                    .join("; ")}</span>`
+                : ""),
             ev,
           );
         })
@@ -16889,6 +17182,27 @@ function drawHeatmap() {
       }
     });
   });
+
+  // ── Organism QC markers ─────────────────────────────────────────────
+  // A bottom-left amber corner on each flagged cell (the top-right corner is
+  // the rescued-strain marker). Drawn as a separate pass so it sits above the
+  // value text; pointer-events off so the cell keeps its own tooltip.
+  if (typeof ttOFlagStateFor === "function") {
+    const ofG = svg.append("g").attr("class", "hm-oflag").style("pointer-events", "none");
+    organisms.forEach((org) => {
+      samples.forEach((sp) => {
+        const r = lookup[`${sp}|||${org}`];
+        if (!r || !ttOFlagStateFor(r)) return;
+        const x0 = xScale(sp),
+          y1 = yScale(org) + yScale.bandwidth(),
+          s = Math.min(8, xScale.bandwidth() * 0.32);
+        ofG
+          .append("path")
+          .attr("class", "hm-oflag-corner")
+          .attr("d", `M${x0},${y1} L${x0 + s},${y1} L${x0},${y1 - s} Z`);
+      });
+    });
+  }
 
   // ── Flagged-sample column marker ───────────────────────────────────
   // Deliberately an OUTLINE plus a solid cap, not a translucent wash: the
@@ -21720,6 +22034,8 @@ function _renderOneRow(row) {
   if (row.__belowCutoffVFAMR) tr.classList.add("below-cutoff-row");
   if (row.__belowCutoffAligned) tr.classList.add("below-cutoff-aligned-row");
   if (row.__noveltyNoAlign) tr.classList.add("novelty-noalign-row");
+  const _oflag = typeof ttOFlagStateFor === "function" ? ttOFlagStateFor(row) : null;
+  if (_oflag) tr.classList.add("org-flagged");
   const _rk = _tblRowKey(row);
   if (_tblPinned.has(_rk)) tr.classList.add("row-pinned");
   tr.addEventListener("click", (e) => {
@@ -21790,6 +22106,7 @@ function _renderOneRow(row) {
           `hidden by score, but shown because VF/AMR genes were detected for this organism's genus in this sample.`;
         contentSpan.appendChild(_bc);
       }
+      if (_oflag) contentSpan.insertAdjacentHTML("beforeend", _orgFlagBadgeHTML(row));
       if (row.__belowCutoffAligned || row.__noveltyNoAlign) {
         const _stb = document.createElement("span");
         _stb.innerHTML = _subThresholdBadgeHTML(row);
@@ -24307,9 +24624,7 @@ function drawSummary() {
   ).size;
   const platforms = uniq(samples.map((sn) => _summaryMetaFor(sn, fd).platform).filter((p) => p && p !== "unknown"));
   // Applied TASS cutoffs — per sample type when available, otherwise global fallback.
-  const _kpiTypes = Array.from(
-    new Set(DATA.map((r) => (r["Sample Type"] || "").trim().toLowerCase()).filter((t) => t && t !== "unknown")),
-  ).sort();
+  const _kpiTypes = _tassTypeList();
   const _globalFallback = parseFloat((document.getElementById("filter-min") || {}).value) || 0;
   const _recCut = BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH) ? Number(BEST_TASS_THRESH) : null;
   let cutVal, cutSub, _typeVals;
@@ -25034,16 +25349,17 @@ function _renderSummaryTable(fd) {
         }) but kept visible because its ${_pi_s.rescueLevel} aggregation passes. ` +
         `Turn off &quot;Roll up threshold&quot; to hide it.">&#x2191; ${_pi_s.rescueLevel}</span>`
       : "";
+    const _oflagBadge = typeof _orgFlagBadgeHTML === "function" ? _orgFlagBadgeHTML(r) : "";
     html +=
-      `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
-        r.__belowCutoffVFAMR ? " below-cutoff-row" : ""
-      }${r.__belowCutoffAligned ? " below-cutoff-aligned-row" : ""}${r.__noveltyNoAlign ? " novelty-noalign-row" : ""}${
-        _sumPinned.has(key) ? " row-pinned" : ""
-      }">` +
+      `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_oflagBadge ? " org-flagged" : ""}${
+        _rescued_s ? " rescued-row" : ""
+      }${r.__belowCutoffVFAMR ? " below-cutoff-row" : ""}${r.__belowCutoffAligned ? " below-cutoff-aligned-row" : ""}${
+        r.__noveltyNoAlign ? " novelty-noalign-row" : ""
+      }${_sumPinned.has(key) ? " row-pinned" : ""}">` +
       `<td style="position:relative;padding-right:70px;padding-left:4px;white-space:nowrap;overflow:hidden;">` +
       `<span style="display:inline-block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;max-width:100%">${_orgBadges(
         r,
-      )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${_belowCutoffBadgeHTML(
+      )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_oflagBadge}${_rescueBadge}${_belowCutoffBadgeHTML(
         r,
       )}${_subThresholdBadgeHTML(r)}${typeof insilicoBadgeHTML === "function" ? insilicoBadgeHTML(r) : ""}</span>` +
       // Star sits inline, right after the organism text.
@@ -32113,6 +32429,8 @@ function redraw() {
   }
   if (typeof _ttRegionRefresh === "function") _ttRegionRefresh();
   _updateCapabilityNotice();
+  // Organism QC counts follow the Strain / Species / Genus view level.
+  if (typeof ttOFlagRenderSummary === "function") ttOFlagRenderSummary();
 }
     </script>
     <script>
@@ -32894,7 +33212,7 @@ if (_protScaleEl) _protScaleEl.addEventListener("change", drawProtGenus);
 })();
 
 /* ── Banner subtitle helper ─────────────────────────────────────────────────
-         Builds the "N samples × M organisms × X% reads classified" string from
+         Builds the "N samples × M organisms × X% reads aligned" string from
          the current DATA and SAMPLE_META globals.  Called from init() and from
          the upload / clear handlers so all three stay in sync.
       ────────────────────────────────────────────────────────────────────────── */
@@ -32913,7 +33231,7 @@ function _buildBannerSub() {
   // Unique organisms: deduplicate on Taxonomic ID # (key), not subkey
   const uniqueOrgs = new Set(DATA.map((r) => r["Taxonomic ID #"] || "").filter(Boolean)).size;
 
-  // % reads classified = Σ(total_organism_reads from SAMPLE_META) / Σ(total_reads from SAMPLE_META)
+  // % reads aligned (to an organism reference) = Σ(total_organism_reads from SAMPLE_META) / Σ(total_reads from SAMPLE_META)
   // Uses per-sample metadata from the JSON. Falls back to summing "# Reads Aligned"
   // from DATA rows if SAMPLE_META doesn't carry total_reads (e.g. plain TSV upload).
   const totalInputReads = rawSamples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
@@ -32926,7 +33244,7 @@ function _buildBannerSub() {
 
   return `${entities.length} ${
     grouped ? "specimen(s)" : "sample(s)"
-  } \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads classified \u2022 ${totalReadsFmt} total reads`;
+  } \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads aligned \u2022 ${totalReadsFmt} total reads`;
 }
     </script>
     <script>
@@ -34412,6 +34730,8 @@ function __ttRunInit() {
   // "hide" actions BEFORE the first sample list / redraw, so the very first
   // paint already reflects them (no flash of unfiltered samples).
   if (typeof ttFlagsInit === "function") ttFlagsInit();
+  // Same for the per-organism QC rules (hide gates live in filteredData()).
+  if (typeof ttOFlagsInit === "function") ttOFlagsInit();
 
   buildHmValueSel();
   buildSampleList();
@@ -34698,6 +35018,9 @@ function __ttRunInit() {
       if (typeof ttFlagCaptureConfig === "function") app.sampleFlags = ttFlagCaptureConfig();
     } catch (e) {}
     try {
+      if (typeof ttOFlagCaptureConfig === "function") app.organismFlags = ttOFlagCaptureConfig();
+    } catch (e) {}
+    try {
       app.sortCol = sortCol;
       app.sortAsc = sortAsc;
     } catch (e) {}
@@ -34757,6 +35080,13 @@ function __ttRunInit() {
         ttFlagInvalidate();
         ttFlagApplyHide();
         if (typeof ttFlagRenderSummary === "function") ttFlagRenderSummary();
+      }
+    } catch (e) {}
+    try {
+      if (typeof ttOFlagLoadConfig === "function") {
+        ttOFlagLoadConfig(app.organismFlags || (BOOT && BOOT.organism_flags) || null);
+        ttOFlagInvalidate();
+        if (typeof ttOFlagRenderSummary === "function") ttOFlagRenderSummary();
       }
     } catch (e) {}
     // Restore before the first redraw so the map draws with group colours on
@@ -49536,6 +49866,60 @@ function _ensureMapExportControl() {
     return Math.log((obs + 0.5) / (exp + 0.5)) / Math.LN2;
   }
 
+  // ── spike-in baseline ─────────────────────────────────────────────────────
+  // In a spike-in series every dataset carries the same background, and the
+  // background can already hold reads for the spiked organism (and always holds
+  // reads for everything else). Recovery must therefore compare the spike with
+  // what it ADDED over the level-0 (nothing spiked) control, not with the raw
+  // observed count — otherwise a matrix hit makes recovery look > 100 %.
+  // Depth series have no such baseline and keep baseline 0.
+  function seriesBaseline(series, group) {
+    if (!isSpike(group)) return 0;
+    var p0 = (series || []).find(function (p) {
+      return +p.count === 0;
+    });
+    return p0 ? +p0.observed_reads || 0 : 0;
+  }
+
+  function groupBaseline(group) {
+    if (!isSpike(group)) return 0;
+    var c0 = (group.datasets || []).filter(function (d) {
+      return +d.target_count === 0;
+    });
+    if (!c0.length) return 0;
+    return (
+      c0.reduce(function (a, d) {
+        return a + (+d.observed_total_reads || 0);
+      }, 0) / c0.length
+    );
+  }
+
+  function hasSpikeControl(group) {
+    return (
+      isSpike(group) &&
+      (group.datasets || []).some(function (d) {
+        return +d.target_count === 0;
+      })
+    );
+  }
+
+  // Unit of observed / expected / baseline counts. Spike-in groups count READS
+  // (make_report: observed_unit="reads"; expected = spiked records x
+  // reads_per_record), so they match the Detections table; the spike LEVEL
+  // (x axis, LoD) stays in read_unit (pairs for paired data).
+  function obsUnitOf(group) {
+    return (group && (group.observed_unit || group.read_unit)) || "reads";
+  }
+  function rprOf(group) {
+    return isSpike(group) ? +(group && group.reads_per_record) || 1 : 1;
+  }
+
+  // Recovery of the spike itself: (observed − level-0 baseline) / spiked.
+  function spikeRecovery(obs, base, spiked) {
+    if (!spiked || obs == null) return null;
+    return (obs - (base || 0)) / spiked;
+  }
+
   // Human labels for known param keys (unknown keys are shown verbatim).
   var PARAM_LABELS = {
     mode: "Subsample mode",
@@ -49951,14 +50335,15 @@ function _ensureMapExportControl() {
         "Parent",
         "Platform",
         "Mode",
-        "Read unit",
+        "Read unit (spike level)",
         "Dataset",
         "Replicate",
         "Target",
         "Actual",
         "Master total",
         "Seed",
-        "Observed aligned",
+        "Observed aligned (observed unit)",
+        "Level-0 baseline",
         "Recovery",
         "Detected",
         "TP",
@@ -49970,8 +50355,9 @@ function _ensureMapExportControl() {
       ],
     ];
     (suite.groups || []).forEach(function (g) {
+      var gBase = groupBaseline(g);
       (g.datasets || []).forEach(function (d) {
-        var rec = ratio(d.observed_total_reads, d.actual_count);
+        var rec = spikeRecovery(d.observed_total_reads, gBase, d.actual_count * rprOf(g));
         rows.push([
           g.parent,
           g.platform,
@@ -49984,6 +50370,7 @@ function _ensureMapExportControl() {
           d.total_master_reads == null ? "" : d.total_master_reads,
           d.seed == null ? "" : d.seed,
           d.observed_total_reads,
+          isSpike(g) ? Math.round(gBase * 10) / 10 : "",
           rec == null ? "" : rec.toFixed(4),
           d.n_detected,
           d.tp,
@@ -50013,6 +50400,7 @@ function _ensureMapExportControl() {
         "Target count",
         "Expected reads",
         "Observed reads",
+        "Level-0 baseline",
         "Recovery",
         "log2 FC",
         "TASS",
@@ -50024,9 +50412,10 @@ function _ensureMapExportControl() {
     (suite.groups || []).forEach(function (g) {
       // Export what is on screen: the rollup the user is looking at.
       rollupOrganisms(g).forEach(function (o) {
+        var oBase = seriesBaseline(o.series, g);
         (o.series || []).forEach(function (s) {
-          var rec = ratio(s.observed_reads, s.expected_reads);
-          var lfc = log2fc(s.observed_reads, s.expected_reads);
+          var rec = spikeRecovery(s.observed_reads, oBase, s.expected_reads);
+          var lfc = log2fc(Math.max(0, s.observed_reads - oBase), s.expected_reads);
           rows.push([
             g.parent,
             g.platform,
@@ -50040,6 +50429,7 @@ function _ensureMapExportControl() {
             s.count,
             s.expected_reads,
             s.observed_reads,
+            isSpike(g) ? oBase : "",
             rec == null ? "" : rec.toFixed(4),
             lfc == null ? "" : lfc.toFixed(3),
             s.tass,
@@ -50148,8 +50538,8 @@ function _ensureMapExportControl() {
       "Dataset (rep)",
       (spike ? "Spiked (target) " : "Target ") + unit,
       (spike ? "Spiked (actual) " : "Actual ") + unit,
-      "Observed aligned (" + unit + ")",
-      "Recovery",
+      "Observed aligned (" + obsUnitOf(group) + ")",
+      spike ? "Spike recovery" : "Recovery",
       "Detected",
       "TP",
       "FP",
@@ -50177,8 +50567,10 @@ function _ensureMapExportControl() {
     thead.appendChild(hr);
     t.appendChild(thead);
     var tb = el("tbody");
+    var gBase = groupBaseline(group);
+    var gHasCtl = hasSpikeControl(group);
     group.datasets.forEach(function (d, i) {
-      var rec = ratio(d.observed_total_reads, d.actual_count);
+      var rec = spikeRecovery(d.observed_total_reads, gBase, d.actual_count * rprOf(group));
       var tr = el("tr", {
         class: "insil-row",
         style: i % 2 ? "background:#faf9ff" : "",
@@ -50191,8 +50583,20 @@ function _ensureMapExportControl() {
             [spike ? "Spike delivered" : "Actual depth", fmt(d.actual_count) + " " + unit],
             d.total_master_reads != null ? ["Master pool", fmt(d.total_master_reads) + " " + unit] : null,
             d.seed != null ? ["Seed", String(d.seed)] : null,
-            ["Observed aligned", fmt(d.observed_total_reads) + " " + unit],
-            ["Alignment recovery", rec == null ? "—" : pct(rec)],
+            ["Observed aligned", fmt(d.observed_total_reads) + " " + obsUnitOf(group)],
+            spike
+              ? [
+                  "Level-0 background aligned",
+                  gHasCtl ? fmt(Math.round(gBase)) + " " + obsUnitOf(group) : "no level-0 control",
+                ]
+              : null,
+            spike
+              ? ["Added over background", fmt(Math.round(d.observed_total_reads - gBase)) + " " + obsUnitOf(group)]
+              : null,
+            spike && rprOf(group) > 1
+              ? ["Spike delivered (reads)", fmt(d.actual_count * rprOf(group)) + " reads"]
+              : null,
+            [spike ? "Spike recovery (added ÷ spiked)" : "Alignment recovery", rec == null ? "—" : pct(rec)],
             ["Organisms detected", fmt(d.n_detected)],
             ["True positives", String(d.tp)],
             ["False positives", String(d.fp)],
@@ -50494,7 +50898,13 @@ function _ensureMapExportControl() {
 
   // Chart 3 — how much of each subsample actually aligned.
   function recoveryChart(agg, group) {
-    var unit = group.read_unit || "reads";
+    // Spike amounts are in records (pairs); observed is in reads — scale the
+    // spike to reads so the bars and the recovery compare like with like.
+    var _r = rprOf(group);
+    agg = agg.map(function (a) {
+      return Object.assign({}, a, { actual: a.actual * _r });
+    });
+    var unit = obsUnitOf(group);
     var labels = agg.map(function (a) {
       return kfmt(a.count);
     });
@@ -50554,12 +50964,20 @@ function _ensureMapExportControl() {
         '" fill="' +
         ACCENT +
         '" opacity=".8" rx="1"/>';
-      var rec = ratio(a.observed, a.actual);
-      var tip = tipBody(kfmt(a.count) + " " + unit, group.parent + " · " + group.platform, [
-        ["Actual in dataset", fmt(Math.round(a.actual)) + " " + unit],
-        ["Observed aligned", fmt(Math.round(a.observed)) + " " + unit],
-        ["Recovery", rec == null ? "—" : pct(rec)],
-        ["Unaligned", fmt(Math.max(0, Math.round(a.actual - a.observed))) + " " + unit],
+      // aggByCount() already returns per-replicate means.
+      var _mObs = a.observed,
+        _mAct = a.actual,
+        _base = groupBaseline(group);
+      var rec = spikeRecovery(_mObs, _base, _mAct);
+      var _spk = isSpike(group);
+      var tip = tipBody(kfmt(a.count) + " " + (group.read_unit || "reads"), group.parent + " · " + group.platform, [
+        [_spk ? "Spiked (mean per rep)" : "Actual in dataset", fmt(Math.round(_mAct)) + " " + unit],
+        ["Observed aligned (mean per rep)", fmt(Math.round(_mObs)) + " " + unit],
+        _spk ? ["Level-0 background aligned", fmt(Math.round(_base)) + " " + unit] : null,
+        [_spk ? "Spike recovery (added ÷ spiked)" : "Recovery", rec == null ? "—" : pct(rec)],
+        _spk
+          ? ["Spike not recovered", fmt(Math.max(0, Math.round(_mAct - (_mObs - _base)))) + " " + unit]
+          : ["Unaligned", fmt(Math.max(0, Math.round(a.actual - a.observed))) + " " + unit],
         ["Replicates", String(a.n)],
       ]);
       s +=
@@ -51013,7 +51431,8 @@ function _ensureMapExportControl() {
   // width is derived from the widest label, so marks and axis never collide.
   function organismChart(o, group) {
     var series = o.series || [];
-    var unit = group.read_unit || "reads";
+    var unit = group.read_unit || "reads"; // spike level / LoD unit
+    var ounit = obsUnitOf(group); // observed / expected / baseline unit
     var labels = series.map(function (s) {
       return kfmt(s.count);
     });
@@ -51048,7 +51467,7 @@ function _ensureMapExportControl() {
       function (v) {
         return kfmt(v);
       },
-      unit + " (√)",
+      ounit + " (√)",
     );
     var dotY = f.yb + f.extraB / 2 + 1;
     var bw = Math.min(16, f.band * 0.3);
@@ -51115,13 +51534,36 @@ function _ensureMapExportControl() {
     });
 
     // hit-areas on top
+    var oBase = seriesBaseline(series, group);
+    // Matrix level for this organism: an unlabelled dashed guide at the level-0
+    // observed count, so the part of each observed bar the background already
+    // carried is visible next to the spike (the value is in the tooltip).
+    if (oBase > 0) {
+      var _by = f.yb - sc(oBase);
+      s +=
+        '<line x1="' +
+        f.padL +
+        '" y1="' +
+        _by.toFixed(1) +
+        '" x2="' +
+        (f.padL + f.band * series.length).toFixed(1) +
+        '" y2="' +
+        _by.toFixed(1) +
+        '" stroke="' +
+        MUTED +
+        '" stroke-width="1" stroke-dasharray="2 3"/>';
+    }
     series.forEach(function (pt, i) {
-      var rec = ratio(pt.observed_reads, pt.expected_reads);
-      var lfc = log2fc(pt.observed_reads, pt.expected_reads);
+      var rec = spikeRecovery(pt.observed_reads, oBase, pt.expected_reads);
+      var lfc = log2fc(Math.max(0, pt.observed_reads - oBase), pt.expected_reads);
       var tip = tipBody(o.name, "taxid " + o.taxid + " · " + kfmt(pt.count) + " " + unit + " target", [
-        ["Expected", fmt(pt.expected_reads) + " " + unit],
-        ["Observed", fmt(pt.observed_reads) + " " + unit],
-        ["Recovery", rec == null ? "—" : pct(rec)],
+        ["Expected (spiked)", fmt(pt.expected_reads) + " " + ounit],
+        ["Observed", fmt(pt.observed_reads) + " " + ounit],
+        isSpike(group) ? ["Level-0 background", fmt(oBase) + " " + ounit] : null,
+        isSpike(group) && pt.count > 0
+          ? ["Added over background", fmt(Math.round((pt.observed_reads - oBase) * 10) / 10) + " " + ounit]
+          : null,
+        [isSpike(group) ? "Spike recovery" : "Recovery", rec == null ? "—" : pct(rec)],
         ["log2 fold change", lfc == null ? "—" : (lfc > 0 ? "+" : "") + lfc.toFixed(2)],
         ["TASS (mean)", String(pt.tass)],
         ["Detection rate", pct(pt.detection_rate, 0) + " of " + pt.n_reps + " rep" + (pt.n_reps === 1 ? "" : "s")],
@@ -51324,11 +51766,22 @@ function _ensureMapExportControl() {
   function realSamples(group) {
     if (typeof DATA === "undefined" || !DATA || !DATA.length) return [];
     var bg = String(group.background_name || group.parent || "");
+    // Compare at the level the suite was built at (the matrix profile is keyed
+    // by that level's taxids). Mixing in Strain/Genus rows made every rollup
+    // row of a matrix organism count as "unique to sample", and let a sample's
+    // spiked-organism lookup land on whichever level's row came first.
+    var lvl = group.level || "";
+    var hasLvl =
+      !!lvl &&
+      DATA.some(function (r) {
+        return r["Level"] === lvl;
+      });
     var by = {};
     DATA.forEach(function (r) {
       var sn = r["Specimen ID"];
       if (!sn || isDatasetId(sn)) return;
       if (sn === bg) return; // the background itself is not a sample under test
+      if (hasLvl && r["Level"] !== lvl) return;
       if (!by[sn]) by[sn] = [];
       by[sn].push(r);
     });
@@ -51472,7 +51925,7 @@ function _ensureMapExportControl() {
       var h2 = [
         "Sample",
         "Spiked organism",
-        "Reads here (" + unit + ")",
+        "Reads here (" + obsUnitOf(group) + ")",
         "TASS",
         "LoD (" + unit + " spiked)",
         "Verdict",
@@ -51498,7 +51951,8 @@ function _ensureMapExportControl() {
       var tb2 = el("tbody"),
         n = 0;
       samples.forEach(function (s2) {
-        var paired = (group.read_unit || "reads") === "read pairs";
+        // Same unit as the series' observed counts (reads for spike-in groups).
+        var paired = obsUnitOf(group) === "read pairs";
         spikedList.forEach(function (tid) {
           var o = spikedByTid[tid];
           var row = s2.rows.find(function (r) {
@@ -51553,7 +52007,7 @@ function _ensureMapExportControl() {
             "data-tt",
             encodeURIComponent(
               tipBody(o.name, s2.sample + " · cutoff " + cutoff.toFixed(1), [
-                ["Reads here", fmt(reads) + " " + unit],
+                ["Reads here", fmt(reads) + " " + obsUnitOf(group)],
                 ["TASS", tass ? tass.toFixed(1) : "—"],
                 ["Equivalent spike level", equiv == null ? "—" : fmt(Math.round(equiv)) + " " + unit],
                 [
@@ -51606,7 +52060,7 @@ function _ensureMapExportControl() {
         el("thead", {
           html:
             "<tr>" +
-            ["Organism", "Taxid", "Reads (" + unit + ")", "TASS"]
+            ["Organism", "Taxid", "Reads (" + obsUnitOf(group) + ")", "TASS"]
               .map(function (h) {
                 return (
                   '<th style="text-align:left;padding:.35em .6em;border-bottom:2px solid ' +
@@ -52235,12 +52689,17 @@ function _ensureMapExportControl() {
 
     var totalReads = +meta.total_reads || 0;
     var depth = totalReads > 0 ? totalReads / rpr : 0;
-    var orgReads = (+srcRow["# Reads Aligned"] || 0) / rpr;
+    // Spike-in groups report observed counts in READS (observed_unit), so the
+    // sample's reads are compared as-is; depth series still count pairs.
+    var obsUnit = g.observed_unit || g.read_unit || "reads";
+    var obsRpr = obsUnit === "reads" ? 1 : rpr;
+    var orgReads = (+srcRow["# Reads Aligned"] || 0) / obsRpr;
     var tass = +srcRow["TASS Score"] || 0;
-    var rowReads = (+row["# Reads Aligned"] || 0) / rpr;
+    var rowReads = (+row["# Reads Aligned"] || 0) / obsRpr;
     var rowTass = +row["TASS Score"] || 0;
 
-    var thr = +(suite().params || {}).detection_threshold || 0;
+    var thr =
+      +(g.detection_threshold != null ? g.detection_threshold : (suite().params || {}).detection_threshold) || 0;
 
     // ── which axis is this series on? ────────────────────────────────────────
     // A depth series asks "given this sample's DEPTH, is the organism as strong as
@@ -52297,6 +52756,7 @@ function _ensureMapExportControl() {
       matchedByName: hit.how === "name",
       ownSeries: hit.own,
       unit: g.read_unit || "reads",
+      obsUnit: obsUnit,
       paired: paired,
       rpr: rpr,
       unitMismatch: unitMismatch,
@@ -52564,7 +53024,7 @@ function _ensureMapExportControl() {
       ') rotate(-90)" text-anchor="middle" font-size="9" fill="' +
       MUTED +
       '">' +
-      esc(isReads ? c.unit + (ylog ? " (log)" : "") : "TASS") +
+      esc(isReads ? (c.obsUnit || c.unit) + (ylog ? " (log)" : "") : "TASS") +
       "</text>";
 
     // x ticks
@@ -52825,7 +53285,7 @@ function _ensureMapExportControl() {
     if (c.spike) {
       rows = [
         ["Sample depth", icomma(c.depth) + " " + c.unit + (c.rpr === 2 ? " (" + icomma(c.totalReads) + " reads)" : "")],
-        [c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here", icomma(c.orgReads) + " " + c.unit],
+        [c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here", icomma(c.orgReads) + " " + c.obsUnit],
         [
           "Equivalent spike level",
           c.equivLevel == null ? "—" : icomma(c.equivLevel) + " " + c.unit + (c.equivExtrap ? " (extrapolated)" : ""),
@@ -52900,7 +53360,7 @@ function _ensureMapExportControl() {
         "This " + c.rowLevel.toLowerCase() + "'s reads",
         icomma(c.rowReads) +
           " " +
-          c.unit +
+          (c.obsUnit || c.unit) +
           (c.rowShare != null ? " (" + pct(c.rowShare) + " of the " + c.compareLevel.toLowerCase() + ")" : "") +
           " · TASS " +
           c.rowTass.toFixed(1),
@@ -53101,8 +53561,15 @@ function _ensureMapExportControl() {
         })
         .join("") +
       "</tr></thead><tbody>";
+    // Spike-in: recovery is what the spike ADDED over the level-0 control.
+    var p0 = c.spike
+      ? s.find(function (q) {
+          return +q.count === 0;
+        })
+      : null;
+    var base = p0 ? +p0.observed_reads || 0 : 0;
     s.forEach(function (p, i) {
-      var rec = p.expected_reads ? p.observed_reads / p.expected_reads : null;
+      var rec = p.expected_reads ? (p.observed_reads - base) / p.expected_reads : null;
       var rel = c.xValue > 0 ? p.count / c.xValue : null;
       h +=
         '<tr style="' +
@@ -53849,7 +54316,7 @@ const TT_EXPORT_DATASETS = [
       // `Passes Threshold` is computed in the browser (the JSON carries False for
       // every record), so spell out the verdict and the cutoff it used — the
       // same two columns bin/export_data.py appends.
-      const extra = ["TASS Cutoff", "Passes Cutoff"];
+      const extra = ["TASS Cutoff", "Passes Cutoff", "Organism QC Flag"];
       const rows = src.map((r) => {
         const o = {};
         cols.forEach((c) => {
@@ -53859,6 +54326,8 @@ const TT_EXPORT_DATASETS = [
         const info = typeof rowPassInfo === "function" ? rowPassInfo(r) : null;
         o["TASS Cutoff"] = info && info.thr != null ? _ttRound(info.thr, 2) : "";
         o["Passes Cutoff"] = _ttRowPasses(r, info) ? "Yes" : "No";
+        // Organism QC verdict (48_organism_flags.js); blank when unflagged.
+        o["Organism QC Flag"] = typeof ttOFlagExportText === "function" ? ttOFlagExportText(r) : "";
         return o;
       });
       return { columns: cols.concat(extra), rows: rows };
@@ -55251,6 +55720,1149 @@ if (document.readyState === "loading") {
 } else {
   _ttInitExportData();
 }
+    </script>
+    <script>
+/* ═══════════════════════════════════════════════════════════════════════════
+       -  §  ORGANISM FLAGS  (per-detection QC rules)
+       -     The sample rules in 41_sample_flags.js judge WHOLE samples. This
+       -     section does the same job one level down: it judges individual
+       -     detections (organism rows) and either HIGHLIGHTS them (flag) or
+       -     REMOVES them from every view (hide).
+       -
+       -     Model:  one rule = one or more CONDITIONS that must all hold
+       -             (AND), plus an action. Rules are independent of each other
+       -             (OR): a row is flagged when any rule trips. That lets a
+       -             single rule say "genus is Streptococcus AND fewer than 50
+       -             reads" while another says "≥ 99 % ANI to a stronger hit".
+       -
+       -     Condition sources:
+       -       col      any detection column on the row itself (reads, TASS,
+       -                coverage, Genus, Family, Microbial Category …)
+       -       derived  computed from the row's sample context — ANI to another
+       -                hit in the same sample, the genus's reads in the
+       -                sample, this organism's share / rank within its genus,
+       -                aligned-vs-classifier support, prevalence, lineage text
+       -
+       -     Everything is evaluated against the FULL dataset (DATA), not the
+       -     filtered view, so a flag never flickers as the TASS slider moves.
+       -     Peers for the in-sample figures are rows of the same sample at the
+       -     same taxonomic level (strain vs strain, species vs species).
+       -
+       -     "hide" is a gate in filteredData()'s base predicate, so every tab,
+       -     export and aggregation honours it. Defaults ship from the pipeline
+       -     (params.report_org_flag_* → BOOT.organism_flags).
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── State ───────────────────────────────────────────────────────────────── */
+let TT_OFLAG_RULES = []; // [{ id, on, action, conds: [{ id, source, field, op, value, peer }] }]
+let TT_OFLAG_ENABLED = true;
+/*  View mode — the sidebar's Highlight / Hide flagged / Only flagged control.
+      "all"   highlight flagged rows; a rule whose action is "hide" still hides
+      "hide"  every flagged row is removed from the views
+      "only"  show nothing but the flagged rows (per-rule hides are ignored)   */
+let TT_OFLAG_VIEW = "all";
+let _TT_OFLAG_SEQ = 0;
+
+const TT_OFLAG_VIEWS = [
+  { key: "all", label: "Highlight flagged" },
+  { key: "hide", label: "Hide flagged" },
+  { key: "only", label: "Only flagged" },
+];
+
+function ttOFlagNormalizeView(v) {
+  const s = String(v == null ? "" : v).toLowerCase();
+  return TT_OFLAG_VIEWS.some((m) => m.key === s) ? s : "all";
+}
+
+/* ── Operators (same vocabulary as the sample rules) ─────────────────────── */
+const TT_OFLAG_OPS = [
+  { op: "<", label: "is less than", num: true },
+  { op: "<=", label: "is at most", num: true },
+  { op: ">", label: "is greater than", num: true },
+  { op: ">=", label: "is at least", num: true },
+  { op: "==", label: "equals", num: null },
+  { op: "!=", label: "does not equal", num: null },
+  { op: "contains", label: "contains", num: false },
+  { op: "!contains", label: "does not contain", num: false },
+  { op: "in", label: "is one of", num: false },
+  { op: "!in", label: "is not one of", num: false },
+  { op: "regex", label: "matches regex", num: false },
+  { op: "empty", label: "is empty / missing", num: null, novalue: true },
+  { op: "!empty", label: "has any value", num: null, novalue: true },
+];
+const _TT_OFLAG_OP_KEYS = new Set(TT_OFLAG_OPS.map((o) => o.op));
+
+/* ── Field catalogue ─────────────────────────────────────────────────────── */
+/*  `needsPeer`: the ANI fields take a partner qualifier.
+      stronger  only count a partner that out-ranks this row (more reads, then
+                higher TASS, then a stable tie-break) — so of two near-identical
+                references only the WEAKER one trips, and hiding it never
+                removes both.
+      any       any other hit in the sample.                                  */
+const TT_OFLAG_DERIVED_FIELDS = [
+  {
+    key: "ani_max",
+    label: "Shared ANI % with another hit in this sample",
+    num: true,
+    needsPeer: true,
+    ani: true,
+  },
+  { key: "ani_partners", label: "# hits in this sample sharing high ANI", num: true, needsPeer: true, ani: true },
+  { key: "genus_reads", label: "Genus reads in this sample", num: true },
+  { key: "genus_share", label: "% of its genus's reads in this sample", num: true },
+  { key: "genus_rank", label: "Rank within its genus (by reads, 1 = top)", num: true },
+  { key: "genus_members", label: "# hits in the same genus in this sample", num: true },
+  { key: "sample_read_share", label: "% of the sample's organism-aligned reads", num: true },
+  { key: "k2_ratio", label: "Aligned ÷ classifier (K2) reads", num: true },
+  { key: "prevalence", label: "# samples this organism is detected in", num: true },
+  { key: "lineage", label: "Taxonomy lineage (any rank)", num: false },
+];
+
+const TT_OFLAG_PEERS = [
+  { key: "stronger", label: "stronger hit" },
+  { key: "any", label: "any hit" },
+];
+
+/*  Row fields that are structural or nested, never worth a condition. */
+const _TT_OFLAG_COL_SKIP = new Set(["High ANI Matches", "ANI Annotated"]);
+
+/*  Columns offered first because they are what people actually filter on. */
+const _TT_OFLAG_COL_FIRST = [
+  "# Reads Aligned",
+  "TASS Score",
+  "Genus",
+  "Detected Organism",
+  "Species Name",
+  "Family",
+  "Microbial Category",
+  "Breadth %",
+  "Coverage",
+  "K2 Reads",
+  "% Reads",
+  "RPM",
+  "Taxonomic ID #",
+];
+
+function ttOFlagFields() {
+  const all = ((typeof ALL_COLS !== "undefined" && ALL_COLS) || []).filter((c) => !_TT_OFLAG_COL_SKIP.has(c));
+  const isNum = (c) => typeof NUMERIC !== "undefined" && NUMERIC && NUMERIC.has(c);
+  const ordered = _TT_OFLAG_COL_FIRST
+    .filter((c) => all.includes(c))
+    .concat(all.filter((c) => !_TT_OFLAG_COL_FIRST.includes(c)));
+  //  A handful of columns are numeric in every run even when NUMERIC was built
+  //  from a sample that lacked them; don't offer "contains" on read counts.
+  const knownNum = new Set(["# Reads Aligned", "TASS Score", "K2 Reads", "Breadth %", "Coverage", "% Reads", "RPM"]);
+  const col = ordered.map((c) => ({ key: c, label: c, num: isNum(c) || knownNum.has(c) }));
+  return { col, derived: TT_OFLAG_DERIVED_FIELDS.slice() };
+}
+
+function ttOFlagFieldDef(cond) {
+  if (!cond) return null;
+  const list = ttOFlagFields()[cond.source] || [];
+  return (
+    list.find((f) => f.key === cond.field) || {
+      key: cond.field,
+      label: cond.field,
+      num: cond.source === "derived" ? true : null,
+    }
+  );
+}
+
+/* ── Rule helpers ────────────────────────────────────────────────────────── */
+function ttOFlagNewCond(seed) {
+  const c = Object.assign(
+    { id: "c" + ++_TT_OFLAG_SEQ, source: "col", field: "# Reads Aligned", op: "<", value: "10", peer: "stronger" },
+    seed || {},
+  );
+  c.id = "c" + ++_TT_OFLAG_SEQ;
+  return c;
+}
+
+function ttOFlagNewRule(seed) {
+  const s = seed || {};
+  const conds = (Array.isArray(s.conds) && s.conds.length ? s.conds : [{}]).map((c) => ttOFlagNewCond(c));
+  return {
+    id: "o" + ++_TT_OFLAG_SEQ,
+    on: s.on !== false,
+    action: s.action === "hide" ? "hide" : "flag",
+    conds,
+  };
+}
+
+function _ttOFlagEsc(v) {
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+function _ttOFlagFmt(v) {
+  if (typeof v === "number") {
+    if (!isFinite(v)) return String(v);
+    return Math.abs(v) >= 1000 || Number.isInteger(v) ? Math.round(v).toLocaleString() : String(+v.toFixed(3));
+  }
+  const n = Number(v);
+  if (v !== "" && v != null && isFinite(n) && String(v).trim() !== "") return n.toLocaleString();
+  return String(v == null ? "" : v);
+}
+
+function ttOFlagCondLabel(cond) {
+  const def = ttOFlagFieldDef(cond) || { label: cond.field };
+  const opDef = TT_OFLAG_OPS.find((o) => o.op === cond.op) || { label: cond.op };
+  let name = def.label;
+  if (def.needsPeer) name += cond.peer === "any" ? " (any hit)" : " (stronger hit)";
+  return opDef.novalue ? `${name} ${opDef.label}` : `${name} ${opDef.label} ${_ttOFlagFmt(cond.value)}`;
+}
+
+function ttOFlagRuleLabel(rule) {
+  if (!rule) return "";
+  return (rule.conds || []).map(ttOFlagCondLabel).join(" and ");
+}
+
+/* ── Row identity ────────────────────────────────────────────────────────── */
+function _ttOFlagOrgId(r) {
+  return String(r["Taxonomic ID #"] || r["Detected Organism"] || "");
+}
+function _ttOFlagKey(r) {
+  return [String(r["Specimen ID"] || ""), r["Level"] || "Strain", _ttOFlagOrgId(r), String(r["Subkey"] || "")].join(
+    "\u0001",
+  );
+}
+
+/* ── ANI helpers ─────────────────────────────────────────────────────────── */
+function _ttOFlagAniAnnotated(r) {
+  if (r["ANI Annotated"] === true) return true;
+  if (r["ANI Annotated"] === false) return false;
+  return Object.prototype.hasOwnProperty.call(r, "High ANI Matches");
+}
+function _ttOFlagAniList(r) {
+  const v = r["High ANI Matches"];
+  if (Array.isArray(v)) {
+    return v
+      .map((m) => ({ key: String((m && m.key) || ""), pct: parseFloat((m && m.ani_pct) || 0) || 0 }))
+      .filter((m) => m.key);
+  }
+  if (typeof v === "string" && v.trim()) {
+    return v
+      .split(";")
+      .map((s) => {
+        const mm = s.trim().match(/^(.+?)\(([\d.]+)%?\)$/);
+        if (mm) return { key: mm[1].trim(), pct: parseFloat(mm[2]) || 0 };
+        return null;
+      })
+      .filter(Boolean);
+  }
+  return [];
+}
+
+/* ── Context (per sample × level) ────────────────────────────────────────── */
+function _ttOFlagNum(v) {
+  const n = parseFloat(v);
+  return isNaN(n) ? 0 : n;
+}
+
+/*  "Does `b` out-rank `a`?" — reads first, then TASS, then a stable tie-break
+    on the organism id so exactly one of an identical pair counts as stronger. */
+function _ttOFlagStronger(b, a) {
+  const rb = _ttOFlagNum(b["# Reads Aligned"]),
+    ra = _ttOFlagNum(a["# Reads Aligned"]);
+  if (rb !== ra) return rb > ra;
+  const tb = _ttOFlagNum(b["TASS Score"]),
+    ta = _ttOFlagNum(a["TASS Score"]);
+  if (tb !== ta) return tb > ta;
+  return _ttOFlagOrgId(b) < _ttOFlagOrgId(a);
+}
+
+let _TT_OFLAG_CTX = { key: null, value: null };
+
+function _ttOFlagContext() {
+  const src = (typeof DATA !== "undefined" && DATA) || [];
+  const key = src.length + "|" + (typeof SAMPLE_META_EPOCH !== "undefined" ? SAMPLE_META_EPOCH : 0);
+  if (_TT_OFLAG_CTX.key === key && _TT_OFLAG_CTX.value) return _TT_OFLAG_CTX.value;
+  const groups = new Map(); // sample|level → { rows, byId: Map, genus: Map(genus → {reads, rows}) , reads }
+  const prevalence = new Map(); // level|orgId → Set(sample)
+  for (let i = 0; i < src.length; i++) {
+    const r = src[i];
+    const s = String(r["Specimen ID"] || "");
+    if (!s) continue;
+    const lvl = r["Level"] || "Strain";
+    const gk = s + "\u0001" + lvl;
+    let g = groups.get(gk);
+    if (!g) groups.set(gk, (g = { rows: [], byId: new Map(), genus: new Map(), reads: 0 }));
+    g.rows.push(r);
+    const oid = _ttOFlagOrgId(r);
+    if (oid && !g.byId.has(oid)) g.byId.set(oid, r);
+    const reads = _ttOFlagNum(r["# Reads Aligned"]);
+    g.reads += reads;
+    const gen = String(r["Genus"] || r["Genus Name"] || "").trim();
+    if (gen) {
+      let ge = g.genus.get(gen);
+      if (!ge) g.genus.set(gen, (ge = { reads: 0, rows: [] }));
+      ge.reads += reads;
+      ge.rows.push(r);
+    }
+    const pk = lvl + "\u0001" + oid;
+    let ps = prevalence.get(pk);
+    if (!ps) prevalence.set(pk, (ps = new Set()));
+    ps.add(s);
+  }
+  //  Genus rank is a sort per genus; do it once here rather than per rule.
+  groups.forEach((g) => {
+    g.genus.forEach((ge) => {
+      ge.rows.sort((a, b) => (_ttOFlagStronger(a, b) ? -1 : _ttOFlagStronger(b, a) ? 1 : 0));
+      ge.rank = new Map();
+      ge.rows.forEach((r, i) => ge.rank.set(r, i + 1));
+    });
+  });
+  _TT_OFLAG_CTX = { key, value: { groups, prevalence } };
+  return _TT_OFLAG_CTX.value;
+}
+
+/*  Returns { v, detail } — `detail` is extra wording for the reason text
+    (e.g. which partner the ANI came from). v === undefined means missing. */
+function _ttOFlagDerived(cond, r, ctx) {
+  const s = String(r["Specimen ID"] || "");
+  const lvl = r["Level"] || "Strain";
+  const g = ctx.groups.get(s + "\u0001" + lvl);
+  const gen = String(r["Genus"] || r["Genus Name"] || "").trim();
+  const ge = g && gen ? g.genus.get(gen) : null;
+  const reads = _ttOFlagNum(r["# Reads Aligned"]);
+  switch (cond.field) {
+    case "ani_max":
+    case "ani_partners": {
+      if (!_ttOFlagAniAnnotated(r)) return { v: undefined, detail: "no ANI data (run with --enable_matrix)" };
+      const me = _ttOFlagOrgId(r);
+      let best = 0,
+        bestRow = null,
+        n = 0;
+      _ttOFlagAniList(r).forEach((m) => {
+        if (!g || m.key === me) return;
+        const p = g.byId.get(m.key);
+        if (!p || p === r) return;
+        if (cond.peer !== "any" && !_ttOFlagStronger(p, r)) return;
+        if (m.pct > best) {
+          best = m.pct;
+          bestRow = p;
+        }
+        n++; // every partner the pipeline recorded is already ≥ --ani_threshold
+      });
+      if (cond.field === "ani_partners") return { v: n };
+      return {
+        v: best,
+        detail: bestRow ? `vs ${bestRow["Detected Organism"] || _ttOFlagOrgId(bestRow)}` : "",
+      };
+    }
+    case "genus_reads":
+      return { v: ge ? ge.reads : undefined };
+    case "genus_share":
+      return { v: ge && ge.reads > 0 ? (reads / ge.reads) * 100 : undefined, detail: gen ? `of ${gen}` : "" };
+    case "genus_rank":
+      return { v: ge ? ge.rank.get(r) : undefined, detail: ge ? `of ${ge.rows.length} in ${gen}` : "" };
+    case "genus_members":
+      return { v: ge ? ge.rows.length : undefined };
+    case "sample_read_share":
+      return { v: g && g.reads > 0 ? (reads / g.reads) * 100 : undefined };
+    case "k2_ratio": {
+      const k2 = _ttOFlagNum(r["K2 Reads"]);
+      return { v: k2 > 0 ? reads / k2 : undefined };
+    }
+    case "prevalence": {
+      const ps = ctx.prevalence.get(lvl + "\u0001" + _ttOFlagOrgId(r));
+      return { v: ps ? ps.size : 0 };
+    }
+    case "lineage": {
+      const parts = [
+        "Domain",
+        "Superkingdom",
+        "Kingdom",
+        "Phylum",
+        "Class",
+        "Order",
+        "Family",
+        "Genus",
+        "Species Name",
+        "Detected Organism",
+      ]
+        .map((k) => String(r[k] == null ? "" : r[k]).trim())
+        .filter(Boolean);
+      return { v: parts.join("; ") };
+    }
+  }
+  return { v: undefined };
+}
+
+function _ttOFlagValue(cond, r, ctx) {
+  if (cond.source === "derived") return _ttOFlagDerived(cond, r, ctx);
+  const v = r[cond.field];
+  return { v: Array.isArray(v) ? v.join(", ") : v };
+}
+
+function _ttOFlagIsMissing(v) {
+  if (v === undefined || v === null) return true;
+  if (typeof v === "string" && v.trim() === "") return true;
+  if (typeof v === "number" && !isFinite(v)) return true;
+  return false;
+}
+
+function _ttOFlagList(raw) {
+  return String(raw == null ? "" : raw)
+    .split(/[,;|\n]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/** Missing values never satisfy a comparison — only "is empty" matches them. */
+function _ttOFlagCompare(actual, cond) {
+  const op = cond.op;
+  if (op === "empty") return _ttOFlagIsMissing(actual);
+  if (op === "!empty") return !_ttOFlagIsMissing(actual);
+  if (_ttOFlagIsMissing(actual)) return false;
+  const raw = cond.value == null ? "" : String(cond.value);
+  if (op === "<" || op === "<=" || op === ">" || op === ">=") {
+    const a = Number(actual),
+      b = Number(raw);
+    if (!isFinite(a) || !isFinite(b) || raw.trim() === "") return false;
+    if (op === "<") return a < b;
+    if (op === "<=") return a <= b;
+    if (op === ">") return a > b;
+    return a >= b;
+  }
+  if (op === "==" || op === "!=") {
+    const a = Number(actual),
+      b = Number(raw);
+    let eq;
+    if (isFinite(a) && isFinite(b) && String(actual).trim() !== "" && raw.trim() !== "") eq = a === b;
+    else eq = String(actual).trim().toLowerCase() === raw.trim().toLowerCase();
+    return op === "==" ? eq : !eq;
+  }
+  if (op === "contains" || op === "!contains") {
+    const needle = raw.trim().toLowerCase();
+    if (!needle) return false; // an empty box mid-edit must not match everything
+    const hit = String(actual).toLowerCase().includes(needle);
+    return op === "contains" ? hit : !hit;
+  }
+  if (op === "in" || op === "!in") {
+    const list = _ttOFlagList(raw);
+    if (!list.length) return false;
+    const hit = list.includes(String(actual).trim().toLowerCase());
+    return op === "in" ? hit : !hit;
+  }
+  if (op === "regex") {
+    if (!raw) return false;
+    try {
+      return new RegExp(raw, "i").test(String(actual));
+    } catch (e) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/* ── Evaluation ──────────────────────────────────────────────────────────── */
+let _TT_OFLAG_EVAL = { key: null, value: null };
+
+function ttOFlagInvalidate() {
+  _TT_OFLAG_EVAL = { key: null, value: null };
+  _TT_OFLAG_CTX = { key: null, value: null };
+}
+
+function _ttOFlagRulesSig() {
+  return TT_OFLAG_RULES.map(
+    (r) =>
+      (r.on ? 1 : 0) +
+      "~" +
+      r.action +
+      "~" +
+      (r.conds || []).map((c) => [c.source, c.field, c.op, c.value, c.peer].join("^")).join("&"),
+  ).join("|");
+}
+
+/** Cheap fingerprint for filteredData()'s cache key. Only states that can
+ *  HIDE something need to be part of it; pure highlighting never changes rows. */
+function ttOFlagFilterKey() {
+  if (!TT_OFLAG_ENABLED || !TT_OFLAG_RULES.some((r) => r.on)) return "";
+  return TT_OFLAG_VIEW + "#" + _ttOFlagRulesSig();
+}
+
+function _ttOFlagActiveRules() {
+  if (!TT_OFLAG_ENABLED) return [];
+  return TT_OFLAG_RULES.filter((r) => r.on && r.conds && r.conds.length);
+}
+
+/** Map(rowKey → { flagged, hide, hits: [{ rule, text }] }) for FLAGGED rows
+ *  only, plus `.anyFlagged` / `.onlyActive` on the map itself. */
+function ttOFlagEvaluate() {
+  const src = (typeof DATA !== "undefined" && DATA) || [];
+  const key = [TT_OFLAG_ENABLED ? 1 : 0, TT_OFLAG_VIEW, src.length, _ttOFlagRulesSig()].join("#");
+  if (_TT_OFLAG_EVAL.key === key && _TT_OFLAG_EVAL.value) return _TT_OFLAG_EVAL.value;
+  const out = new Map();
+  const active = _ttOFlagActiveRules();
+  if (active.length) {
+    const ctx = _ttOFlagContext();
+    for (let i = 0; i < src.length; i++) {
+      const r = src[i];
+      let hits = null;
+      for (let j = 0; j < active.length; j++) {
+        const rule = active[j];
+        const parts = [];
+        let ok = true;
+        for (let k = 0; k < rule.conds.length; k++) {
+          const c = rule.conds[k];
+          const res = _ttOFlagValue(c, r, ctx);
+          if (!_ttOFlagCompare(res.v, c)) {
+            ok = false;
+            break;
+          }
+          const opDef = TT_OFLAG_OPS.find((o) => o.op === c.op) || {};
+          parts.push(
+            ttOFlagCondLabel(c) +
+              (opDef.novalue ? "" : ` (actual: ${_ttOFlagFmt(res.v)}${res.detail ? " " + res.detail : ""})`),
+          );
+        }
+        if (!ok) continue;
+        (hits || (hits = [])).push({ rule, text: parts.join(" and ") });
+      }
+      if (!hits) continue;
+      const hide =
+        TT_OFLAG_VIEW === "only" ? false : TT_OFLAG_VIEW === "hide" || hits.some((h) => h.rule.action === "hide");
+      out.set(_ttOFlagKey(r), { flagged: true, hide, hits, row: r });
+    }
+  }
+  out.anyFlagged = out.size > 0;
+  //  "Only flagged" with nothing flagged would blank the report; fall back to
+  //  showing everything, exactly as the sample rules do.
+  out.onlyActive = TT_OFLAG_VIEW === "only" && out.anyFlagged;
+  _TT_OFLAG_EVAL = { key, value: out };
+  return out;
+}
+
+/** Gate used by filteredData(): should this RAW data row be dropped? */
+function ttOFlagRowHidden(r) {
+  if (!TT_OFLAG_ENABLED) return false;
+  const st = ttOFlagEvaluate();
+  if (!st.anyFlagged) return false;
+  const e = st.get(_ttOFlagKey(r));
+  if (st.onlyActive) return !e;
+  return !!(e && e.hide);
+}
+
+/** Flag state for any row shown in a view — including a specimen-merged row,
+ *  whose "Specimen ID" is a group name: it inherits its member libraries'. */
+function ttOFlagStateFor(r) {
+  if (!r || typeof r !== "object") return null;
+  const st = ttOFlagEvaluate();
+  if (!st.anyFlagged) return null;
+  const direct = st.get(_ttOFlagKey(r));
+  if (direct) return direct;
+  if (typeof specimenGroups === "function") {
+    let members = null;
+    try {
+      members = specimenGroups().get(String(r["Specimen ID"] || ""));
+    } catch (e) {
+      members = null;
+    }
+    if (members && members.length) {
+      const hits = [];
+      let hide = false;
+      members.forEach((m) => {
+        const k = _ttOFlagKey(Object.assign({}, r, { "Specimen ID": m }));
+        const e = st.get(k);
+        if (!e) return;
+        hide = hide || e.hide;
+        e.hits.forEach((h) => hits.push(Object.assign({ sample: m }, h)));
+      });
+      if (hits.length) return { flagged: true, hide, hits, merged: true };
+    }
+  }
+  return null;
+}
+
+/* ── Counts / reasons ────────────────────────────────────────────────────── */
+function _ttOFlagViewLevel() {
+  try {
+    const el = typeof document !== "undefined" && document.getElementById("view-level");
+    return (el && el.value) || "Strain";
+  } catch (e) {
+    return "Strain";
+  }
+}
+
+/** Counts at the taxonomic level currently on screen, so "12 flagged" matches
+ *  the rows the reader can actually see. */
+function ttOFlagCounts() {
+  const st = ttOFlagEvaluate();
+  const lvl = _ttOFlagViewLevel();
+  const src = (typeof DATA !== "undefined" && DATA) || [];
+  let total = 0,
+    flagged = 0,
+    hidden = 0;
+  const orgs = new Set();
+  for (let i = 0; i < src.length; i++) {
+    const r = src[i];
+    if ((r["Level"] || "Strain") !== lvl) continue;
+    total++;
+    const e = st.get(_ttOFlagKey(r));
+    if (e) {
+      flagged++;
+      orgs.add(_ttOFlagOrgId(r));
+      if (e.hide) hidden++;
+    }
+  }
+  if (st.onlyActive) hidden = total - flagged;
+  return {
+    total,
+    flagged,
+    hidden,
+    organisms: orgs.size,
+    level: lvl,
+    view: TT_OFLAG_VIEW,
+    onlyActive: st.onlyActive,
+    rules: _ttOFlagActiveRules().length,
+  };
+}
+
+function ttOFlagPlainReasons(r) {
+  const st = ttOFlagStateFor(r);
+  if (!st) return "";
+  const head = `${r["Detected Organism"] || ""} — ${st.hide ? "flagged and hidden" : "flagged"} by organism QC:`;
+  return [head].concat(st.hits.map((h) => "• " + (h.sample ? h.sample + ": " : "") + h.text)).join("\n");
+}
+
+function ttOFlagTipHTML(r) {
+  const st = ttOFlagStateFor(r);
+  if (!st) return "";
+  return (
+    `<b><i class="fas fa-flag"></i> ${_ttOFlagEsc(r["Detected Organism"] || "")}</b>` +
+    `<br><span style="color:#ccc;font-size:0.9em">${
+      st.hide ? "Flagged and hidden by an organism QC rule." : "Flagged by organism QC — still shown."
+    }</span><ul style="margin:.35em 0 0;padding-left:1.1em;color:#eee;font-size:0.9em">` +
+    st.hits.map((h) => `<li>${_ttOFlagEsc((h.sample ? h.sample + ": " : "") + h.text)}</li>`).join("") +
+    `</ul>`
+  );
+}
+
+/** Inline badge next to an organism name (Table / Summary tables). */
+function _orgFlagBadgeHTML(r) {
+  const st = ttOFlagStateFor(r);
+  if (!st) return "";
+  const n = st.hits.length;
+  return (
+    `<span class="tt-oflag-badge${st.hide ? " tt-flag-hidden" : ""}" title="${_ttOFlagEsc(ttOFlagPlainReasons(r))}">` +
+    `<i class="fas fa-flag" aria-hidden="true"></i> QC${n > 1 ? " ×" + n : ""}</span>`
+  );
+}
+
+/** Text for the export column. */
+function ttOFlagExportText(r) {
+  const st = ttOFlagStateFor(r);
+  if (!st) return "";
+  const t = st.hits.map((h) => h.text).join(" | ");
+  return st.hide ? "hidden: " + t : t;
+}
+
+/* ── Refresh ─────────────────────────────────────────────────────────────── */
+function ttOFlagRefresh() {
+  ttOFlagInvalidate();
+  if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
+  if (typeof ttOFlagRenderSummary === "function") ttOFlagRenderSummary();
+  if (typeof redraw === "function") redraw();
+}
+
+/* ── Config load / capture ───────────────────────────────────────────────── */
+const _TT_OFLAG_SOURCES = new Set(["col", "derived"]);
+
+function _ttOFlagCleanCond(c) {
+  if (!c || typeof c !== "object") return null;
+  const source = String(c.source || "col");
+  const field = String(c.field || "").trim();
+  const op = String(c.op || "").trim();
+  if (!_TT_OFLAG_SOURCES.has(source) || !field || !_TT_OFLAG_OP_KEYS.has(op)) {
+    if (typeof console !== "undefined") console.warn("[taxtriage] ignoring organism QC condition:", c);
+    return null;
+  }
+  if (source === "derived" && !TT_OFLAG_DERIVED_FIELDS.some((f) => f.key === field)) {
+    if (typeof console !== "undefined") console.warn("[taxtriage] unknown derived organism field:", c);
+    return null;
+  }
+  return {
+    source,
+    field,
+    op,
+    value: c.value == null ? "" : String(c.value),
+    peer: c.peer === "any" ? "any" : "stronger",
+  };
+}
+
+function ttOFlagLoadConfig(cfg) {
+  TT_OFLAG_RULES = [];
+  TT_OFLAG_ENABLED = true;
+  TT_OFLAG_VIEW = "all";
+  if (!cfg || typeof cfg !== "object") return;
+  TT_OFLAG_ENABLED = cfg.enabled !== false;
+  TT_OFLAG_VIEW = ttOFlagNormalizeView(cfg.view);
+  (Array.isArray(cfg.rules) ? cfg.rules : []).forEach((r) => {
+    if (!r || typeof r !== "object") return;
+    //  A flat rule ({source, field, op, value}) is a one-condition rule.
+    const rawConds = Array.isArray(r.conds) ? r.conds : Array.isArray(r.conditions) ? r.conditions : [r];
+    const conds = rawConds.map(_ttOFlagCleanCond).filter(Boolean);
+    if (!conds.length || conds.length !== rawConds.length) return; // never half-install a rule
+    TT_OFLAG_RULES.push(ttOFlagNewRule({ on: r.on !== false, action: r.action, conds }));
+  });
+}
+
+function ttOFlagCaptureConfig() {
+  return {
+    enabled: TT_OFLAG_ENABLED,
+    view: TT_OFLAG_VIEW,
+    rules: TT_OFLAG_RULES.map((r) => ({
+      on: r.on,
+      action: r.action,
+      conds: r.conds.map((c) => {
+        const o = { source: c.source, field: c.field, op: c.op, value: c.value };
+        //  Only the ANI fields read `peer`; leave it off everything else.
+        if (c.source === "derived" && (c.field === "ani_max" || c.field === "ani_partners")) o.peer = c.peer;
+        return o;
+      }),
+    })),
+  };
+}
+
+/** Called once from __ttRunInit(), before the first redraw. */
+function ttOFlagsInit() {
+  const boot = (typeof BOOT !== "undefined" && BOOT && BOOT.organism_flags) || null;
+  ttOFlagLoadConfig(boot);
+  ttOFlagInvalidate();
+  if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
+  if (typeof ttOFlagRenderSummary === "function") ttOFlagRenderSummary();
+}
+    </script>
+    <script>
+/* ═══════════════════════════════════════════════════════════════════════════
+       -  §  ORGANISM FLAGS — UI
+       -     The sidebar summary + Highlight / Hide / Only control, and the
+       -     rule builder dialog (#oflag-modal-overlay). The model lives in
+       -     48_organism_flags.js; this file edits TT_OFLAG_RULES and calls
+       -     ttOFlagRefresh() after every change. Edits apply live.
+       -
+       -     Layout of one rule card:
+       -        [on] Rule 1 ··············· [flag it ▾] [n rows] [🗑]
+       -        IF   [source] [field] [peer] [op] [value]      [×]
+       -        AND  …
+       -        + and condition
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Sidebar summary ─────────────────────────────────────────────────────── */
+function ttOFlagRenderSummary() {
+  const line = document.getElementById("oflag-summary-line");
+  const btn = document.getElementById("oflag-open-btn");
+  _ttOFlagSyncView();
+  if (!line) return;
+  const c = ttOFlagCounts();
+  if (btn) btn.classList.toggle("has-flags", c.flagged > 0);
+  const lvl = c.level.toLowerCase();
+  if (!c.rules) {
+    line.className = "flag-line quiet";
+    line.innerHTML =
+      `No organism rules active. <span class="flag-line-sub">Add one to flag or hide hits by reads, genus, ` +
+      `shared ANI and more.</span>`;
+  } else if (!c.total) {
+    line.className = "flag-line quiet";
+    line.innerHTML = `${c.rules} organism rule${c.rules === 1 ? "" : "s"} ready.`;
+  } else if (!c.flagged) {
+    line.className = "flag-line ok";
+    line.innerHTML = `<i class="fas fa-circle-check"></i> No ${lvl} rows match ${c.rules} rule${
+      c.rules === 1 ? "" : "s"
+    }.`;
+  } else {
+    line.className = "flag-line warn";
+    line.innerHTML =
+      `<i class="fas fa-flag"></i> <b>${c.flagged}</b> of ${c.total.toLocaleString()} ${lvl} row${
+        c.total === 1 ? "" : "s"
+      } flagged` +
+      (c.hidden ? ` · <b>${c.hidden}</b> ${c.onlyActive ? "hidden (unflagged)" : "hidden"}` : "") +
+      `<span class="flag-line-sub">${c.organisms} distinct organism${c.organisms === 1 ? "" : "s"} · ${c.rules} rule${
+        c.rules === 1 ? "" : "s"
+      }</span>`;
+  }
+}
+
+function _ttOFlagSyncView() {
+  const st = typeof ttOFlagEvaluate === "function" ? ttOFlagEvaluate() : null;
+  ["oflag-view-mode", "oflag-view-mode-modal"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = TT_OFLAG_VIEW;
+    el.classList.toggle("filtering", TT_OFLAG_VIEW !== "all");
+    const only = el.querySelector('option[value="only"]');
+    if (only) only.disabled = !(st && st.anyFlagged);
+  });
+  const en = document.getElementById("oflag-enabled");
+  if (en) en.checked = !!TT_OFLAG_ENABLED;
+  const sw = document.getElementById("oflag-enabled-side");
+  if (sw) sw.checked = !!TT_OFLAG_ENABLED;
+}
+
+/* ── Dialog open / close ─────────────────────────────────────────────────── */
+function ttOFlagOpenModal() {
+  const ov = document.getElementById("oflag-modal-overlay");
+  if (!ov) return;
+  ov.style.display = "flex";
+  ov.setAttribute("aria-hidden", "false");
+  _ttOFlagSyncView();
+  ttOFlagRenderRules();
+  ttOFlagRenderPreview();
+}
+function ttOFlagCloseModal() {
+  const ov = document.getElementById("oflag-modal-overlay");
+  if (!ov) return;
+  ov.style.display = "none";
+  ov.setAttribute("aria-hidden", "true");
+}
+
+/* ── Rule cards ──────────────────────────────────────────────────────────── */
+const _TT_OFLAG_SOURCE_OPTS = [
+  { key: "col", label: "Detection column" },
+  { key: "derived", label: "In-sample context" },
+];
+
+function _ttOFlagOpts(list, selected, vk, lk) {
+  return list
+    .map((o) => {
+      const v = o[vk || "key"];
+      return `<option value="${_ttOFlagEsc(v)}"${String(v) === String(selected) ? " selected" : ""}${
+        o.disabled ? " disabled" : ""
+      }>${_ttOFlagEsc(o[lk || "label"])}</option>`;
+    })
+    .join("");
+}
+
+function _ttOFlagOpsFor(def) {
+  if (!def || def.num == null) return TT_OFLAG_OPS.slice();
+  return TT_OFLAG_OPS.filter((o) => o.num === null || o.num === def.num);
+}
+
+/** Does any row in this report carry ANI? Drives the "(needs --enable_matrix)"
+ *  hint so an ANI rule that can never match is obvious. */
+function _ttOFlagHasAni() {
+  const src = (typeof DATA !== "undefined" && DATA) || [];
+  for (let i = 0; i < src.length; i++) if (_ttOFlagAniAnnotated(src[i])) return true;
+  return false;
+}
+
+function _ttOFlagCondHTML(c, i, fields, hasAni) {
+  let list = fields[c.source] || [];
+  if (c.source === "derived" && !hasAni) {
+    list = list.map((f) => (f.ani ? Object.assign({}, f, { label: f.label + " — needs --enable_matrix" }) : f));
+  }
+  if (c.field && !list.some((f) => f.key === c.field)) {
+    list = [{ key: c.field, label: c.field + " (not in this run)" }].concat(list);
+  }
+  const def = ttOFlagFieldDef(c) || {};
+  const ops = _ttOFlagOpsFor(def);
+  const opDef = TT_OFLAG_OPS.find((o) => o.op === c.op) || {};
+  const placeholder = c.op === "in" || c.op === "!in" ? "a, b, c" : "value";
+  return (
+    `<div class="flag-rule oflag-cond" data-cond="${_ttOFlagEsc(c.id)}">` +
+    `<span class="flag-joiner${i === 0 ? " lead" : ""}">${i === 0 ? "if" : "and"}</span>` +
+    `<select class="oflag-source" title="Where the value comes from">${_ttOFlagOpts(
+      _TT_OFLAG_SOURCE_OPTS,
+      c.source,
+    )}</select>` +
+    `<select class="oflag-field flag-rule-field">${_ttOFlagOpts(list, c.field)}</select>` +
+    (def.needsPeer
+      ? `<select class="oflag-peer" title="'stronger hit' only counts a partner with more reads (then higher TASS), so of two near-identical references only the weaker one matches. ANI partners are the ones the pipeline recorded at or above --ani_threshold (default 95%).">${_ttOFlagOpts(
+          TT_OFLAG_PEERS,
+          c.peer || "stronger",
+        )}</select>`
+      : "") +
+    `<select class="oflag-op">${_ttOFlagOpts(ops, c.op, "op", "label")}</select>` +
+    (opDef.novalue
+      ? `<span class="flag-rule-novalue">—</span>`
+      : `<input type="${
+          def.num === true && c.op !== "in" && c.op !== "!in" ? "number" : "text"
+        }" class="oflag-value flag-rule-value" value="${_ttOFlagEsc(c.value)}" placeholder="${placeholder}" />`) +
+    `<button type="button" class="flag-rule-del oflag-cond-del" title="Remove this condition"><i class="fas fa-xmark"></i></button>` +
+    `</div>`
+  );
+}
+
+function ttOFlagRenderRules() {
+  const host = document.getElementById("oflag-rule-list");
+  if (!host) return;
+  if (!TT_OFLAG_RULES.length) {
+    host.innerHTML =
+      `<div class="flag-empty"><i class="fas fa-flag"></i> No organism rules yet. ` +
+      `Add one below, or start from a preset.</div>`;
+    return;
+  }
+  const fields = ttOFlagFields();
+  const hasAni = _ttOFlagHasAni();
+  host.innerHTML = TT_OFLAG_RULES.map(
+    (r, i) =>
+      `<div class="oflag-card${r.on ? "" : " off"}" data-rule="${_ttOFlagEsc(r.id)}">` +
+      `<div class="oflag-card-head">` +
+      `<label><input type="checkbox" class="oflag-rule-on" ${r.on ? "checked" : ""}/> Rule ${i + 1}</label>` +
+      `<span class="oflag-card-spacer"></span>` +
+      `<select class="oflag-action" title="What happens to a matching organism row">` +
+      `<option value="flag"${r.action !== "hide" ? " selected" : ""}>flag it</option>` +
+      `<option value="hide"${r.action === "hide" ? " selected" : ""}>flag &amp; hide it</option></select>` +
+      `<span class="flag-rule-hits"></span>` +
+      `<button type="button" class="flag-rule-del oflag-rule-del" title="Remove this rule"><i class="fas fa-trash"></i></button>` +
+      `</div>` +
+      r.conds.map((c, j) => _ttOFlagCondHTML(c, j, fields, hasAni)).join("") +
+      `<button type="button" class="oflag-add-cond"><i class="fas fa-plus"></i> and condition</button>` +
+      `</div>`,
+  ).join("");
+  _ttOFlagUpdateRuleHits();
+}
+
+function _ttOFlagUpdateRuleHits() {
+  const st = ttOFlagEvaluate();
+  const lvl = _ttOFlagViewLevel();
+  const per = {};
+  st.forEach((v) => {
+    if ((v.row["Level"] || "Strain") !== lvl) return;
+    v.hits.forEach((h) => (per[h.rule.id] = (per[h.rule.id] || 0) + 1));
+  });
+  document.querySelectorAll("#oflag-rule-list .oflag-card").forEach((card) => {
+    const el = card.querySelector(".flag-rule-hits");
+    if (!el) return;
+    const n = per[card.dataset.rule] || 0;
+    el.textContent = n ? `${n} row${n === 1 ? "" : "s"}` : "0 rows";
+    el.className = "flag-rule-hits" + (n ? " on" : "");
+  });
+}
+
+/* ── Live preview ────────────────────────────────────────────────────────── */
+const _TT_OFLAG_PREVIEW_MAX = 150;
+
+function ttOFlagRenderPreview() {
+  const host = document.getElementById("oflag-preview");
+  if (!host) return;
+  const c = ttOFlagCounts();
+  if (!c.rules) {
+    host.innerHTML = `<div class="flag-preview-head quiet">No active rules — nothing is flagged.</div>`;
+    return;
+  }
+  const st = ttOFlagEvaluate();
+  const rows = [];
+  st.forEach((v) => {
+    if ((v.row["Level"] || "Strain") === c.level) rows.push(v);
+  });
+  if (!rows.length) {
+    host.innerHTML = `<div class="flag-preview-head ok"><i class="fas fa-circle-check"></i> No ${c.level.toLowerCase()} rows match.</div>`;
+    return;
+  }
+  rows.sort(
+    (a, b) =>
+      String(a.row["Specimen ID"]).localeCompare(String(b.row["Specimen ID"])) ||
+      _ttOFlagNum(b.row["# Reads Aligned"]) - _ttOFlagNum(a.row["# Reads Aligned"]),
+  );
+  host.innerHTML =
+    `<div class="flag-preview-head warn"><i class="fas fa-flag"></i> <b>${
+      rows.length
+    }</b> ${c.level.toLowerCase()} row${rows.length === 1 ? "" : "s"} flagged (${c.organisms} organism${
+      c.organisms === 1 ? "" : "s"
+    })` +
+    (c.hidden ? ` · <b>${c.hidden}</b> hidden from every view` : "") +
+    `</div><div class="flag-preview-list">` +
+    rows
+      .slice(0, _TT_OFLAG_PREVIEW_MAX)
+      .map(
+        (v) =>
+          `<div class="flag-preview-row${v.hide ? " hidden" : ""}">` +
+          `<div class="flag-preview-name"><i class="fas ${v.hide ? "fa-eye-slash" : "fa-flag"}"></i> <i>${_ttOFlagEsc(
+            v.row["Detected Organism"],
+          )}</i><div class="oflag-preview-sample">${_ttOFlagEsc(v.row["Specimen ID"])} · ${_ttOFlagFmt(
+            _ttOFlagNum(v.row["# Reads Aligned"]),
+          )} reads</div></div>` +
+          `<ul class="flag-preview-why">${v.hits.map((h) => `<li>${_ttOFlagEsc(h.text)}</li>`).join("")}</ul></div>`,
+      )
+      .join("") +
+    (rows.length > _TT_OFLAG_PREVIEW_MAX
+      ? `<div class="flag-preview-row quiet">… and ${rows.length - _TT_OFLAG_PREVIEW_MAX} more</div>`
+      : "") +
+    `</div>`;
+}
+
+/* ── Presets ─────────────────────────────────────────────────────────────── */
+/*  Same shapes as the pipeline's --report_org_flag_* params produce.        */
+const TT_OFLAG_PRESETS = {
+  lowreads: { conds: [{ source: "col", field: "# Reads Aligned", op: "<", value: "10" }] },
+  lowtass: { conds: [{ source: "col", field: "TASS Score", op: "<", value: "50" }] },
+  ani: { conds: [{ source: "derived", field: "ani_max", op: ">=", value: "99", peer: "stronger" }] },
+  genuslow: {
+    conds: [
+      { source: "col", field: "Genus", op: "in", value: "" },
+      { source: "col", field: "# Reads Aligned", op: "<", value: "50" },
+    ],
+  },
+  genusminor: {
+    conds: [
+      { source: "derived", field: "genus_rank", op: ">", value: "1" },
+      { source: "derived", field: "genus_share", op: "<", value: "5" },
+    ],
+  },
+  k2only: {
+    conds: [
+      { source: "derived", field: "k2_ratio", op: "<", value: "0.05" },
+      { source: "col", field: "K2 Reads", op: ">=", value: "50" },
+    ],
+  },
+};
+
+/* ── Wiring ──────────────────────────────────────────────────────────────── */
+(function _ttOFlagWireUI() {
+  function apply() {
+    ttOFlagRefresh();
+    ttOFlagRenderPreview();
+    _ttOFlagUpdateRuleHits();
+  }
+  let _t = null;
+  function applyDebounced() {
+    clearTimeout(_t);
+    _t = setTimeout(apply, 250);
+  }
+  const ruleOf = (el) => {
+    const card = el.closest(".oflag-card");
+    return card ? TT_OFLAG_RULES.find((r) => r.id === card.dataset.rule) || null : null;
+  };
+  const condOf = (rule, el) => {
+    const row = el.closest(".oflag-cond");
+    return rule && row ? rule.conds.find((c) => c.id === row.dataset.cond) || null : null;
+  };
+  /*  After a field / source change, land on an operator the field supports
+      and clear a value that no longer makes sense (text → number).         */
+  function fixOp(c) {
+    const def = ttOFlagFieldDef(c);
+    const ops = _ttOFlagOpsFor(def);
+    if (!ops.some((o) => o.op === c.op)) {
+      c.op = ops[0] ? ops[0].op : "==";
+      c.value = "";
+    }
+  }
+
+  function ready() {
+    const on = (id, ev, fn) => {
+      const el = document.getElementById(id);
+      if (el && !el["_w_" + ev]) {
+        el["_w_" + ev] = true;
+        el.addEventListener(ev, fn);
+      }
+      return el;
+    };
+    on("oflag-open-btn", "click", ttOFlagOpenModal);
+    on("oflag-modal-close", "click", ttOFlagCloseModal);
+    on("oflag-apply-btn", "click", ttOFlagCloseModal);
+    const ov = on("oflag-modal-overlay", "click", (e) => {
+      if (e.target === e.currentTarget) ttOFlagCloseModal();
+    });
+    if (ov && !ov._escWired) {
+      ov._escWired = true;
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && ov.style.display === "flex") ttOFlagCloseModal();
+      });
+    }
+    ["oflag-enabled", "oflag-enabled-side"].forEach((id) =>
+      on(id, "change", (e) => {
+        TT_OFLAG_ENABLED = e.target.checked;
+        apply();
+      }),
+    );
+    ["oflag-view-mode", "oflag-view-mode-modal"].forEach((id) =>
+      on(id, "change", (e) => {
+        TT_OFLAG_VIEW = ttOFlagNormalizeView(e.target.value);
+        apply();
+      }),
+    );
+    on("oflag-add-rule", "click", () => {
+      TT_OFLAG_RULES.push(ttOFlagNewRule());
+      ttOFlagRenderRules();
+      apply();
+    });
+    document.querySelectorAll(".oflag-preset").forEach((b) => {
+      if (b._wired) return;
+      b._wired = true;
+      b.addEventListener("click", () => {
+        const seed = TT_OFLAG_PRESETS[b.dataset.preset];
+        if (!seed) return;
+        TT_OFLAG_RULES.push(ttOFlagNewRule(JSON.parse(JSON.stringify(seed))));
+        ttOFlagRenderRules();
+        apply();
+        //  Presets with a blank value (the genus list) want typing next.
+        const cards = document.querySelectorAll("#oflag-rule-list .oflag-card");
+        const last = cards[cards.length - 1];
+        const blank = last && Array.from(last.querySelectorAll(".oflag-value")).find((i) => !i.value);
+        if (blank) blank.focus();
+      });
+    });
+    on("oflag-reset-btn", "click", () => {
+      ttOFlagLoadConfig((typeof BOOT !== "undefined" && BOOT && BOOT.organism_flags) || null);
+      ttOFlagRenderRules();
+      apply();
+    });
+    on("oflag-clear-btn", "click", () => {
+      TT_OFLAG_RULES = [];
+      ttOFlagRenderRules();
+      apply();
+    });
+
+    const list = document.getElementById("oflag-rule-list");
+    if (list && !list._wired) {
+      list._wired = true;
+      list.addEventListener("change", (e) => {
+        const t = e.target;
+        const r = ruleOf(t);
+        if (!r) return;
+        if (t.classList.contains("oflag-rule-on")) r.on = t.checked;
+        else if (t.classList.contains("oflag-action")) r.action = t.value === "hide" ? "hide" : "flag";
+        else {
+          const c = condOf(r, t);
+          if (!c) return;
+          if (t.classList.contains("oflag-source")) {
+            c.source = t.value;
+            const f = (ttOFlagFields()[c.source] || [])[0];
+            c.field = f ? f.key : "";
+            fixOp(c);
+          } else if (t.classList.contains("oflag-field")) {
+            c.field = t.value;
+            fixOp(c);
+          } else if (t.classList.contains("oflag-peer")) c.peer = t.value === "any" ? "any" : "stronger";
+          else if (t.classList.contains("oflag-op")) c.op = t.value;
+          else if (t.classList.contains("oflag-value")) c.value = t.value;
+        }
+        ttOFlagRenderRules();
+        apply();
+      });
+      list.addEventListener("input", (e) => {
+        if (!e.target.classList.contains("oflag-value")) return;
+        const c = condOf(ruleOf(e.target), e.target);
+        if (!c) return;
+        c.value = e.target.value;
+        applyDebounced();
+      });
+      list.addEventListener("click", (e) => {
+        const r = ruleOf(e.target);
+        if (!r) return;
+        if (e.target.closest(".oflag-rule-del")) {
+          TT_OFLAG_RULES = TT_OFLAG_RULES.filter((x) => x !== r);
+        } else if (e.target.closest(".oflag-cond-del")) {
+          const c = condOf(r, e.target);
+          r.conds = r.conds.filter((x) => x !== c);
+          //  A rule with no conditions left is gone, not "matches everything".
+          if (!r.conds.length) TT_OFLAG_RULES = TT_OFLAG_RULES.filter((x) => x !== r);
+        } else if (e.target.closest(".oflag-add-cond")) {
+          r.conds.push(ttOFlagNewCond({ source: "col", field: "TASS Score", op: "<", value: "50" }));
+        } else return;
+        ttOFlagRenderRules();
+        apply();
+      });
+    }
+    ttOFlagRenderSummary();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
+  else ready();
+})();
     </script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
