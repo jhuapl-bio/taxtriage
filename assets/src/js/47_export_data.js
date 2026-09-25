@@ -550,7 +550,7 @@ const TT_EXPORT_DATASETS = [
       // `Passes Threshold` is computed in the browser (the JSON carries False for
       // every record), so spell out the verdict and the cutoff it used — the
       // same two columns bin/export_data.py appends.
-      const extra = ["TASS Cutoff", "Passes Cutoff"];
+      const extra = ["TASS Cutoff", "Passes Cutoff", "Organism QC Flag"];
       const rows = src.map((r) => {
         const o = {};
         cols.forEach((c) => {
@@ -560,6 +560,8 @@ const TT_EXPORT_DATASETS = [
         const info = typeof rowPassInfo === "function" ? rowPassInfo(r) : null;
         o["TASS Cutoff"] = info && info.thr != null ? _ttRound(info.thr, 2) : "";
         o["Passes Cutoff"] = _ttRowPasses(r, info) ? "Yes" : "No";
+        // Organism QC verdict (48_organism_flags.js); blank when unflagged.
+        o["Organism QC Flag"] = typeof ttOFlagExportText === "function" ? ttOFlagExportText(r) : "";
         return o;
       });
       return { columns: cols.concat(extra), rows: rows };

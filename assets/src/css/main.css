@@ -5131,7 +5131,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
 }
 
 /* ── Sidebar summary ─────────────────────────────────────────────────────── */
-#flag-summary {
+#flag-summary,
+#oflag-summary {
   margin: 0 0 0.7em;
   font-size: 0.78em;
 }
@@ -5198,7 +5199,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
     that is a squeeze (≈193px of usable width), which is why the button label
     is short and neither control carries a caption; below about 200px the row
     wraps to two full-width rows rather than clipping either control. */
-#flag-summary-actions {
+#flag-summary-actions,
+#oflag-summary-actions {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -5206,7 +5208,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   gap: 0.3em;
   margin-top: 0.4em;
 }
-#flag-open-btn {
+#flag-open-btn,
+#oflag-open-btn {
   flex: 0 1 auto;
   white-space: nowrap;
   font-size: 0.95em;
@@ -5219,7 +5222,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   font-weight: 600;
   line-height: 1.5;
 }
-#flag-open-btn.has-flags {
+#flag-open-btn.has-flags,
+#oflag-open-btn.has-flags {
   border-color: #d99400;
   background: #fff4e0;
   color: #8a5300;
@@ -5237,7 +5241,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
 }
 /*  #sidebar label / #sidebar select both carry an id + type selector, which
     outranks a bare id — hence the #sidebar prefixes here. */
-#sidebar #flag-view-mode-lbl {
+#sidebar #flag-view-mode-lbl,
+#sidebar #oflag-view-mode-lbl {
   display: flex;
   align-items: stretch;
   align-self: stretch;
@@ -5249,7 +5254,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   color: #7b8794;
   cursor: pointer;
 }
-#sidebar #flag-view-mode {
+#sidebar #flag-view-mode,
+#sidebar #oflag-view-mode {
   flex: 1 1 auto;
   min-width: 0;
   width: auto;
@@ -5264,7 +5270,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   color: #3e4c59;
   cursor: pointer;
 }
-#sidebar #flag-view-mode:focus-visible {
+#sidebar #flag-view-mode:focus-visible,
+#sidebar #oflag-view-mode:focus-visible {
   outline: 2px solid #1565c0;
   outline-offset: 1px;
 }
@@ -5272,14 +5279,17 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
     the same amber the flag badges use, so it is obvious why a sample is gone. */
 /*  No bold here: at 220px the row has ~2px of slack and a bolder face clips
     "Only flagged". Colour alone carries it. */
-#sidebar #flag-view-mode.filtering {
+#sidebar #flag-view-mode.filtering,
+#sidebar #oflag-view-mode.filtering {
   border-color: #d99400;
   background: #fff4e0;
   color: #8a5300;
 }
 /*  "Only flagged" is inert with nothing flagged — greyed, not hidden. */
 #flag-view-mode option:disabled,
-#flag-view-mode-modal option:disabled {
+#flag-view-mode-modal option:disabled,
+#oflag-view-mode option:disabled,
+#oflag-view-mode-modal option:disabled {
   color: #9aa5b1;
 }
 .flag-exclude-lbl input[type="text"] {
@@ -5366,7 +5376,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   font-size: 0.95em;
 }
 /*  Same amber cue as the sidebar copy of this control. */
-.flag-modal-top select#flag-view-mode-modal.filtering {
+.flag-modal-top select#flag-view-mode-modal.filtering,
+.flag-modal-top select#oflag-view-mode-modal.filtering {
   border-color: #d99400;
   background: #fff4e0;
   color: #8a5300;
@@ -5376,7 +5387,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   gap: 0.4em;
 }
 
-#flag-rule-list {
+#flag-rule-list,
+#oflag-rule-list {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -5473,7 +5485,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   flex-wrap: wrap;
   margin: 0.7em 0 0.2em;
 }
-#flag-add-rule {
+#flag-add-rule,
+#oflag-add-rule {
   border: 1px solid #1565c0;
   border-radius: 5px;
   background: #1565c0;
@@ -5490,7 +5503,8 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   color: #8595a6;
   font-size: 0.94em;
 }
-.flag-preset {
+.flag-preset,
+.oflag-preset {
   border: 1px solid #c5d5e8;
   border-radius: 9px;
   background: #f7f9fc;
@@ -5499,13 +5513,15 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
   font-size: 0.95em;
   cursor: pointer;
 }
-.flag-preset:hover {
+.flag-preset:hover,
+.oflag-preset:hover {
   border-color: #1565c0;
   background: #f0f7ff;
   color: #0d47a1;
 }
 
-#flag-preview {
+#flag-preview,
+#oflag-preview {
   margin-top: 0.9em;
   border-top: 1px solid #e4ebf5;
   padding-top: 0.7em;
@@ -5583,6 +5599,129 @@ tr.runmeta-flagged.runmeta-flag-hidden > td:first-child {
 text.hm-flag-label {
   fill: #a35c00;
   font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ORGANISM QC — per-detection flags (48/49_organism_flags*.js)
+   Same amber language as the sample flags, applied to single rows: a left
+   rule on the organism cell plus a small "QC" badge, never a full-row wash
+   (the high-consequence red and the rescued-orange tints live there).
+   ═══════════════════════════════════════════════════════════════════════════ */
+.tt-oflag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 5px;
+  padding: 0 5px;
+  border: 1px solid #f0b429;
+  border-radius: 8px;
+  background: #fff4e0;
+  color: #a35c00;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.55;
+  vertical-align: middle;
+  white-space: nowrap;
+  cursor: help;
+}
+.tt-oflag-badge.tt-flag-hidden {
+  border-color: #e0a2a2;
+  background: #fdeaea;
+  color: #a12b2b;
+}
+tr.org-flagged > td:first-child {
+  box-shadow: inset 3px 0 0 #f0b429;
+  background-image: linear-gradient(90deg, #fff6e6, rgba(255, 246, 230, 0) 60%);
+}
+.hm-oflag-corner {
+  fill: #d99400;
+  stroke: #fff;
+  stroke-width: 0.6;
+}
+#sidebar .oflag-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  margin: 0;
+  font-size: 0.95em;
+  font-weight: 400;
+  color: #52606d;
+  cursor: pointer;
+}
+#sidebar .oflag-switch input {
+  margin: 0;
+}
+#oflag-rule-list {
+  gap: 8px;
+}
+.oflag-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 7px 7px;
+  border: 1px solid #d6e0ee;
+  border-radius: 7px;
+  background: #f9fbfe;
+}
+.oflag-card.off {
+  opacity: 0.55;
+}
+.oflag-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #37474f;
+}
+.oflag-card-head label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  cursor: pointer;
+}
+.oflag-card-spacer {
+  flex: 1 1 auto;
+}
+.oflag-card-head select {
+  border: 1px solid #c5d5e8;
+  border-radius: 4px;
+  padding: 0.18em 0.35em;
+  background: #fff;
+  font-size: 0.95em;
+}
+.oflag-card .oflag-cond {
+  border-color: #e6ecf4;
+}
+.oflag-card input.oflag-value[type="text"] {
+  flex: 1 1 170px;
+}
+.oflag-card .oflag-peer {
+  flex: 0 0 auto;
+}
+.oflag-add-cond {
+  align-self: flex-start;
+  margin-left: 52px;
+  border: 1px dashed #b0c4dc;
+  border-radius: 4px;
+  background: #fff;
+  color: #3f5f86;
+  font-size: 0.9em;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.oflag-add-cond:hover {
+  border-color: #1565c0;
+  color: #0d47a1;
+}
+.oflag-preview-sample {
+  font-weight: 400;
+  font-size: 0.88em;
+  color: #7b8794;
+}
+.flag-preview-row.quiet {
+  color: #90a4ae;
+  background: #fff;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

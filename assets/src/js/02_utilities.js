@@ -128,6 +128,7 @@ function filteredData(opts) {
     watchFilterMode,
     watchFilterMode === "all" ? "" : Array.from(watchlist).sort().join(","),
     typeof _hashSpecimenMerge === "function" ? _hashSpecimenMerge() : "",
+    typeof ttOFlagFilterKey === "function" ? ttOFlagFilterKey() : "",
   ].join("\u0001");
   const _slot = _ignoreThr ? _FD_CACHE_ALL : _FD_CACHE;
   if (_slot.key === cacheKey && _slot.value) return _slot.value;
@@ -151,8 +152,11 @@ function filteredData(opts) {
   const anyRescale = _hasAnyRescale();
 
   // Base (non-level, non-threshold) predicates shared by every view.
+  const _oflagGate = typeof ttOFlagFilterKey === "function" && ttOFlagFilterKey() !== "";
   function _basePass(r) {
     if (sampleHidden[r["Specimen ID"]]) return false;
+    // Organism QC rules (48_organism_flags.js) with a hide action / view.
+    if (_oflagGate && ttOFlagRowHidden(r)) return false;
     if (rx) {
       // Match both the raw library id and its current specimen label. Without
       // this, a user-created merged name could be displayed but not searched.
@@ -528,10 +532,33 @@ function applyRescale(r) {
 function _rescaleVal(r, v) {
   return _hasAnyRescale() && sampleRescale[r["Specimen ID"]] ? v * 100 : v;
 }
+/* ── Sample-type keys for the TASS cutoff ────────────────────────────
+   A row with no sample type (blank or "unknown") gets the key "unknown".
+   When the run mixes typed and untyped samples, "unknown" is listed as its
+   own per-type cutoff. Previously untyped rows fell back to the global
+   slider, which is HIDDEN whenever per-type controls are shown, so an
+   untyped sample (e.g. a spike-in background) was filtered at a cutoff the
+   user could neither see nor change.                                     */
+const UNKNOWN_SAMPLE_TYPE = "unknown";
+function _sampleTypeKey(raw) {
+  const t = (raw || "").trim().toLowerCase();
+  return t || UNKNOWN_SAMPLE_TYPE;
+}
+/** Sample types that get their own cutoff control. Typed samples always;
+ *  "unknown" only alongside at least one typed sample (a run with no types
+ *  keeps the single global slider). */
+function _tassTypeList() {
+  const all = new Set(DATA.map((r) => _sampleTypeKey(r["Sample Type"])));
+  const typed = Array.from(all)
+    .filter((t) => t !== UNKNOWN_SAMPLE_TYPE)
+    .sort();
+  if (typed.length && all.has(UNKNOWN_SAMPLE_TYPE)) typed.push(UNKNOWN_SAMPLE_TYPE);
+  return typed;
+}
 function thresholdForRow(r) {
   const minV = parseFloat(document.getElementById("filter-min").value) || 0;
-  const _st = (r["Sample Type"] || "").trim().toLowerCase();
-  return _st && _st !== "unknown" && perTypeTass[_st] != null ? perTypeTass[_st] : minV;
+  const _st = _sampleTypeKey(r["Sample Type"]);
+  return perTypeTass[_st] != null ? perTypeTass[_st] : minV;
 }
 function rowPassInfo(r) {
   const thr = thresholdForRow(r);
@@ -1649,9 +1676,7 @@ async function _renderXsForPdf() {
 /* ── TASS cutoff summary (shared by the KPI card logic + the PDF legend) ──
          Returns { mode:"byType"|"global", items:[{type,applied,def}], global, recommended }. */
 function _tassCutoffSummary() {
-  const types = Array.from(
-    new Set(DATA.map((r) => (r["Sample Type"] || "").trim().toLowerCase()).filter((t) => t && t !== "unknown")),
-  ).sort();
+  const types = _tassTypeList();
   const globalFallback = parseFloat((document.getElementById("filter-min") || {}).value) || 0;
   const recommended = BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH) ? Number(BEST_TASS_THRESH) : null;
   if (types.length) {

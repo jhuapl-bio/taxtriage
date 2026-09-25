@@ -62,7 +62,10 @@ def regroupSubsampled(ch_subsample_reads) {
             // cloning downstream still points at the real originating sample.
             def cm = (dsid =~ /_c(\d+)_r\d+$/)
             if (cm.find()) {
-                m.read_count = cm.group(1) as Integer
+                // c<N> counts records drawn — PAIRS for paired data — while
+                // read_count (COUNT_READS) counts every mate: x2 for paired.
+                def rpr = fastqs.size() > 1 ? 2 : 1
+                m.read_count = (cm.group(1) as long) * rpr
             }
             m.subsample       = true
             m.subsample_mode  = params.sim_subsample_mode

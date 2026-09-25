@@ -360,6 +360,8 @@ function __ttRunInit() {
   // "hide" actions BEFORE the first sample list / redraw, so the very first
   // paint already reflects them (no flash of unfiltered samples).
   if (typeof ttFlagsInit === "function") ttFlagsInit();
+  // Same for the per-organism QC rules (hide gates live in filteredData()).
+  if (typeof ttOFlagsInit === "function") ttOFlagsInit();
 
   buildHmValueSel();
   buildSampleList();

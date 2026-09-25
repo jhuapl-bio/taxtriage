@@ -264,6 +264,8 @@ function drawHeatmap() {
     samples.forEach((sp) => {
       const r = lookup[`${sp}|||${org}`];
       const v = r ? num(r[col]) : null;
+      // Organism QC flag for this cell (48_organism_flags.js).
+      const _of = r && typeof ttOFlagStateFor === "function" ? ttOFlagStateFor(r) : null;
       const cell = svg
         .append("rect")
         .attr("x", xScale(sp))
@@ -284,7 +286,12 @@ function drawHeatmap() {
           showTip(
             `<b>${org}</b>${hc}<br>Sample: ${sp}<br>${col}: <b>${
               v !== null ? v.toLocaleString() : "n/a"
-            }</b><br>TASS: ${tass.toFixed(1)} · ${rankLabel(r, rank)}`,
+            }</b><br>TASS: ${tass.toFixed(1)} · ${rankLabel(r, rank)}` +
+              (_of
+                ? `<br><span style="color:#ffcc80"><i class="fas fa-flag"></i> Organism QC: ${_of.hits
+                    .map((h) => _ttOFlagEsc(h.text))
+                    .join("; ")}</span>`
+                : ""),
             ev,
           );
         })
@@ -331,6 +338,27 @@ function drawHeatmap() {
       }
     });
   });
+
+  // ── Organism QC markers ─────────────────────────────────────────────
+  // A bottom-left amber corner on each flagged cell (the top-right corner is
+  // the rescued-strain marker). Drawn as a separate pass so it sits above the
+  // value text; pointer-events off so the cell keeps its own tooltip.
+  if (typeof ttOFlagStateFor === "function") {
+    const ofG = svg.append("g").attr("class", "hm-oflag").style("pointer-events", "none");
+    organisms.forEach((org) => {
+      samples.forEach((sp) => {
+        const r = lookup[`${sp}|||${org}`];
+        if (!r || !ttOFlagStateFor(r)) return;
+        const x0 = xScale(sp),
+          y1 = yScale(org) + yScale.bandwidth(),
+          s = Math.min(8, xScale.bandwidth() * 0.32);
+        ofG
+          .append("path")
+          .attr("class", "hm-oflag-corner")
+          .attr("d", `M${x0},${y1} L${x0 + s},${y1} L${x0},${y1 - s} Z`);
+      });
+    });
+  }
 
   // ── Flagged-sample column marker ───────────────────────────────────
   // Deliberately an OUTLINE plus a solid cap, not a translucent wash: the

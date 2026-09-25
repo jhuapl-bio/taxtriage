@@ -66,7 +66,7 @@
 })();
 
 /* ── Banner subtitle helper ─────────────────────────────────────────────────
-         Builds the "N samples × M organisms × X% reads classified" string from
+         Builds the "N samples × M organisms × X% reads aligned" string from
          the current DATA and SAMPLE_META globals.  Called from init() and from
          the upload / clear handlers so all three stay in sync.
       ────────────────────────────────────────────────────────────────────────── */
@@ -85,7 +85,7 @@ function _buildBannerSub() {
   // Unique organisms: deduplicate on Taxonomic ID # (key), not subkey
   const uniqueOrgs = new Set(DATA.map((r) => r["Taxonomic ID #"] || "").filter(Boolean)).size;
 
-  // % reads classified = Σ(total_organism_reads from SAMPLE_META) / Σ(total_reads from SAMPLE_META)
+  // % reads aligned (to an organism reference) = Σ(total_organism_reads from SAMPLE_META) / Σ(total_reads from SAMPLE_META)
   // Uses per-sample metadata from the JSON. Falls back to summing "# Reads Aligned"
   // from DATA rows if SAMPLE_META doesn't carry total_reads (e.g. plain TSV upload).
   const totalInputReads = rawSamples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
@@ -98,5 +98,5 @@ function _buildBannerSub() {
 
   return `${entities.length} ${
     grouped ? "specimen(s)" : "sample(s)"
-  } \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads classified \u2022 ${totalReadsFmt} total reads`;
+  } \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads aligned \u2022 ${totalReadsFmt} total reads`;
 }

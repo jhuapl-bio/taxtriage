@@ -3552,6 +3552,39 @@
           </div>
         </div>
 
+        <h3 style="display: flex; align-items: center; gap: 0.4em">
+          Organism QC / Flags
+          <button
+            class="info-tip-btn"
+            id="oflag-tip-btn"
+            aria-label="Organism QC help"
+            data-tip="&lt;b&gt;Organism QC rules&lt;/b&gt; — filters that act on individual DETECTIONS (organism rows) rather than whole samples.&lt;br&gt;&lt;br&gt;Each rule is one or more conditions that must all hold, e.g. &lt;i&gt;Genus is one of Streptococcus, Staphylococcus&lt;/i&gt; &lt;b&gt;and&lt;/b&gt; &lt;i&gt;# Reads Aligned &amp;lt; 50&lt;/i&gt;. Conditions can test any detection column or the organism&#39;s in-sample context: &lt;b&gt;shared ANI&lt;/b&gt; with another (stronger) hit in the same sample (needs &lt;code&gt;--enable_matrix&lt;/code&gt;), its genus&#39;s reads, its share / rank within the genus, aligned vs classifier reads, prevalence and lineage.&lt;br&gt;&lt;br&gt;A matching row is &lt;b&gt;flagged&lt;/b&gt; (amber badge in the Summary and Table, amber corner on the heatmap cell) or &lt;b&gt;flagged and hidden&lt;/b&gt; (removed from every chart and table). The dropdown switches the whole report between highlighting, hiding the flagged rows, or showing only them &mdash; nothing is deleted from the data.&lt;br&gt;&lt;br&gt;Defaults come from the pipeline&#39;s &lt;code&gt;--report_org_flag_*&lt;/code&gt; parameters and are saved with the session state."
+          >
+            &#x24D8;
+          </button>
+        </h3>
+        <div id="oflag-summary">
+          <div id="oflag-summary-line" class="flag-line quiet"></div>
+          <div id="oflag-summary-actions">
+            <label class="oflag-switch" title="Turn every organism rule on or off without deleting them">
+              <input type="checkbox" id="oflag-enabled-side" checked /> On
+            </label>
+            <button type="button" id="oflag-open-btn" title="Open the organism filter / flag rule builder">
+              <i class="fas fa-flag"></i> Filter Organisms
+            </button>
+            <label
+              id="oflag-view-mode-lbl"
+              title="Highlight flagged organism rows, hide them from every view, or show nothing but them"
+            >
+              <select id="oflag-view-mode">
+                <option value="all">Highlight flagged</option>
+                <option value="hide">Hide flagged</option>
+                <option value="only">Only flagged</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         <h3 style="display: flex; align-items: center; justify-content: space-between; gap: 0.4em">
           Samples
           <span style="display: flex; gap: 0.3em; flex-shrink: 0">
@@ -4207,6 +4240,92 @@
       </div>
     </div>
 
+    <!-- ══ Organism QC: filter / flag rule builder ════════════════════════ -->
+    <div id="oflag-modal-overlay" class="export-modal-overlay" aria-hidden="true">
+      <div class="export-modal flag-modal" role="dialog" aria-modal="true" aria-labelledby="oflag-modal-title">
+        <header>
+          <i class="fas fa-flag"></i>
+          <span id="oflag-modal-title">Organism filters &amp; flags</span>
+          <button type="button" id="oflag-modal-close" aria-label="Close">&times;</button>
+        </header>
+        <div class="flag-modal-body">
+          <p class="flag-modal-intro">
+            These rules act on <b>individual detections</b> (one organism in one sample). Every condition in a rule must
+            hold for it to match; separate rules are independent. A matching row is <b>flagged</b> &mdash; badged in the
+            Summary and Table, cornered on the heatmap &mdash; or <b>flagged and hidden</b>, which removes it from every
+            view. <b>In-sample context</b> fields compare an organism with the other hits of the same sample at the same
+            level: shared ANI (needs <code>--enable_matrix</code>), its genus's reads, its share and rank within the
+            genus. Values come from the full dataset, not from what the current filters display. Changes apply as you
+            make them.
+          </p>
+          <div class="flag-modal-top">
+            <label title="Turn the whole rule set off without deleting it">
+              <input type="checkbox" id="oflag-enabled" checked /> Rules active
+            </label>
+            <label
+              title="Highlight: rules with a 'hide' action still hide their own matches. Hide flagged: every flagged row is hidden. Only flagged: show nothing but the flagged rows."
+            >
+              Show
+              <select id="oflag-view-mode-modal">
+                <option value="all">everything, flagged highlighted</option>
+                <option value="hide">everything except flagged</option>
+                <option value="only">only flagged rows</option>
+              </select>
+            </label>
+          </div>
+          <div id="oflag-rule-list"></div>
+          <div class="flag-modal-addrow">
+            <button type="button" id="oflag-add-rule"><i class="fas fa-plus"></i> Add rule</button>
+            <span class="flag-preset-wrap">
+              Presets:
+              <button type="button" class="oflag-preset" data-preset="lowreads">Few reads</button>
+              <button type="button" class="oflag-preset" data-preset="lowtass">Low TASS</button>
+              <button
+                type="button"
+                class="oflag-preset"
+                data-preset="ani"
+                title="Flag the weaker of two hits in the same sample that share at least 99% ANI"
+              >
+                Shared ANI with a stronger hit
+              </button>
+              <button
+                type="button"
+                class="oflag-preset"
+                data-preset="genuslow"
+                title="Organisms in the genera you list AND with fewer than 50 reads"
+              >
+                Genus + few reads
+              </button>
+              <button
+                type="button"
+                class="oflag-preset"
+                data-preset="genusminor"
+                title="Not the top hit of its genus in the sample, and under 5% of the genus's reads"
+              >
+                Minor member of a genus
+              </button>
+              <button
+                type="button"
+                class="oflag-preset"
+                data-preset="k2only"
+                title="Classifier called it loudly but under 5% of those reads aligned"
+              >
+                Classifier-only
+              </button>
+            </span>
+          </div>
+          <div id="oflag-preview"></div>
+        </div>
+        <div class="export-modal-actions">
+          <button type="button" id="oflag-reset-btn" title="Restore the rules the pipeline shipped with this report">
+            Reset to pipeline defaults
+          </button>
+          <button type="button" id="oflag-clear-btn">Remove all rules</button>
+          <button type="button" id="oflag-apply-btn" class="primary">Done</button>
+        </div>
+      </div>
+    </div>
+
     <script src="pages.js"></script>
     <script src="src/js/early.js"></script>
     <script src="src/js/00_preamble.js"></script>
@@ -4258,6 +4377,8 @@
     <script src="src/js/45_tab_insilico.js"></script>
     <script src="src/js/46_insilico_compare.js"></script>
     <script src="src/js/47_export_data.js"></script>
+    <script src="src/js/48_organism_flags.js"></script>
+    <script src="src/js/49_organism_flags_ui.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

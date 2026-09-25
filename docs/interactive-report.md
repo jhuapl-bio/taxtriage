@@ -356,6 +356,27 @@ Hovering any marker lists exactly which rules the sample tripped and what its ac
 
 Rules can ship with the run: the `--report_flag_*` parameters are baked into the report so it opens with them already applied. **Reset to pipeline defaults** in the dialog restores that set at any time. Live edits are saved with the exported session state, so a saved-and-reloaded report comes back with your rules, not the pipeline's. See [CLI Parameters → Report Sample-QC Flags](cli-parameters.md#report-sample-qc-flags).
 
+## Organism QC flags
+
+Sample QC judges whole samples; **Organism QC** judges individual detections (one organism in one sample) and either **highlights** them or **hides** them from every view. The **Organism QC / Flags** block sits under Sample QC in the right-hand sidebar: an **On** switch for the whole rule set, the **Filter Organisms** button that opens the rule builder, and a dropdown that switches the report between:
+
+- **Highlight flagged** - every row stays; flagged ones are marked (a rule whose action is _flag & hide it_ still hides its own matches).
+- **Hide flagged** - every flagged row is removed from every chart and table.
+- **Only flagged** - nothing but the flagged rows (handy for reviewing what a rule catches).
+
+A rule is one or more **conditions that must all hold**; separate rules are independent (a row is flagged when any rule matches). That is what lets one rule say "genus is _Streptococcus_ **and** fewer than 50 reads". Conditions come from two sources:
+
+| Source                | Fields                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Detection column**  | Any column of the row: `# Reads Aligned`, `TASS Score`, `Genus`, `Family`, `Microbial Category`, `Breadth %`, `K2 Reads` … Text columns take `equals`, `contains`, `is one of` (comma list), `regex`, …                                                                                                                                                                                                                                                                                                                                                                                              |
+| **In-sample context** | Compared with the other hits of the **same sample at the same level**: **shared ANI %** with another hit (and **# hits sharing high ANI**), qualified by _stronger hit_ (only a partner with more reads, then higher TASS, counts - so of two near-identical references only the weaker is flagged) or _any hit_; **genus reads in this sample**; **% of its genus's reads**; **rank within its genus** (1 = top); **# hits in the same genus**; **% of the sample's organism-aligned reads**; **aligned ÷ classifier (K2) reads**; **# samples detected in**; **taxonomy lineage** text (any rank). |
+
+The ANI fields need a run with `--enable_matrix`; the pipeline only records partners at or above `--ani_threshold` (default 95 %). A detection without ANI data never matches an ANI comparison (use _is empty_ to find those). Values are taken from the full dataset, never from what the current filters display, so a flag does not flicker as you move the TASS slider.
+
+Presets cover the common cases: _Few reads_, _Low TASS_, _Shared ANI with a stronger hit_, _Genus + few reads_ (type the genera), _Minor member of a genus_ and _Classifier-only_. The dialog previews every flagged row with the reason and actual values, and counts the rows each rule catches.
+
+Flagged rows carry an amber **QC** badge and a left rule in the Summary detections table and the Table tab, and an amber corner in the bottom-left of their heatmap cell (the cell tooltip lists the reasons). The Detections export gains an **Organism QC Flag** column. Pipeline defaults come from the `--report_org_flag_*` parameters ([CLI Parameters → Report Organism-QC Flags](cli-parameters.md#report-organism-qc-flags)); **Reset to pipeline defaults** restores them, and live edits are saved with the session state.
+
 ---
 
 ## Export

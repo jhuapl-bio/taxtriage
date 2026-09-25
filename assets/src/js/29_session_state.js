@@ -181,6 +181,9 @@
       if (typeof ttFlagCaptureConfig === "function") app.sampleFlags = ttFlagCaptureConfig();
     } catch (e) {}
     try {
+      if (typeof ttOFlagCaptureConfig === "function") app.organismFlags = ttOFlagCaptureConfig();
+    } catch (e) {}
+    try {
       app.sortCol = sortCol;
       app.sortAsc = sortAsc;
     } catch (e) {}
@@ -240,6 +243,13 @@
         ttFlagInvalidate();
         ttFlagApplyHide();
         if (typeof ttFlagRenderSummary === "function") ttFlagRenderSummary();
+      }
+    } catch (e) {}
+    try {
+      if (typeof ttOFlagLoadConfig === "function") {
+        ttOFlagLoadConfig(app.organismFlags || (BOOT && BOOT.organism_flags) || null);
+        ttOFlagInvalidate();
+        if (typeof ttOFlagRenderSummary === "function") ttOFlagRenderSummary();
       }
     } catch (e) {}
     // Restore before the first redraw so the map draws with group colours on
