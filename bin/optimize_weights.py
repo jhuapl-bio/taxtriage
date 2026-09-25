@@ -434,12 +434,14 @@ def calculate_normalized_groups(
     level are NOT conflicts at this level, so the union of member coverage is the
     correct breadth. Strain-level calls pass None → unchanged behaviour.
 
-    group_numreads_override: optional {group_value -> numreads}. When given,
-    overrides the summed per-strain numreads with the pre-minmapq, species-LCA-
-    filtered total from comparison_df (sum of Pass Filtered Reads Subkey). At the
-    species/genus level, MAPQ=0 reads are not ambiguous about the organism — only
-    about which strain — so the full species read count is the correct input for
-    RPM/abundance scoring. Strain-level calls pass None → unchanged behaviour.
+    group_numreads_override: optional {group_value -> numreads}. When given (and
+    larger), overrides the summed per-strain numreads with the species/genus-LCA
+    total from comparison_df. By default match_paths passes the MAPQ-filtered
+    total ("Pass Filtered Reads Subkey HQ": MAPQ >= minmapq or a rescued MAPQ-0
+    multimapper, the same test strains use), which restores intra-species reads
+    removed at strain level without mixing in low-MAPQ reads. With
+    --premapq_group_reads it is the historical pre-minmapq total. Strain-level
+    calls pass None → unchanged behaviour.
 
     representative_rollup: when True, treat this group's members as REDUNDANT
     references for one underlying genome (true for conspecific strains under a
@@ -564,7 +566,8 @@ def calculate_normalized_groups(
         agg["covered_bases"] = sums.get("covered_bases", 0.0)
         agg["k2_reads"] = sums.get("k2_reads", 0.0)
 
-        # ── Pre-minmapq numreads override for species/genus levels ────────────
+        # ── Species/genus numreads override (MAPQ-filtered by default; see
+        #    group_numreads_override in the docstring) ─────────────────────────
         # The per-strain numreads from count_reference_hits is filtered by
         # minmapq (default 7), discarding MAPQ=0 multi-mapping reads that
         # have no secondary alignments in the BAM. At species/genus level those

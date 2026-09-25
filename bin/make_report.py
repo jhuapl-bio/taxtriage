@@ -320,6 +320,58 @@ def parse_args(argv=None):
              "{source, field, op, value[, agg, tass, action]} with source one of "
              "meta | derived | runmeta | data. Replaces every other --flag-* criterion.",
     )
+    # ── Organism-QC flag defaults ────────────────────────────────────────────
+    # Per-DETECTION counterpart of the sample flags above: seeds the report's
+    # "Organism QC / Flags" rule set. Never drops data -- a matching organism
+    # row is highlighted, or (action 'hide') removed from the report's views.
+    ofl = parser.add_argument_group("organism QC flags (report defaults)")
+    ofl.add_argument(
+        "--org-flag-min-reads", default=None, type=float, metavar="N",
+        help="Flag an organism (one detection in one sample) with fewer than N reads aligned.",
+    )
+    ofl.add_argument(
+        "--org-flag-min-tass", default=None, type=float, metavar="TASS",
+        help="Flag an organism whose TASS score is below TASS.",
+    )
+    ofl.add_argument(
+        "--org-flag-ani", default=None, type=float, metavar="PCT",
+        help="Flag an organism sharing at least PCT %% ANI with another hit in the same sample "
+             "(requires the pipeline's --enable_matrix; partners are only recorded at or above "
+             "--ani_threshold). See --org-flag-ani-partner.",
+    )
+    ofl.add_argument(
+        "--org-flag-ani-partner", default="stronger", choices=["stronger", "any"],
+        help="'stronger' (default): only a partner with MORE reads (then higher TASS) counts, so of "
+             "two near-identical references only the weaker one is flagged. 'any': both are.",
+    )
+    ofl.add_argument(
+        "--org-flag-genus", default=None, metavar="GENERA",
+        help="Comma-separated genus names. Restricts every --org-flag-* criterion above to "
+             "organisms of these genera (e.g. 'Streptococcus' + --org-flag-min-reads 50 = "
+             "Streptococcus hits with <50 reads). On its own it flags every organism in them.",
+    )
+    ofl.add_argument(
+        "--org-flag-criteria", default=None, metavar="SPEC",
+        help="Free-form organism rules. Rules are ';'-separated; the conditions of one rule are "
+             "'&'-separated and must ALL hold. Each condition is 'field:op:value' where field is a "
+             "detection column (e.g. '# Reads Aligned', Genus, Family, 'TASS Score') or an "
+             "in-sample field: " + ", ".join(sorted(["ani_max", "ani_partners", "genus_reads", "genus_share",
+                                                   "genus_rank", "genus_members", "sample_read_share",
+                                                   "k2_ratio", "prevalence", "lineage"])) +
+             ". Ops: == != contains !contains in !in regex empty !empty < <= > >=. Example: "
+             "\"Genus:in:Streptococcus,Staphylococcus & # Reads Aligned:<:50; genus_rank:>:1 & genus_share:<:5\".",
+    )
+    ofl.add_argument(
+        "--org-flag-action", default="flag", choices=["flag", "hide"],
+        help="What happens to a matching organism row: 'flag' highlights it (default); 'hide' also "
+             "removes it from every chart and table (reversible in the report).",
+    )
+    ofl.add_argument(
+        "--org-flag-view", default="all", choices=["all", "hide", "only"],
+        help="Which organism rows the report opens on: 'all' (default; flagged rows highlighted, "
+             "rules with action 'hide' still hide), 'hide' (every flagged row hidden) or 'only' "
+             "(nothing but the flagged rows).",
+    )
     parser.add_argument(
         "--vfamr-taxids", default=None, metavar="TSV",
         help="Optional: bvbrc specialty-gene reference TSV "
@@ -564,6 +616,144 @@ def build_sample_flag_config(args):
         "exclude_taxids": _parse_flag_exclude(getattr(args, "flag_exclude_taxids", None)),
         "rules": rules,
     }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Organism QC flags  (per-detection rules baked into the report as defaults)
+# ──────────────────────────────────────────────────────────────────────────────
+# Evaluated client-side by assets/src/js/48_organism_flags.js. A rule is a list
+# of conditions that must all hold; rules are independent (any one trips):
+#
+#   rule = {action, conds: [{source, field, op, value[, peer]}]}
+#     source  col      a detection column on the row itself
+#             derived  in-sample context computed by the report (see below)
+
+ORG_FLAG_DERIVED = {
+    "ani_max", "ani_partners", "genus_reads", "genus_share", "genus_rank",
+    "genus_members", "sample_read_share", "k2_ratio", "prevalence", "lineage",
+}
+_ORG_FLAG_OPS = _FLAG_OPS | {"in", "!in"}
+
+
+def _org_cond(field, op, value="", peer=None):
+    field = str(field).strip()
+    src = "derived" if field in ORG_FLAG_DERIVED else "col"
+    c = {"source": src, "field": field, "op": op, "value": "" if value is None else str(value)}
+    if field in ("ani_max", "ani_partners"):
+        c["peer"] = "any" if peer == "any" else "stronger"
+    return c
+
+
+def _parse_org_flag_criteria(spec, action, peer="stronger"):
+    """Parse --org-flag-criteria: ';' between rules, '&' between conditions."""
+    rules = []
+    for raw_rule in str(spec).split(";"):
+        raw_rule = raw_rule.strip()
+        if not raw_rule:
+            continue
+        conds, ok = [], True
+        for raw in raw_rule.split("&"):
+            clause = raw.strip()
+            if not clause:
+                continue
+            parts = clause.split(":", 2)
+            if len(parts) >= 2 and parts[1].strip() in ("empty", "!empty"):
+                conds.append(_org_cond(parts[0], parts[1].strip(), "", peer))
+            elif len(parts) == 3 and parts[1].strip() in _ORG_FLAG_OPS and parts[0].strip():
+                conds.append(_org_cond(parts[0], parts[1].strip(), parts[2].strip(), peer))
+            else:
+                print(f"[make_report] WARNING: cannot parse --org-flag-criteria clause {clause!r}; "
+                      f"expected 'field:op:value' with op in {sorted(_ORG_FLAG_OPS)}", file=sys.stderr)
+                ok = False
+        # Never install half a rule: dropping one condition would silently widen it.
+        if ok and conds:
+            rules.append({"action": action, "conds": conds})
+    return rules
+
+
+def _normalize_org_rule(rule, default_action):
+    """Coerce one organism rule from a rules JSON file. Returns None if unusable."""
+    if not isinstance(rule, dict):
+        return None
+    raw = rule.get("conds") or rule.get("conditions") or [rule]
+    conds = []
+    for c in raw if isinstance(raw, list) else []:
+        if not isinstance(c, dict):
+            return None
+        field = str(c.get("field", "")).strip()
+        op = str(c.get("op", "")).strip()
+        source = str(c.get("source") or ("derived" if field in ORG_FLAG_DERIVED else "col"))
+        if not field or op not in _ORG_FLAG_OPS or source not in ("col", "derived") or \
+                (source == "derived" and field not in ORG_FLAG_DERIVED):
+            print(f"[make_report] WARNING: skipping malformed organism flag rule {rule!r}", file=sys.stderr)
+            return None
+        cc = {"source": source, "field": field, "op": op,
+              "value": "" if c.get("value") is None else str(c.get("value"))}
+        if field in ("ani_max", "ani_partners"):
+            cc["peer"] = "any" if c.get("peer") == "any" else "stronger"
+        conds.append(cc)
+    if not conds:
+        return None
+    return {"on": rule.get("on", True) is not False,
+            "action": "hide" if str(rule.get("action", default_action)) == "hide" else "flag",
+            "conds": conds}
+
+
+def build_organism_flag_config(args):
+    """Turn the --org-flag-* arguments (or a rules file's `organism_rules`) into
+    the report's default organism rule set. None when nothing was requested."""
+    action = getattr(args, "org_flag_action", "flag") or "flag"
+    view = getattr(args, "org_flag_view", "all") or "all"
+    peer = getattr(args, "org_flag_ani_partner", "stronger") or "stronger"
+    enabled = True
+    rules = []
+
+    # A --flag-rules file may carry an `organism_rules` block; like the sample
+    # rules, a file replaces every individual criterion.
+    blob = None
+    rules_path = getattr(args, "flag_rules", None)
+    if rules_path:
+        try:
+            with open(rules_path) as fh:
+                blob = json.load(fh)
+        except Exception:
+            blob = None  # build_sample_flag_config already warned
+    org_blob = blob.get("organism_rules") if isinstance(blob, dict) else None
+    if org_blob is not None:
+        if isinstance(org_blob, dict):
+            view = org_blob.get("view", view)
+            enabled = org_blob.get("enabled", True) is not False
+            raw = org_blob.get("rules") or []
+        else:
+            raw = org_blob if isinstance(org_blob, list) else []
+        for r in raw:
+            norm = _normalize_org_rule(r, action)
+            if norm:
+                rules.append(norm)
+    else:
+        genera = [g.strip() for g in re.split(r"[,;]+", str(getattr(args, "org_flag_genus", None) or ""))
+                  if g.strip()]
+        scope = [_org_cond("Genus", "in", ", ".join(genera))] if genera else []
+        crit = []
+        if getattr(args, "org_flag_min_reads", None) is not None:
+            crit.append(_org_cond("# Reads Aligned", "<", _flag_value(args.org_flag_min_reads)))
+        if getattr(args, "org_flag_min_tass", None) is not None:
+            crit.append(_org_cond("TASS Score", "<", _flag_value(args.org_flag_min_tass)))
+        if getattr(args, "org_flag_ani", None) is not None:
+            crit.append(_org_cond("ani_max", ">=", _flag_value(args.org_flag_ani), peer))
+        # Each criterion is its own rule (any one trips), all scoped to the genera.
+        for c in crit:
+            rules.append({"action": action, "conds": scope + [c]})
+        if scope and not crit:
+            rules.append({"action": action, "conds": scope})
+        if getattr(args, "org_flag_criteria", None):
+            rules.extend(_parse_org_flag_criteria(args.org_flag_criteria, action, peer))
+
+    if not rules:
+        return None
+    if view not in ("all", "hide", "only"):
+        view = "all"
+    return {"enabled": enabled, "view": view, "rules": rules}
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Sample metadata (CSV / TSV / XLSX)
@@ -2006,6 +2196,24 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
     """
     thr = float(detect_threshold) if detect_threshold not in (None, "") else 0.0
 
+    # Each dataset is judged at ITS OWN recommended cutoff (best_cutoffs at its
+    # preferred granularity — the value its .odr.txt/.xlsx/.pdf "Passes
+    # Threshold" column uses), falling back to the run-level `thr`. Previously
+    # every dataset used the run-level MINIMUM across samples, so a spike into an
+    # "unknown"-type background (own cutoff 75) was scored against a blood
+    # sample's 25 and the tab disagreed with the dataset's own report.
+    def _own_thr(sn):
+        m = sample_meta.get(sn) or {}
+        bc = m.get("best_cutoffs") or {}
+        gran = m.get("preferred_granularity") or "subkey"
+        t = (bc.get(gran) or {}).get("best_threshold")
+        if t is None:
+            t = (bc.get("subkey") or {}).get("best_threshold")
+        try:
+            return float(t) if t is not None else thr
+        except (TypeError, ValueError):
+            return thr
+
     # ── Identify subsample datasets from the sample-id pattern ────────────────
     datasets = {}   # sname -> {parent, plat, mode, count, rep}
     sample_names = set(r.get("Specimen ID") for r in rows)
@@ -2058,8 +2266,14 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
         obs[sn][tid] = {
             "name": r.get("Detected Organism", "Unknown"),
             "reads": int(round(int(r.get("# Reads Aligned", 0) or 0) / rpr)),
+            # Raw aligned READS (every mate). Spike-in groups use this: reads/2 is
+            # only a pair count when both mates align, which holds for simulated
+            # spike pairs but not for background noise (mostly single-mate hits),
+            # so ÷2 under-stated the level-0 baseline.
+            "reads_raw": int(r.get("# Reads Aligned", 0) or 0),
+            "rpr": rpr,
             "tass": tass,
-            "passes": tass >= thr,   # detection vs the report's recommended TASS cutoff
+            "passes": tass >= _own_thr(sn),   # detection vs this dataset's own recommended cutoff
             "category": r.get("Microbial Category", "Unknown"),
             # Lineage labels so the report can roll the suite up to Species or
             # Genus, and so a Strain-level detection can still be matched to a
@@ -2091,6 +2305,11 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
         _kinds = {(manifests.get(sn) or {}).get("kind", "") for sn, _ in items}
         is_spike = "spikein" in _kinds
         spike_expect = _spike_expectations(items, manifests) if is_spike else {}
+        # Spike-in groups count observed READS and scale the spiked count (records
+        # = pairs for paired data) to reads, so observed, expected, baseline and
+        # the Detections table all share one unit. Depth series keep pairs.
+        _rpr_g = 2 if _is_paired(items[0][0], plat) else 1
+        rk = "reads_raw" if is_spike else "reads"
 
         # The level-0 dataset is the background with nothing spiked in. Everything
         # detected there is matrix, so it defines what a false positive is and gives
@@ -2106,7 +2325,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                 background_tids.add(tid)
                 background_profile.append({
                     "taxid": tid, "name": ov["name"], "category": ov["category"],
-                    "reads": ov["reads"], "tass": round(ov["tass"], 2),
+                    "reads": ov[rk], "tass": round(ov["tass"], 2),
                     "passes": bool(ov["passes"]),
                 })
         background_profile.sort(key=lambda r: -r["reads"])
@@ -2194,7 +2413,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
         sweep_obs = []
         for sname, d in items:
             o = obs.get(sname, {})
-            observed_total = sum(v["reads"] for v in o.values())
+            observed_total = sum(v[rk] for v in o.values())
             detected_set = {tid for tid, v in o.items() if v["passes"]}
             if is_spike:
                 # Expected here = what THIS dataset was spiked with. The level-0
@@ -2256,7 +2475,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                 obs_reads_vals, tass_vals, det_flags = [], [], []
                 for sn in reps:
                     ov = obs.get(sn, {}).get(tid)
-                    obs_reads_vals.append(ov["reads"] if ov else 0)
+                    obs_reads_vals.append(ov[rk] if ov else 0)
                     tass_vals.append(ov["tass"] if ov else 0.0)
                     det_flags.append(bool(ov and ov["passes"]))
                 mean_obs = sum(obs_reads_vals) / len(obs_reads_vals)
@@ -2276,7 +2495,8 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                         if v is None and len(se.get("by_acc", {})) == 1 and len(expected_fraction) == 1:
                             v = se.get("total", 0)
                         exp_vals.append(v if v is not None else frac * se.get("total", c))
-                    expected_reads = sum(exp_vals) / max(1, len(exp_vals))
+                    # spiked records -> reads (x2 for pairs)
+                    expected_reads = sum(exp_vals) / max(1, len(exp_vals)) * _rpr_g
                 else:
                     expected_reads = frac * c
                 series.append({
@@ -2323,6 +2543,10 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
             # Unit that target/observed counts are expressed in. Paired-end
             # subsamples read pairs; observed reads are normalised to pairs above.
             "read_unit": "read pairs" if _grp_paired else "reads",
+            # Unit of observed / expected / baseline counts. Spike-in groups: reads
+            # (spiked count x reads_per_record); depth series: same as read_unit.
+            "observed_unit": "reads" if is_spike else ("read pairs" if _grp_paired else "reads"),
+            "reads_per_record": _rpr_g if is_spike else 1,
             # "depth"  -> c<N> is a sequencing depth (subsampling series)
             # "spikein" -> c<N> is how many organism reads were mixed into a fixed
             #              background; the x axis is organism load, not depth.
@@ -2351,6 +2575,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
             ),
             "datasets": dataset_rows,
             "organisms": organisms,
+            "detection_threshold": round(_own_thr(items[0][0]), 2),
         })
 
     # ── Parameters (explicit file overrides inferred) ─────────────────────────
@@ -2359,7 +2584,13 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
         "mode": "/".join(sorted(all_modes)) if all_modes else None,
         "series_counts": sorted(all_counts),
         "replicates": max_rep,
-        "detection_threshold": round(thr, 2),
+        # One group (or all groups agreeing) -> that group's own cutoff, so the
+        # tab's "as built" cutoff is the one the datasets were actually judged at.
+        "detection_threshold": (
+            suite_groups[0]["detection_threshold"]
+            if suite_groups and len({g["detection_threshold"] for g in suite_groups}) == 1
+            else round(thr, 2)
+        ),
         # What the series varies. Mixed runs (a depth series AND a spike-in series
         # in one report) are reported as "depth + spikein" so the panel is honest
         # about the tab holding two different kinds of experiment.
@@ -2749,6 +2980,23 @@ def main():
         print("[make_report] Sample QC: no default rules (no --flag-* criteria given); "
               "the report's Sample QC panel will start empty.")
 
+    # ── organism QC flag defaults ─────────────────────────────────────────────
+    organism_flags = build_organism_flag_config(args)
+    if organism_flags:
+        print(f"[make_report] Organism QC: {len(organism_flags['rules'])} default rule(s), "
+              f"view={organism_flags['view']}")
+        for _r in organism_flags["rules"]:
+            _c = " AND ".join(f"{c['field']} {c['op']} {c['value']}".strip() for c in _r["conds"])
+            print(f"[make_report]   - {_c} -> {_r['action']}")
+        _uses_ani = any(c["field"] in ("ani_max", "ani_partners")
+                        for r in organism_flags["rules"] for c in r["conds"])
+        if _uses_ani and not any(r.get("ANI Annotated") for r in rows):
+            print("[make_report] WARNING: an organism QC rule tests shared ANI, but no detection "
+                  "carries ANI data -- re-run with --enable_matrix, or the rule can never match.",
+                  file=sys.stderr)
+    else:
+        print("[make_report] Organism QC: no default rules (no --org-flag-* criteria given).")
+
     # ── build bootstrap payload ───────────────────────────────────────────────
     payload = _sanitize({
         "records":               rows,
@@ -2767,6 +3015,7 @@ def main():
         "pathogens":             pathogens,                    # {by_taxid, by_name, by_genus} pathogen lookups
         "has_pathogens":         has_pathogens,                # true if a pathogen sheet was loaded
         "sample_flags":          sample_flags,                 # default whole-sample QC rules (None when unconfigured)
+        "organism_flags":        organism_flags,               # default per-detection QC rules (None when unconfigured)
         "report_generated_at":   datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pipeline_revision":     pipeline_revision,            # global branch/tag or "local"
         "pipeline_commit":       pipeline_commit,              # global commit hash or None

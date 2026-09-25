@@ -127,47 +127,57 @@ def parse_args(argv=None):
 def read_input_file(input_file):
     return pd.read_csv(input_file, sep='\t', header=None, names=["Acc", "Assembly", "Organism_Name", "Description"])
 
-def read_reference_file(ref_file):
+def read_reference_file(ref_file, wanted=None, keep_columns=None):
     """Read an NCBI assembly_summary_*.txt (refseq or genbank) robustly.
 
     The file is strictly tab-delimited, but occasional rows contain a stray
     extra (or missing) tab, so pandas' C parser aborts with e.g.
     "Error tokenizing data. C error: Expected 38 fields ..., saw 39".
     Fields such as asm_submitter also contain multiple consecutive spaces
-    (e.g. GCF_040364225.1's "... Evaluation  (NBRC).") which must never be
-    treated as delimiters.
+    which must never be treated as delimiters, so parse manually: skip the
+    leading comment line, take the column names from the header line, then
+    split every data line on tab ONLY and pad/collapse each row to exactly the
+    header width so no accession is lost.
 
-    Rather than drop the offending rows (which would silently lose
-    assemblies), parse manually: skip the leading comment line, take the
-    column names from the header line, then split every data line on tab
-    ONLY and pad/collapse each row to exactly the header width so the frame
-    is always rectangular and no accession is lost.
+    MEMORY: assembly_summary_genbank.txt is ~1.5 GB / ~2.7M rows. Materialising
+    every row as a list of 38 Python strings (then a DataFrame) needs tens of GB
+    and gets the task OOM-killed. So the file is STREAMED and only rows whose
+    accession is in `wanted` are kept (all rows when `wanted` is None), and only
+    `keep_columns` are retained (all columns when None).
     """
     with open(ref_file, 'r', newline='') as fh:
-        # First line is a free-text comment ("# See ftp ..."); skip it,
-        # matching the previous skiprows=1 behaviour.
+        # First line is a free-text comment ("# See ftp ..."); skip it.
         fh.readline()
         header_line = fh.readline().rstrip('\r\n')
         columns = header_line.split('\t')
         ncol = len(columns)
+        acc_col = '#assembly_accession' if '#assembly_accession' in columns else columns[0]
+        if keep_columns:
+            out_cols = [acc_col] + [c for c in keep_columns if c in columns and c != acc_col]
+        else:
+            out_cols = columns
+        idx = [columns.index(c) for c in out_cols]
 
         rows = []
         for line in fh:
+            # Cheap pre-filter on the accession before splitting the whole line.
+            if wanted is not None:
+                acc = line.split('\t', 1)[0]
+                if acc not in wanted:
+                    continue
             if not line.strip():
                 continue
             fields = line.rstrip('\r\n').split('\t')
             if len(fields) < ncol:
-                # Missing trailing columns -> pad with empty strings.
                 fields = fields + [''] * (ncol - len(fields))
             elif len(fields) > ncol:
-                # Surplus fields: keep the leading columns (which hold the
-                # accession/taxid/ftp values downstream needs) intact and
-                # fold the extras back into the final column so nothing is
-                # discarded.
                 fields = fields[:ncol - 1] + ['\t'.join(fields[ncol - 1:])]
-            rows.append(fields)
+            rows.append([fields[i] for i in idx])
 
-    return pd.DataFrame(rows, columns=columns)
+    df = pd.DataFrame(rows, columns=out_cols)
+    if acc_col != '#assembly_accession':
+        df = df.rename(columns={acc_col: '#assembly_accession'})
+    return df
 
 def _clean_taxid(value):
     """Render a taxid as a clean string ('2697049' not '2697049.0', '' for NaN)."""
@@ -297,7 +307,16 @@ def main(argv=None):
     args = parse_args(argv)
 
     input_df = read_input_file(args.file_in)
-    ref_df = pd.concat([read_reference_file(f) for f in args.ref_file], ignore_index=True)
+    # Only the assemblies actually present in the input are needed, so stream
+    # the (potentially multi-GB) summaries and keep just those rows + column.
+    wanted = set(input_df['Assembly'].dropna().astype(str).str.strip())
+    ref_df = pd.concat(
+        [read_reference_file(f, wanted=wanted, keep_columns=[args.column]) for f in args.ref_file],
+        ignore_index=True,
+    )
+    # RefSeq is passed first; keep its row if an accession appears twice so the
+    # set_index().to_dict() lookup is deterministic.
+    ref_df = ref_df.drop_duplicates(subset='#assembly_accession', keep='first')
 
     mapped_df = map_gcf_to_taxid(input_df, ref_df, args.column)
     if args.custom_map:

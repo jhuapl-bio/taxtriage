@@ -30,7 +30,7 @@ include { SPIKE_INTO_BACKGROUND  } from '../../modules/local/spike_into_backgrou
 workflow SPIKEIN {
     take:
     ch_background        // tuple(meta, reads) — cleaned reads of each background source
-    ch_assembly_summary  // path — assembly_summary_refseq.txt (or NO_FILE)
+    ch_assembly_summary  // List<path> — RefSeq [+ GenBank] assembly_summary files (or [NO_FILE])
 
     main:
     ch_versions = Channel.empty()
@@ -48,7 +48,8 @@ workflow SPIKEIN {
         .map { it.trim() }
         .filter { it }
 
-    FETCH_SPIKEIN_REFS(ch_accessions.combine(ch_assembly_summary))
+    // Wrap the list so combine() keeps it as ONE element: [acc, [refseq, genbank]]
+    FETCH_SPIKEIN_REFS(ch_accessions.combine(ch_assembly_summary.map { [it] }))
     ch_versions = ch_versions.mix(FETCH_SPIKEIN_REFS.out.versions.first())
     // accession -> taxid + organism, so the report can tie a spiked organism to a
     // detection by taxid rather than by the sheet's optional free-text name.
@@ -150,9 +151,17 @@ workflow SPIKEIN {
         .map { dsid, metas, fastqs ->
             def m = metas[0].collectEntries { k, v -> [k, v] }
             m.id = dsid
+            // Total reads in THIS dataset = the full background (meta.read_count,
+            // from COUNT_READS, counts every record incl. both mates) + the spike.
+            // c<N> is the number of spiked records — PAIRS for paired data, so
+            // x2 to stay in the same unit as COUNT_READS. (Previously read_count
+            // was set to N alone: the spike level, or 0 for the c0 control,
+            // which made %Reads / RPM of every spike dataset wrong.)
             def cm = (dsid =~ /_c(\d+)_r\d+$/)
             if (cm.find()) {
-                m.read_count = cm.group(1) as Integer
+                def rpr = fastqs.size() > 1 ? 2 : 1
+                def bgc = (metas[0].read_count ?: 0) as long
+                m.read_count = bgc + (cm.group(1) as long) * rpr
             }
             m.subsample      = true
             m.spikein        = true

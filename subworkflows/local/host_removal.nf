@@ -79,7 +79,7 @@ workflow HOST_REMOVAL {
             def host_label = genome_entry.description ?: params.genome
             println "Host target '${params.genome}' (${host_label}) will be de-hosted against ${genome_entry.accessions}; genomes cached in ${host_cache}"
             FETCH_HOST_REFS(
-                Channel.of([ params.genome, genome_entry.accessions, file(params.assembly ?: "$projectDir/assets/NO_FILE") ])
+                Channel.of([ params.genome, genome_entry.accessions, file(params.assembly ?: params.assembly_summary_refseq ?: "$projectDir/assets/NO_FILE") ])
             )
             ch_host_fasta = FETCH_HOST_REFS.out.fasta.map { target, fasta -> fasta }.first()
             run_reference_removal = true

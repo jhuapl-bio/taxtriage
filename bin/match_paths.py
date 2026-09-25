@@ -700,6 +700,12 @@ def parse_args(argv=None):
                          "'this species is present' is a strictly weaker claim than "
                          "'this strain is present' and so can never be less certain. "
                          "Use this flag to reproduce pre-fix scores.")
+    parser.add_argument('--premapq_group_reads', action='store_true', default=False,
+                    help="Restore the old species/genus read totals: count every alignment "
+                         "that survives species/genus-LCA removal regardless of MAPQ. By "
+                         "default species/genus totals use the same read-quality test as "
+                         "strains (MAPQ >= --minmapq, or a rescued MAPQ-0 multimapper), so "
+                         "all three ranks report comparable read counts.")
     parser.add_argument('--representative_rollup', action='store_true',
                     help="Aggregate species/genus metrics against a REPRESENTATIVE genome "
                          "(the best-supported member) instead of the pooled concatenation "
@@ -1109,6 +1115,27 @@ def _rescue_alignment(read, params):
     if params["max_nm_rate"] is not None and 10.0 ** (-phred / 10.0) > params["max_nm_rate"]:
         return None
     return phred
+
+
+def _make_group_read_filter(args):
+    """The strain-level read-quality test, as a predicate on one alignment.
+
+    Mirrors count_reference_hits exactly: a primary read counts when
+    MAPQ >= --minmapq, or when it is a MAPQ-0 multimapper kept by the
+    strong-alignment rescue (_rescue_alignment). determine_conflicts applies it
+    under species/genus-LCA removal so species/genus read totals use the same
+    MAPQ semantics as strains. The rescue itself is not changed.
+    """
+    _params = _resolve_rescue_params(args)
+    _minmapq = int(args.minmapq)
+    _on = bool(_params["enabled"])
+
+    def _passes(read):
+        if read.mapping_quality >= _minmapq:
+            return True
+        return _on and _rescue_alignment(read, _params) is not None
+
+    return _passes
 
 
 def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_lengths={}, args={}):
@@ -1719,6 +1746,8 @@ def main():
                 accession_to_toplevelkey=early_acc_to_toplevelkey if early_acc_to_toplevelkey else None,
                 taxid_removal_stats=args.taxid_removal_stats,
                 dominance_protect_ratio=args.dominance_protect_ratio,
+                read_quality_filter=(None if getattr(args, 'premapq_group_reads', False)
+                                     else _make_group_read_filter(args)),
             )
             # ── Skip-removal-for-scoring mode ────────────────────────────────
             # conflict detection + breadth-change stats are always computed and
@@ -2765,47 +2794,54 @@ def main():
         # group MAX. Chromosome-level refs always qualify; stray scaffolds
         # never do. If NO accession in a group qualifies, the group gets no
         # representative override at all and falls back to Σcovered/Σlength.
+        # ⚠ MEMBER = GENOME, NOT CONTIG (fix for scaffold-level assemblies)
+        # The MAX is now taken over per-MEMBER (strain key) breadth, where each
+        # member's breadth is Σcovered/Σlength over ALL of its accessions. For a
+        # chromosome-level genome that equals the old per-accession value; for a
+        # draft assembly of thousands of scaffolds it is the true genome breadth.
+        # Previously one 70 kb scaffold of the 293 Mb Angiostrongylus draft
+        # (MQTX01000435.1, 2.56% covered) set the whole species' breadth while
+        # the genome was 0.79% covered, lifting species TASS 43.8 -> 74.8 for a
+        # single-strain species. Plasmids are likewise folded into their strain
+        # instead of being able to set the MAX on their own.
         if 'Reference Length' in _ucb.columns:
             _len = pd.to_numeric(_ucb['Reference Length'], errors='coerce').fillna(0)
             _ucb['_reflen'] = _len
-            _sk_frac = (_ucb['Covered BP Subkey'] / _len.replace(0, pd.NA)).fillna(0).clip(upper=1.0)
-            _tlk_frac = (_ucb['Covered BP Toplevelkey'] / _len.replace(0, pd.NA)).fillna(0).clip(upper=1.0)
+            _ucb['_key'] = _ucb.index.map(lambda a: str(acc_to_key.get(a, a)))
 
             _min_frac = float(getattr(args, 'rep_breadth_min_frac', 0.01) or 0.0)
             _min_len = float(getattr(args, 'rep_breadth_min_len', 0) or 0.0)
 
-            def _eligible_mask(group_col):
-                """Boolean mask: may this accession set its group's MAX breadth?
+            def _member_max_frac(group_col, cov_col):
+                """{group -> max member breadth}, plus exclusion counts.
 
-                Qualifies if its length is >= rep_breadth_min_frac of the
-                group's total reference length, OR >= rep_breadth_min_len bp.
-                With both thresholds at 0 this returns all-True (legacy
-                behaviour).
+                A member (strain key) may set its group's MAX if its genome is
+                >= rep_breadth_min_frac of the group's total reference length,
+                OR >= rep_breadth_min_len bp. Both 0 -> every member qualifies.
                 """
+                m = (_ucb.groupby([group_col, '_key'])
+                         .agg(_cov=(cov_col, 'sum'), _L=('_reflen', 'sum'))
+                         .reset_index())
+                m['_frac'] = [min(1.0, c / l) if l > 0 else 0.0 for c, l in zip(m['_cov'], m['_L'])]
                 if _min_frac <= 0 and _min_len <= 0:
-                    return pd.Series(True, index=_ucb.index)
-                _grp_total_len = _ucb.groupby(group_col)['_reflen'].transform('sum')
-                _share = (_ucb['_reflen'] / _grp_total_len.replace(0, pd.NA)).fillna(0)
-                _ok = pd.Series(False, index=_ucb.index)
-                if _min_frac > 0:
-                    _ok |= (_share >= _min_frac)
-                if _min_len > 0:
-                    _ok |= (_ucb['_reflen'] >= _min_len)
-                return _ok
+                    ok = pd.Series(True, index=m.index)
+                else:
+                    _tot = m.groupby(group_col)['_L'].transform('sum')
+                    _share = [l / t if t > 0 else 0.0 for l, t in zip(m['_L'], _tot)]
+                    ok = pd.Series(False, index=m.index)
+                    if _min_frac > 0:
+                        ok |= pd.Series([x >= _min_frac for x in _share], index=m.index)
+                    if _min_len > 0:
+                        ok |= (m['_L'] >= _min_len)
+                best = m[ok].groupby(group_col)['_frac'].max()
+                return {str(k): float(v) for k, v in best.items()}, int((~ok).sum()), len(m)
 
-            _sk_ok = _eligible_mask('_sk')
-            _tlk_ok = _eligible_mask('_tlk')
-
-            _n_sk_excl = int((~_sk_ok).sum())
+            _subkey_cov_frac, _n_sk_excl, _n_sk_mem = _member_max_frac('_sk', 'Covered BP Subkey')
+            _toplevelkey_cov_frac, _, _ = _member_max_frac('_tlk', 'Covered BP Toplevelkey')
             if _n_sk_excl:
-                print(f"[LCA] representative-breadth eligibility: {_n_sk_excl}/{len(_ucb)} "
-                      f"accessions too small to set their species MAX "
+                print(f"[LCA] representative-breadth eligibility: {_n_sk_excl}/{_n_sk_mem} "
+                      f"members too small to set their species MAX "
                       f"(min_frac={_min_frac}, min_len={int(_min_len)}bp)")
-
-            _subkey_cov_frac = {str(k): float(v) for k, v in
-                                _sk_frac[_sk_ok].groupby(_ucb.loc[_sk_ok, '_sk']).max().items()}
-            _toplevelkey_cov_frac = {str(k): float(v) for k, v in
-                                     _tlk_frac[_tlk_ok].groupby(_ucb.loc[_tlk_ok, '_tlk']).max().items()}
 
         # ── Best-strain breadth override ──────────────────────────────────────
         # covered_bp_subkey can undercount when conserved cross-species regions
@@ -2824,8 +2860,18 @@ def main():
             if _cov > _toplevelkey_cov_frac.get(_tlk, 0.0):
                 _toplevelkey_cov_frac[_tlk] = _cov
 
-        # ── Pre-minmapq numreads override (species/genus level) ───────────────
-        # The per-strain numreads only counts MAPQ≥minmapq reads (default 7).
+        # ── Species/genus numreads override ──────────────────────────────────
+        # Default: the "... HQ" columns — primary reads surviving species/genus-
+        # LCA removal that ALSO pass the strain-level read-quality test (MAPQ >=
+        # minmapq, or a rescued MAPQ-0 multimapper). This keeps intra-species
+        # reads that strain-level removal took away (the reason for the override)
+        # while applying the same MAPQ semantics at every rank, so strain,
+        # species and genus read counts are directly comparable. The MAPQ-0
+        # rescue is applied unchanged, so near-identical-strain cases (e.g.
+        # Salmonella) keep their rescued reads at every rank.
+        # --premapq_group_reads restores the historical behaviour below.
+        #
+        # Historical note: the per-strain numreads only counts MAPQ≥minmapq reads (default 7).
         # For near-identical strains (Salmonella), most reads have MAPQ=0 and
         # are filtered, leaving ~5% of actual reads at species level. But MAPQ=0
         # is not ambiguous about the species — only about which strain — so
@@ -2835,16 +2881,29 @@ def main():
         # total without double-counting (each read has one primary alignment).
         _subkey_numreads_override = {}
         _toplevelkey_numreads_override = {}
-        if 'Pass Filtered Reads Subkey' in _ucb.columns:
-            _nr = pd.to_numeric(_ucb.get('Pass Filtered Reads Subkey', 0), errors='coerce').fillna(0)
-            _nr_tlk = pd.to_numeric(_ucb.get('Pass Filtered Reads Toplevelkey',
-                                             _ucb.get('Pass Filtered Reads Subkey', 0)),
+        _premapq = bool(getattr(args, 'premapq_group_reads', False))
+        _hq_ok = ('Pass Filtered Reads Subkey HQ' in _ucb.columns
+                  and _ucb['Pass Filtered Reads Subkey HQ'].notna().any())
+        if _premapq:
+            _sk_col, _tlk_col = 'Pass Filtered Reads Subkey', 'Pass Filtered Reads Toplevelkey'
+        elif _hq_ok:
+            _sk_col, _tlk_col = 'Pass Filtered Reads Subkey HQ', 'Pass Filtered Reads Toplevelkey HQ'
+        else:
+            # e.g. an older --comparisons file without HQ columns: do not fall
+            # back to pre-MAPQ totals; species/genus keep the summed strain counts.
+            _sk_col = _tlk_col = None
+            print("[LCA] no MAPQ-filtered species/genus read counts in comparison table; "
+                  "species/genus numreads = sum of strain numreads")
+        if _sk_col is not None and _sk_col in _ucb.columns:
+            _nr = pd.to_numeric(_ucb.get(_sk_col, 0), errors='coerce').fillna(0)
+            _nr_tlk = pd.to_numeric(_ucb.get(_tlk_col, _ucb.get(_sk_col, 0)),
                                     errors='coerce').fillna(0)
             _subkey_numreads_override = {str(k): float(v) for k, v in
                                          _nr.groupby(_ucb['_sk']).sum().items()}
             _toplevelkey_numreads_override = {str(k): float(v) for k, v in
                                               _nr_tlk.groupby(_ucb['_tlk']).sum().items()}
-            print(f"[LCA] pre-minmapq numreads: {len(_subkey_numreads_override)} species groups overridden")
+            print(f"[LCA] {'pre-minmapq' if _premapq else 'MAPQ-filtered'} species/genus numreads "
+                  f"from '{_sk_col}': {len(_subkey_numreads_override)} species groups")
 
         print(f"[LCA] union covered-bp: {len(_subkey_union_cb)} species, "
               f"{len(_toplevelkey_union_cb)} genera; "

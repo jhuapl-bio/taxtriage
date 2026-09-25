@@ -24,7 +24,8 @@ process GET_ASSEMBLIES {
 
 
     output:
-        path("assembly_summary_refseq.txt"), optional: false, emit: assembly
+        path("assembly_summary_refseq.txt"), optional: true, emit: assembly
+        path("assembly_summary_genbank.txt"), optional: true, emit: genbank
         path "versions.yml"           , emit: versions
 
     when:
@@ -39,14 +40,18 @@ process GET_ASSEMBLIES {
 
 
     """
-    if [[ ! -s 'assembly_summary_refseq.txt' ]] ; then
+    if [[ -n "${params.assembly ?: params.assembly_summary_refseq ?: ''}" ]] ; then
+        echo "Local RefSeq assembly summary provided (--assembly / --assembly_summary_refseq); skipping download"
+    elif [[ ! -s 'assembly_summary_refseq.txt' ]] ; then
         echo "Downloading the RefSeq assembly summary file from ncbi...."
         wget --no-check-certificate https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt  -O assembly_summary_refseq.txt
     else
         echo "RefSeq assembly summary file exists"
     fi
 
-    if [[ "${params.enable_genbank}" == "true" ]] ; then
+    if [[ -n "${params.assembly_summary_genbank ?: ''}" ]] ; then
+        echo "Local GenBank assembly summary provided (--assembly_summary_genbank); skipping download"
+    elif [[ "${params.enable_genbank}" == "true" ]] ; then
         if [[ ! -s 'assembly_summary_genbank.txt' ]] ; then
             echo "Downloading the GenBank assembly summary file from ncbi...."
             wget --no-check-certificate https://ftp.ncbi.nlm.nih.gov/genomes/genbank/assembly_summary_genbank.txt -O assembly_summary_genbank.txt

@@ -2219,6 +2219,10 @@ def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int],
                 "Covered BP Toplevelkey": st.get("covered_bp_toplevelkey", 0),
                 "Pass Filtered Reads Subkey": st.get("pass_filtered_reads_subkey", pass_reads),
                 "Pass Filtered Reads Toplevelkey": st.get("pass_filtered_reads_toplevelkey", pass_reads),
+                # Primary reads passing MAPQ >= minmapq or the multimapper rescue
+                # (only when determine_conflicts got a read_quality_filter).
+                "Pass Filtered Reads Subkey HQ": st.get("pass_filtered_reads_subkey_hq"),
+                "Pass Filtered Reads Toplevelkey HQ": st.get("pass_filtered_reads_toplevelkey_hq"),
                 "Breadth Subkey": st.get("breadth_subkey", b1),
                 "Breadth Toplevelkey": st.get("breadth_toplevelkey", b1),
                 # RPKM / RPM (pre- and post-removal)
@@ -2941,7 +2945,18 @@ def determine_conflicts(
     dominance_protect_ratio: float = 3.0,
     accession_to_subkey: Optional[Dict[str, str]] = None,
     accession_to_toplevelkey: Optional[Dict[str, str]] = None,
+    read_quality_filter=None,
 ):
+    """Detect cross-reference conflict regions and plan per-read removal.
+
+    read_quality_filter: optional callable(pysam.AlignedSegment) -> bool. When
+        given, the species/genus LCA pass also counts the PRIMARY alignments that
+        pass it ("Pass Filtered Reads Subkey HQ" / "... Toplevelkey HQ"). match_paths
+        passes the same MAPQ >= --minmapq OR strong-multimapper-rescue test that
+        count_reference_hits applies at strain level, so species/genus read totals
+        can be put on the same footing as strain totals. None -> HQ columns are
+        not emitted and nothing else changes.
+    """
     # only raise error if bedfile is missing AND compare_to_reference_windows is not selected
     if output_dir is None or input_bam is None or (bedfile is None and not compare_to_reference_windows):
         raise ValueError("output_dir, input_bam, and bedfile are required.")
@@ -3430,6 +3445,11 @@ def determine_conflicts(
         covered_top = 0
         passed_sub = 0
         passed_top = 0
+        # Same counts restricted to primary alignments that pass the strain-level
+        # read-quality test (MAPQ >= minmapq, or rescued MAPQ-0 multimapper).
+        passed_hq = 0
+        passed_sub_hq = 0
+        passed_top_hq = 0
 
         for r in bam_fs.fetch(ref, 0, L):
             if r.is_unmapped or r.reference_start is None or r.reference_end is None:
@@ -3457,6 +3477,15 @@ def determine_conflicts(
             if is_removed:
                 removed_alns_all += 1
 
+            _hq = (
+                read_quality_filter is not None
+                and not r.is_secondary
+                and not r.is_supplementary
+                and bool(read_quality_filter(r))
+            )
+            if _hq and not is_removed:
+                passed_hq += 1
+
             # -- breadth NEW (kept reads, strain-level removal) --
             if not is_removed and s < e:
                 if new_s is None:
@@ -3471,6 +3500,8 @@ def determine_conflicts(
             is_removed_sub = rid in _removed_sets_subkey and ref in _removed_sets_subkey[rid]
             if not is_removed_sub:
                 passed_sub += 1
+                if _hq:
+                    passed_sub_hq += 1
                 if s < e:
                     if sub_s is None:
                         sub_s, sub_e = s, e
@@ -3484,6 +3515,8 @@ def determine_conflicts(
             is_removed_top = rid in _removed_sets_top and ref in _removed_sets_top[rid]
             if not is_removed_top:
                 passed_top += 1
+                if _hq:
+                    passed_top_hq += 1
                 if s < e:
                     if top_s is None:
                         top_s, top_e = s, e
@@ -3539,6 +3572,10 @@ def determine_conflicts(
         per_ref[ref]["covered_bp_toplevelkey"] = covered_top if accession_to_toplevelkey else covered_new
         per_ref[ref]["pass_filtered_reads_subkey"] = passed_sub if accession_to_subkey else passed
         per_ref[ref]["pass_filtered_reads_toplevelkey"] = passed_top if accession_to_toplevelkey else passed
+        if read_quality_filter is not None:
+            per_ref[ref]["pass_filtered_reads_subkey_hq"] = passed_sub_hq if accession_to_subkey else passed_hq
+            per_ref[ref]["pass_filtered_reads_toplevelkey_hq"] = (
+                passed_top_hq if accession_to_toplevelkey else passed_hq)
         per_ref[ref]["breadth_subkey"] = (100.0 * covered_sub / L) if (L > 0 and accession_to_subkey) else breadth_new[ref]
         per_ref[ref]["breadth_toplevelkey"] = (100.0 * covered_top / L) if (L > 0 and accession_to_toplevelkey) else breadth_new[ref]
 

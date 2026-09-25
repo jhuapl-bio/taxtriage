@@ -396,26 +396,45 @@ workflow TAXTRIAGE {
         ch_classifier = ['kraken2']
     }
     if (!ch_assembly_txt) {
+        // Something still needs downloading. GET_ASSEMBLIES skips whichever
+        // summary was given locally (--assembly / --assembly_summary_refseq,
+        // --assembly_summary_genbank), and we mix local + downloaded files here.
+        // GET_ASSEMBLIES takes no input, so its outputs are VALUE channels.
+        // RefSeq first, GenBank second: downstream consumers treat element [0]
+        // as the primary summary and scan the rest as supplements.
         GET_ASSEMBLIES()
-        // GET_ASSEMBLIES takes no input, so it runs once and its outputs are VALUE
-        // channels — already broadcast to every consumer (the per-fasta and
-        // per-sample mapping processes each get their own copy).
-        GET_ASSEMBLIES.out.assembly.map {  record -> record }.set { ch_assembly_txt }
+        def local_refseq  = WorkflowTaxtriage.localRefseqSummary(params)
+        def ch_refseq_sum = local_refseq
+            ? Channel.value(file(local_refseq, checkIfExists: true))
+            : GET_ASSEMBLIES.out.assembly
+        if (params.assembly_summary_genbank || params.enable_genbank) {
+            def ch_genbank_sum = params.assembly_summary_genbank
+                ? Channel.value(file(params.assembly_summary_genbank, checkIfExists: true))
+                : GET_ASSEMBLIES.out.genbank
+            ch_refseq_sum
+                .combine(ch_genbank_sum)
+                .map { refseq, genbank -> [refseq, genbank] }
+                .collect()
+                .set { ch_assembly_txt }
+        } else {
+            ch_refseq_sum.map { record -> record }.set { ch_assembly_txt }
+        }
     }
 
-    // One normalised VALUE channel carrying just the primary assembly_summary
-    // table, for processes that only need to look an accession up in it (spike-in
-    // reference fetch). ch_assembly_txt is a Path, a List of Paths, or a channel
-    // depending on how it was set above, so normalise all three here rather than
-    // making every consumer guess.
+    // One normalised VALUE channel carrying ALL assembly_summary tables as a
+    // List of Paths (RefSeq first, then GenBank when enabled/provided), for
+    // processes that look an accession up in them (spike-in reference fetch).
+    // GCA_ accessions only live in the GenBank summary, so passing just [0]
+    // (RefSeq) made GenBank unusable for spike-in simulation.
+    // ch_assembly_txt is a Path, a List of Paths, or a channel depending on how
+    // it was set above, so normalise all three here.
     // No .first() on the channel branch: GET_ASSEMBLIES takes no input, so its
-    // outputs are already VALUE channels (broadcast to every consumer) and .first()
-    // on one is a no-op that Nextflow warns about.
+    // outputs are already VALUE channels.
     ch_assembly_summary_file = (ch_assembly_txt instanceof List)
-        ? Channel.value(ch_assembly_txt[0])
+        ? Channel.value(ch_assembly_txt)
         : ((ch_assembly_txt instanceof java.nio.file.Path)
-            ? Channel.value(ch_assembly_txt)
-            : ch_assembly_txt.map { it instanceof List ? it[0] : it })
+            ? Channel.value([ch_assembly_txt])
+            : ch_assembly_txt.map { asm -> (asm instanceof List) ? asm : [asm] })
 
     ch_versions = Channel.empty()
     ch_mergedtsv = Channel.empty()

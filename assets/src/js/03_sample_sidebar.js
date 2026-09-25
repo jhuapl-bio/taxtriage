@@ -882,9 +882,13 @@ function buildSampleList() {
  *  inspecting SAMPLE_META entries that share the same type, then taking
  *  the median of their per-sample best_cutoffs thresholds. */
 function _defaultTassForType(sampleType) {
-  const t = (sampleType || "").toLowerCase().trim();
+  // Untyped samples ("unknown" or blank) are grouped under one key and get the
+  // median of THEIR OWN recommended cutoffs — the same value their
+  // .odr.txt/.xlsx/.pdf "Passes Threshold" column uses — rather than the
+  // run-level minimum, which is another sample type's cutoff.
+  const t = _sampleTypeKey(sampleType);
   const vals = Object.values(SAMPLE_META)
-    .filter((m) => (m.sample_type || "").toLowerCase().trim() === t)
+    .filter((m) => _sampleTypeKey(m.sample_type) === t)
     .map((m) => {
       const gran = m.preferred_granularity || "subkey";
       return ((m.best_cutoffs || {})[gran] || {}).best_threshold;
@@ -908,9 +912,7 @@ function buildPerTypeTassUI() {
   const setAllBtn = document.getElementById("per-type-set-all-btn");
   if (!wrap || !rowsEl) return;
 
-  const types = Array.from(
-    new Set(DATA.map((r) => (r["Sample Type"] || "").trim().toLowerCase()).filter((t) => t && t !== "unknown")),
-  ).sort();
+  const types = _tassTypeList();
 
   if (!types.length) {
     wrap.style.display = "none";
@@ -975,7 +977,8 @@ function buildPerTypeTassUI() {
       ";transition:opacity 0.15s,transform 0.2s;flex-shrink:0;width:12px;text-align:center";
 
     const lblEl = document.createElement("span");
-    lblEl.textContent = t;
+    lblEl.textContent = t === UNKNOWN_SAMPLE_TYPE ? "unknown / untyped" : t;
+    if (t === UNKNOWN_SAMPLE_TYPE) lblEl.title = "Samples with no sample type (blank or 'unknown')";
     lblEl.style.cssText =
       "flex:1;text-transform:capitalize;font-weight:500;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
 
