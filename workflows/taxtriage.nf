@@ -910,7 +910,6 @@ workflow TAXTRIAGE {
         ch_fastp_long = fallbackOnFailure(ch_fastp_long, FASTPLONG.out.reads, FASTPLONG.out.json, 'fastplong')
         // combine ch_reads short and long together to ch_fastp_reads
         ch_reads = ch_reads_short.mix(ch_fastp_long)
-        ch_reads.view()
         ch_multiqc_files = ch_multiqc_files.mix(realOnly(FASTP.out.json).collect { json -> json[1] }.ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(realOnly(FASTPLONG.out.json).collect { json -> json[1] }.ifEmpty([]))
     }
