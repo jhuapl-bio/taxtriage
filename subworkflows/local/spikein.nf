@@ -151,9 +151,17 @@ workflow SPIKEIN {
         .map { dsid, metas, fastqs ->
             def m = metas[0].collectEntries { k, v -> [k, v] }
             m.id = dsid
+            // Total reads in THIS dataset = the full background (meta.read_count,
+            // from COUNT_READS, counts every record incl. both mates) + the spike.
+            // c<N> is the number of spiked records — PAIRS for paired data, so
+            // x2 to stay in the same unit as COUNT_READS. (Previously read_count
+            // was set to N alone: the spike level, or 0 for the c0 control,
+            // which made %Reads / RPM of every spike dataset wrong.)
             def cm = (dsid =~ /_c(\d+)_r\d+$/)
             if (cm.find()) {
-                m.read_count = cm.group(1) as Integer
+                def rpr = fastqs.size() > 1 ? 2 : 1
+                def bgc = (metas[0].read_count ?: 0) as long
+                m.read_count = bgc + (cm.group(1) as long) * rpr
             }
             m.subsample      = true
             m.spikein        = true

@@ -292,12 +292,17 @@
 
     var totalReads = +meta.total_reads || 0;
     var depth = totalReads > 0 ? totalReads / rpr : 0;
-    var orgReads = (+srcRow["# Reads Aligned"] || 0) / rpr;
+    // Spike-in groups report observed counts in READS (observed_unit), so the
+    // sample's reads are compared as-is; depth series still count pairs.
+    var obsUnit = g.observed_unit || g.read_unit || "reads";
+    var obsRpr = obsUnit === "reads" ? 1 : rpr;
+    var orgReads = (+srcRow["# Reads Aligned"] || 0) / obsRpr;
     var tass = +srcRow["TASS Score"] || 0;
-    var rowReads = (+row["# Reads Aligned"] || 0) / rpr;
+    var rowReads = (+row["# Reads Aligned"] || 0) / obsRpr;
     var rowTass = +row["TASS Score"] || 0;
 
-    var thr = +(suite().params || {}).detection_threshold || 0;
+    var thr =
+      +(g.detection_threshold != null ? g.detection_threshold : (suite().params || {}).detection_threshold) || 0;
 
     // ── which axis is this series on? ────────────────────────────────────────
     // A depth series asks "given this sample's DEPTH, is the organism as strong as
@@ -354,6 +359,7 @@
       matchedByName: hit.how === "name",
       ownSeries: hit.own,
       unit: g.read_unit || "reads",
+      obsUnit: obsUnit,
       paired: paired,
       rpr: rpr,
       unitMismatch: unitMismatch,
@@ -621,7 +627,7 @@
       ') rotate(-90)" text-anchor="middle" font-size="9" fill="' +
       MUTED +
       '">' +
-      esc(isReads ? c.unit + (ylog ? " (log)" : "") : "TASS") +
+      esc(isReads ? (c.obsUnit || c.unit) + (ylog ? " (log)" : "") : "TASS") +
       "</text>";
 
     // x ticks
@@ -882,7 +888,7 @@
     if (c.spike) {
       rows = [
         ["Sample depth", icomma(c.depth) + " " + c.unit + (c.rpr === 2 ? " (" + icomma(c.totalReads) + " reads)" : "")],
-        [c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here", icomma(c.orgReads) + " " + c.unit],
+        [c.rolledUp ? c.compareLevel + " reads here" : "Organism reads here", icomma(c.orgReads) + " " + c.obsUnit],
         [
           "Equivalent spike level",
           c.equivLevel == null ? "—" : icomma(c.equivLevel) + " " + c.unit + (c.equivExtrap ? " (extrapolated)" : ""),
@@ -957,7 +963,7 @@
         "This " + c.rowLevel.toLowerCase() + "'s reads",
         icomma(c.rowReads) +
           " " +
-          c.unit +
+          (c.obsUnit || c.unit) +
           (c.rowShare != null ? " (" + pct(c.rowShare) + " of the " + c.compareLevel.toLowerCase() + ")" : "") +
           " · TASS " +
           c.rowTass.toFixed(1),
@@ -1158,8 +1164,15 @@
         })
         .join("") +
       "</tr></thead><tbody>";
+    // Spike-in: recovery is what the spike ADDED over the level-0 control.
+    var p0 = c.spike
+      ? s.find(function (q) {
+          return +q.count === 0;
+        })
+      : null;
+    var base = p0 ? +p0.observed_reads || 0 : 0;
     s.forEach(function (p, i) {
-      var rec = p.expected_reads ? p.observed_reads / p.expected_reads : null;
+      var rec = p.expected_reads ? (p.observed_reads - base) / p.expected_reads : null;
       var rel = c.xValue > 0 ? p.count / c.xValue : null;
       h +=
         '<tr style="' +

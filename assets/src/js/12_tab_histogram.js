@@ -1079,6 +1079,8 @@ function _renderOneRow(row) {
   if (row.__belowCutoffVFAMR) tr.classList.add("below-cutoff-row");
   if (row.__belowCutoffAligned) tr.classList.add("below-cutoff-aligned-row");
   if (row.__noveltyNoAlign) tr.classList.add("novelty-noalign-row");
+  const _oflag = typeof ttOFlagStateFor === "function" ? ttOFlagStateFor(row) : null;
+  if (_oflag) tr.classList.add("org-flagged");
   const _rk = _tblRowKey(row);
   if (_tblPinned.has(_rk)) tr.classList.add("row-pinned");
   tr.addEventListener("click", (e) => {
@@ -1149,6 +1151,7 @@ function _renderOneRow(row) {
           `hidden by score, but shown because VF/AMR genes were detected for this organism's genus in this sample.`;
         contentSpan.appendChild(_bc);
       }
+      if (_oflag) contentSpan.insertAdjacentHTML("beforeend", _orgFlagBadgeHTML(row));
       if (row.__belowCutoffAligned || row.__noveltyNoAlign) {
         const _stb = document.createElement("span");
         _stb.innerHTML = _subThresholdBadgeHTML(row);

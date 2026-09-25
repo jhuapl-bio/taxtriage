@@ -201,6 +201,24 @@ process CREATE_COMPARISON_REPORT {
         if (params.report_flag_exclude_taxids != null) flag_bits << "--flag-exclude-taxids '${params.report_flag_exclude_taxids}'"
     }
     def flag_arg = flag_bits.join(' ')
+
+    // ── Organism-QC flag defaults ─────────────────────────────────────────────
+    // params.report_org_flag_* seed the report's per-DETECTION rule set. Like the
+    // sample flags these only decide how rows are presented in the HTML. An
+    // "organism_rules" block inside params.report_flag_rules (read by
+    // make_report.py from --flag-rules above) replaces them.
+    def org_bits = []
+    if (params.report_org_flag_min_reads != null) org_bits << "--org-flag-min-reads ${params.report_org_flag_min_reads}"
+    if (params.report_org_flag_min_tass != null)  org_bits << "--org-flag-min-tass ${params.report_org_flag_min_tass}"
+    if (params.report_org_flag_ani != null)       org_bits << "--org-flag-ani ${params.report_org_flag_ani}"
+    if (params.report_org_flag_genus)             org_bits << "--org-flag-genus '${params.report_org_flag_genus}'"
+    if (params.report_org_flag_criteria)          org_bits << "--org-flag-criteria '${params.report_org_flag_criteria}'"
+    if (org_bits || has_flag_rules_file) {
+        if (params.report_org_flag_ani_partner) org_bits << "--org-flag-ani-partner ${params.report_org_flag_ani_partner}"
+        if (params.report_org_flag_action)      org_bits << "--org-flag-action ${params.report_org_flag_action}"
+        if (params.report_org_flag_view && params.report_org_flag_view != 'all') org_bits << "--org-flag-view ${params.report_org_flag_view}"
+    }
+    def org_flag_arg = org_bits.join(' ')
     // ── In-silico subsampling suite feed ──────────────────────────────────────
     // Subsample dataset JSON(s) — used only to build the suite tab (not the heatmap).
     def insil_json_arg = ''
@@ -271,6 +289,7 @@ process CREATE_COMPARISON_REPORT {
         ${prot_arg} ${pident} ${mintass} ${min_conf_arg} \\
         ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg} ${offline_arg} \\
         ${flag_arg} \\
+        ${org_flag_arg} \\
         ${insil_json_arg} ${insil_manifest_arg} ${insil_params_arg} \\
         ${export_arg}
 

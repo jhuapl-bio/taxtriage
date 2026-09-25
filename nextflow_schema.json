@@ -1477,6 +1477,63 @@
                 }
             }
         },
+        "report_organism_flags": {
+            "title": "Report organism QC flags",
+            "type": "object",
+            "fa_icon": "fas fa-bacterium",
+            "description": "Per-detection criteria that seed the HTML report's Organism QC / Flags rule set. Report DEFAULTS only - nothing is removed from the run outputs. A matching organism row is highlighted in the Summary, Table and Heatmap, or (with --report_org_flag_action hide) removed from the report's views. Every rule can be edited live in the report.",
+            "properties": {
+                "report_org_flag_min_reads": {
+                    "type": ["number", "null"],
+                    "description": "Flag an organism (one detection in one sample) with fewer than this many reads aligned.",
+                    "fa_icon": "fas fa-arrow-down-1-9"
+                },
+                "report_org_flag_min_tass": {
+                    "type": ["number", "null"],
+                    "description": "Flag an organism whose TASS score is below this value (0-100).",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "report_org_flag_ani": {
+                    "type": ["number", "null"],
+                    "description": "Flag an organism that shares at least this % ANI with another hit in the same sample.",
+                    "hint": "Requires --enable_matrix. Partners are only recorded at or above --ani_threshold (default 0.95, i.e. 95%), so values below that behave like the threshold. See --report_org_flag_ani_partner.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "report_org_flag_ani_partner": {
+                    "type": "string",
+                    "default": "stronger",
+                    "enum": ["stronger", "any"],
+                    "description": "Which ANI partner counts: 'stronger' (more reads, then higher TASS) so only the weaker of a near-identical pair is flagged, or 'any' so both are.",
+                    "fa_icon": "fas fa-people-arrows"
+                },
+                "report_org_flag_genus": {
+                    "type": ["string", "null"],
+                    "description": "Comma-separated genera. Restricts every --report_org_flag_* criterion to organisms of these genera; on its own it flags every organism in them.",
+                    "hint": "Example: --report_org_flag_genus 'Streptococcus,Staphylococcus' --report_org_flag_min_reads 50 flags Streptococcus / Staphylococcus hits with fewer than 50 reads.",
+                    "fa_icon": "fas fa-sitemap"
+                },
+                "report_org_flag_criteria": {
+                    "type": ["string", "null"],
+                    "description": "Free-form organism rules: ';' between rules, '&' between the conditions of one rule (all must hold), each condition 'field:op:value'.",
+                    "hint": "Field is a detection column ('# Reads Aligned', Genus, Family, 'TASS Score', ...) or an in-sample field: ani_max, ani_partners, genus_reads, genus_share, genus_rank, genus_members, sample_read_share, k2_ratio, prevalence, lineage. Ops: == != contains !contains in !in regex empty !empty < <= > >=. Example: Genus:in:Streptococcus & # Reads Aligned:<:50; genus_rank:>:1 & genus_share:<:5",
+                    "fa_icon": "fas fa-table-list"
+                },
+                "report_org_flag_action": {
+                    "type": "string",
+                    "default": "flag",
+                    "enum": ["flag", "hide"],
+                    "description": "What happens to a matching organism row: 'flag' highlights it; 'hide' also removes it from every chart and table (reversible in the report).",
+                    "fa_icon": "fas fa-eye-slash"
+                },
+                "report_org_flag_view": {
+                    "type": "string",
+                    "default": "all",
+                    "enum": ["all", "hide", "only"],
+                    "description": "Which organism rows the report opens on: all (flagged highlighted), hide flagged, or only flagged.",
+                    "fa_icon": "fas fa-filter"
+                }
+            }
+        },
         "data_export": {
             "title": "Combined data export",
             "type": "object",
@@ -1603,6 +1660,9 @@
         },
         {
             "$ref": "#/definitions/report_sample_flags"
+        },
+        {
+            "$ref": "#/definitions/report_organism_flags"
         },
         {
             "$ref": "#/definitions/data_export"

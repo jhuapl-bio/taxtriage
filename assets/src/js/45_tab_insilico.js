@@ -86,6 +86,60 @@
     return Math.log((obs + 0.5) / (exp + 0.5)) / Math.LN2;
   }
 
+  // ── spike-in baseline ─────────────────────────────────────────────────────
+  // In a spike-in series every dataset carries the same background, and the
+  // background can already hold reads for the spiked organism (and always holds
+  // reads for everything else). Recovery must therefore compare the spike with
+  // what it ADDED over the level-0 (nothing spiked) control, not with the raw
+  // observed count — otherwise a matrix hit makes recovery look > 100 %.
+  // Depth series have no such baseline and keep baseline 0.
+  function seriesBaseline(series, group) {
+    if (!isSpike(group)) return 0;
+    var p0 = (series || []).find(function (p) {
+      return +p.count === 0;
+    });
+    return p0 ? +p0.observed_reads || 0 : 0;
+  }
+
+  function groupBaseline(group) {
+    if (!isSpike(group)) return 0;
+    var c0 = (group.datasets || []).filter(function (d) {
+      return +d.target_count === 0;
+    });
+    if (!c0.length) return 0;
+    return (
+      c0.reduce(function (a, d) {
+        return a + (+d.observed_total_reads || 0);
+      }, 0) / c0.length
+    );
+  }
+
+  function hasSpikeControl(group) {
+    return (
+      isSpike(group) &&
+      (group.datasets || []).some(function (d) {
+        return +d.target_count === 0;
+      })
+    );
+  }
+
+  // Unit of observed / expected / baseline counts. Spike-in groups count READS
+  // (make_report: observed_unit="reads"; expected = spiked records x
+  // reads_per_record), so they match the Detections table; the spike LEVEL
+  // (x axis, LoD) stays in read_unit (pairs for paired data).
+  function obsUnitOf(group) {
+    return (group && (group.observed_unit || group.read_unit)) || "reads";
+  }
+  function rprOf(group) {
+    return isSpike(group) ? +(group && group.reads_per_record) || 1 : 1;
+  }
+
+  // Recovery of the spike itself: (observed − level-0 baseline) / spiked.
+  function spikeRecovery(obs, base, spiked) {
+    if (!spiked || obs == null) return null;
+    return (obs - (base || 0)) / spiked;
+  }
+
   // Human labels for known param keys (unknown keys are shown verbatim).
   var PARAM_LABELS = {
     mode: "Subsample mode",
@@ -501,14 +555,15 @@
         "Parent",
         "Platform",
         "Mode",
-        "Read unit",
+        "Read unit (spike level)",
         "Dataset",
         "Replicate",
         "Target",
         "Actual",
         "Master total",
         "Seed",
-        "Observed aligned",
+        "Observed aligned (observed unit)",
+        "Level-0 baseline",
         "Recovery",
         "Detected",
         "TP",
@@ -520,8 +575,9 @@
       ],
     ];
     (suite.groups || []).forEach(function (g) {
+      var gBase = groupBaseline(g);
       (g.datasets || []).forEach(function (d) {
-        var rec = ratio(d.observed_total_reads, d.actual_count);
+        var rec = spikeRecovery(d.observed_total_reads, gBase, d.actual_count * rprOf(g));
         rows.push([
           g.parent,
           g.platform,
@@ -534,6 +590,7 @@
           d.total_master_reads == null ? "" : d.total_master_reads,
           d.seed == null ? "" : d.seed,
           d.observed_total_reads,
+          isSpike(g) ? Math.round(gBase * 10) / 10 : "",
           rec == null ? "" : rec.toFixed(4),
           d.n_detected,
           d.tp,
@@ -563,6 +620,7 @@
         "Target count",
         "Expected reads",
         "Observed reads",
+        "Level-0 baseline",
         "Recovery",
         "log2 FC",
         "TASS",
@@ -574,9 +632,10 @@
     (suite.groups || []).forEach(function (g) {
       // Export what is on screen: the rollup the user is looking at.
       rollupOrganisms(g).forEach(function (o) {
+        var oBase = seriesBaseline(o.series, g);
         (o.series || []).forEach(function (s) {
-          var rec = ratio(s.observed_reads, s.expected_reads);
-          var lfc = log2fc(s.observed_reads, s.expected_reads);
+          var rec = spikeRecovery(s.observed_reads, oBase, s.expected_reads);
+          var lfc = log2fc(Math.max(0, s.observed_reads - oBase), s.expected_reads);
           rows.push([
             g.parent,
             g.platform,
@@ -590,6 +649,7 @@
             s.count,
             s.expected_reads,
             s.observed_reads,
+            isSpike(g) ? oBase : "",
             rec == null ? "" : rec.toFixed(4),
             lfc == null ? "" : lfc.toFixed(3),
             s.tass,
@@ -698,8 +758,8 @@
       "Dataset (rep)",
       (spike ? "Spiked (target) " : "Target ") + unit,
       (spike ? "Spiked (actual) " : "Actual ") + unit,
-      "Observed aligned (" + unit + ")",
-      "Recovery",
+      "Observed aligned (" + obsUnitOf(group) + ")",
+      spike ? "Spike recovery" : "Recovery",
       "Detected",
       "TP",
       "FP",
@@ -727,8 +787,10 @@
     thead.appendChild(hr);
     t.appendChild(thead);
     var tb = el("tbody");
+    var gBase = groupBaseline(group);
+    var gHasCtl = hasSpikeControl(group);
     group.datasets.forEach(function (d, i) {
-      var rec = ratio(d.observed_total_reads, d.actual_count);
+      var rec = spikeRecovery(d.observed_total_reads, gBase, d.actual_count * rprOf(group));
       var tr = el("tr", {
         class: "insil-row",
         style: i % 2 ? "background:#faf9ff" : "",
@@ -741,8 +803,20 @@
             [spike ? "Spike delivered" : "Actual depth", fmt(d.actual_count) + " " + unit],
             d.total_master_reads != null ? ["Master pool", fmt(d.total_master_reads) + " " + unit] : null,
             d.seed != null ? ["Seed", String(d.seed)] : null,
-            ["Observed aligned", fmt(d.observed_total_reads) + " " + unit],
-            ["Alignment recovery", rec == null ? "—" : pct(rec)],
+            ["Observed aligned", fmt(d.observed_total_reads) + " " + obsUnitOf(group)],
+            spike
+              ? [
+                  "Level-0 background aligned",
+                  gHasCtl ? fmt(Math.round(gBase)) + " " + obsUnitOf(group) : "no level-0 control",
+                ]
+              : null,
+            spike
+              ? ["Added over background", fmt(Math.round(d.observed_total_reads - gBase)) + " " + obsUnitOf(group)]
+              : null,
+            spike && rprOf(group) > 1
+              ? ["Spike delivered (reads)", fmt(d.actual_count * rprOf(group)) + " reads"]
+              : null,
+            [spike ? "Spike recovery (added ÷ spiked)" : "Alignment recovery", rec == null ? "—" : pct(rec)],
             ["Organisms detected", fmt(d.n_detected)],
             ["True positives", String(d.tp)],
             ["False positives", String(d.fp)],
@@ -1044,7 +1118,13 @@
 
   // Chart 3 — how much of each subsample actually aligned.
   function recoveryChart(agg, group) {
-    var unit = group.read_unit || "reads";
+    // Spike amounts are in records (pairs); observed is in reads — scale the
+    // spike to reads so the bars and the recovery compare like with like.
+    var _r = rprOf(group);
+    agg = agg.map(function (a) {
+      return Object.assign({}, a, { actual: a.actual * _r });
+    });
+    var unit = obsUnitOf(group);
     var labels = agg.map(function (a) {
       return kfmt(a.count);
     });
@@ -1104,12 +1184,20 @@
         '" fill="' +
         ACCENT +
         '" opacity=".8" rx="1"/>';
-      var rec = ratio(a.observed, a.actual);
-      var tip = tipBody(kfmt(a.count) + " " + unit, group.parent + " · " + group.platform, [
-        ["Actual in dataset", fmt(Math.round(a.actual)) + " " + unit],
-        ["Observed aligned", fmt(Math.round(a.observed)) + " " + unit],
-        ["Recovery", rec == null ? "—" : pct(rec)],
-        ["Unaligned", fmt(Math.max(0, Math.round(a.actual - a.observed))) + " " + unit],
+      // aggByCount() already returns per-replicate means.
+      var _mObs = a.observed,
+        _mAct = a.actual,
+        _base = groupBaseline(group);
+      var rec = spikeRecovery(_mObs, _base, _mAct);
+      var _spk = isSpike(group);
+      var tip = tipBody(kfmt(a.count) + " " + (group.read_unit || "reads"), group.parent + " · " + group.platform, [
+        [_spk ? "Spiked (mean per rep)" : "Actual in dataset", fmt(Math.round(_mAct)) + " " + unit],
+        ["Observed aligned (mean per rep)", fmt(Math.round(_mObs)) + " " + unit],
+        _spk ? ["Level-0 background aligned", fmt(Math.round(_base)) + " " + unit] : null,
+        [_spk ? "Spike recovery (added ÷ spiked)" : "Recovery", rec == null ? "—" : pct(rec)],
+        _spk
+          ? ["Spike not recovered", fmt(Math.max(0, Math.round(_mAct - (_mObs - _base)))) + " " + unit]
+          : ["Unaligned", fmt(Math.max(0, Math.round(a.actual - a.observed))) + " " + unit],
         ["Replicates", String(a.n)],
       ]);
       s +=
@@ -1563,7 +1651,8 @@
   // width is derived from the widest label, so marks and axis never collide.
   function organismChart(o, group) {
     var series = o.series || [];
-    var unit = group.read_unit || "reads";
+    var unit = group.read_unit || "reads"; // spike level / LoD unit
+    var ounit = obsUnitOf(group); // observed / expected / baseline unit
     var labels = series.map(function (s) {
       return kfmt(s.count);
     });
@@ -1598,7 +1687,7 @@
       function (v) {
         return kfmt(v);
       },
-      unit + " (√)",
+      ounit + " (√)",
     );
     var dotY = f.yb + f.extraB / 2 + 1;
     var bw = Math.min(16, f.band * 0.3);
@@ -1665,13 +1754,36 @@
     });
 
     // hit-areas on top
+    var oBase = seriesBaseline(series, group);
+    // Matrix level for this organism: an unlabelled dashed guide at the level-0
+    // observed count, so the part of each observed bar the background already
+    // carried is visible next to the spike (the value is in the tooltip).
+    if (oBase > 0) {
+      var _by = f.yb - sc(oBase);
+      s +=
+        '<line x1="' +
+        f.padL +
+        '" y1="' +
+        _by.toFixed(1) +
+        '" x2="' +
+        (f.padL + f.band * series.length).toFixed(1) +
+        '" y2="' +
+        _by.toFixed(1) +
+        '" stroke="' +
+        MUTED +
+        '" stroke-width="1" stroke-dasharray="2 3"/>';
+    }
     series.forEach(function (pt, i) {
-      var rec = ratio(pt.observed_reads, pt.expected_reads);
-      var lfc = log2fc(pt.observed_reads, pt.expected_reads);
+      var rec = spikeRecovery(pt.observed_reads, oBase, pt.expected_reads);
+      var lfc = log2fc(Math.max(0, pt.observed_reads - oBase), pt.expected_reads);
       var tip = tipBody(o.name, "taxid " + o.taxid + " · " + kfmt(pt.count) + " " + unit + " target", [
-        ["Expected", fmt(pt.expected_reads) + " " + unit],
-        ["Observed", fmt(pt.observed_reads) + " " + unit],
-        ["Recovery", rec == null ? "—" : pct(rec)],
+        ["Expected (spiked)", fmt(pt.expected_reads) + " " + ounit],
+        ["Observed", fmt(pt.observed_reads) + " " + ounit],
+        isSpike(group) ? ["Level-0 background", fmt(oBase) + " " + ounit] : null,
+        isSpike(group) && pt.count > 0
+          ? ["Added over background", fmt(Math.round((pt.observed_reads - oBase) * 10) / 10) + " " + ounit]
+          : null,
+        [isSpike(group) ? "Spike recovery" : "Recovery", rec == null ? "—" : pct(rec)],
         ["log2 fold change", lfc == null ? "—" : (lfc > 0 ? "+" : "") + lfc.toFixed(2)],
         ["TASS (mean)", String(pt.tass)],
         ["Detection rate", pct(pt.detection_rate, 0) + " of " + pt.n_reps + " rep" + (pt.n_reps === 1 ? "" : "s")],
@@ -1874,11 +1986,22 @@
   function realSamples(group) {
     if (typeof DATA === "undefined" || !DATA || !DATA.length) return [];
     var bg = String(group.background_name || group.parent || "");
+    // Compare at the level the suite was built at (the matrix profile is keyed
+    // by that level's taxids). Mixing in Strain/Genus rows made every rollup
+    // row of a matrix organism count as "unique to sample", and let a sample's
+    // spiked-organism lookup land on whichever level's row came first.
+    var lvl = group.level || "";
+    var hasLvl =
+      !!lvl &&
+      DATA.some(function (r) {
+        return r["Level"] === lvl;
+      });
     var by = {};
     DATA.forEach(function (r) {
       var sn = r["Specimen ID"];
       if (!sn || isDatasetId(sn)) return;
       if (sn === bg) return; // the background itself is not a sample under test
+      if (hasLvl && r["Level"] !== lvl) return;
       if (!by[sn]) by[sn] = [];
       by[sn].push(r);
     });
@@ -2022,7 +2145,7 @@
       var h2 = [
         "Sample",
         "Spiked organism",
-        "Reads here (" + unit + ")",
+        "Reads here (" + obsUnitOf(group) + ")",
         "TASS",
         "LoD (" + unit + " spiked)",
         "Verdict",
@@ -2048,7 +2171,8 @@
       var tb2 = el("tbody"),
         n = 0;
       samples.forEach(function (s2) {
-        var paired = (group.read_unit || "reads") === "read pairs";
+        // Same unit as the series' observed counts (reads for spike-in groups).
+        var paired = obsUnitOf(group) === "read pairs";
         spikedList.forEach(function (tid) {
           var o = spikedByTid[tid];
           var row = s2.rows.find(function (r) {
@@ -2103,7 +2227,7 @@
             "data-tt",
             encodeURIComponent(
               tipBody(o.name, s2.sample + " · cutoff " + cutoff.toFixed(1), [
-                ["Reads here", fmt(reads) + " " + unit],
+                ["Reads here", fmt(reads) + " " + obsUnitOf(group)],
                 ["TASS", tass ? tass.toFixed(1) : "—"],
                 ["Equivalent spike level", equiv == null ? "—" : fmt(Math.round(equiv)) + " " + unit],
                 [
@@ -2156,7 +2280,7 @@
         el("thead", {
           html:
             "<tr>" +
-            ["Organism", "Taxid", "Reads (" + unit + ")", "TASS"]
+            ["Organism", "Taxid", "Reads (" + obsUnitOf(group) + ")", "TASS"]
               .map(function (h) {
                 return (
                   '<th style="text-align:left;padding:.35em .6em;border-bottom:2px solid ' +

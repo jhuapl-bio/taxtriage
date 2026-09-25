@@ -3645,4 +3645,6 @@ function redraw() {
   }
   if (typeof _ttRegionRefresh === "function") _ttRegionRefresh();
   _updateCapabilityNotice();
+  // Organism QC counts follow the Strain / Species / Genus view level.
+  if (typeof ttOFlagRenderSummary === "function") ttOFlagRenderSummary();
 }

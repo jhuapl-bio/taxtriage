@@ -401,9 +401,7 @@ function drawSummary() {
   ).size;
   const platforms = uniq(samples.map((sn) => _summaryMetaFor(sn, fd).platform).filter((p) => p && p !== "unknown"));
   // Applied TASS cutoffs — per sample type when available, otherwise global fallback.
-  const _kpiTypes = Array.from(
-    new Set(DATA.map((r) => (r["Sample Type"] || "").trim().toLowerCase()).filter((t) => t && t !== "unknown")),
-  ).sort();
+  const _kpiTypes = _tassTypeList();
   const _globalFallback = parseFloat((document.getElementById("filter-min") || {}).value) || 0;
   const _recCut = BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH) ? Number(BEST_TASS_THRESH) : null;
   let cutVal, cutSub, _typeVals;
@@ -1128,16 +1126,17 @@ function _renderSummaryTable(fd) {
         }) but kept visible because its ${_pi_s.rescueLevel} aggregation passes. ` +
         `Turn off &quot;Roll up threshold&quot; to hide it.">&#x2191; ${_pi_s.rescueLevel}</span>`
       : "";
+    const _oflagBadge = typeof _orgFlagBadgeHTML === "function" ? _orgFlagBadgeHTML(r) : "";
     html +=
-      `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
-        r.__belowCutoffVFAMR ? " below-cutoff-row" : ""
-      }${r.__belowCutoffAligned ? " below-cutoff-aligned-row" : ""}${r.__noveltyNoAlign ? " novelty-noalign-row" : ""}${
-        _sumPinned.has(key) ? " row-pinned" : ""
-      }">` +
+      `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_oflagBadge ? " org-flagged" : ""}${
+        _rescued_s ? " rescued-row" : ""
+      }${r.__belowCutoffVFAMR ? " below-cutoff-row" : ""}${r.__belowCutoffAligned ? " below-cutoff-aligned-row" : ""}${
+        r.__noveltyNoAlign ? " novelty-noalign-row" : ""
+      }${_sumPinned.has(key) ? " row-pinned" : ""}">` +
       `<td style="position:relative;padding-right:70px;padding-left:4px;white-space:nowrap;overflow:hidden;">` +
       `<span style="display:inline-block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;max-width:100%">${_orgBadges(
         r,
-      )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${_belowCutoffBadgeHTML(
+      )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_oflagBadge}${_rescueBadge}${_belowCutoffBadgeHTML(
         r,
       )}${_subThresholdBadgeHTML(r)}${typeof insilicoBadgeHTML === "function" ? insilicoBadgeHTML(r) : ""}</span>` +
       // Star sits inline, right after the organism text.
