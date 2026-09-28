@@ -43,13 +43,42 @@ workflow SPIKEIN {
     ch_spikein_tsv = PARSE_SPIKEIN.out.tsv
 
     // ── 2. One reference per distinct accession ─────────────────────────────
+    // Each line: id <TAB> local FASTA path ('' = fetch) <TAB> sheet taxid <TAB> records
+    // to keep ('' = all) <TAB> accession to fetch when it differs from the id.
+    // A local path is resolved against the launch dir (tasks run in their own work
+    // dir, so a relative path would not exist there) and STAGED as a task input, so
+    // it is visible inside the container whatever the engine mounts.
+    def no_file = file("$projectDir/assets/NO_FILE")
     ch_accessions = PARSE_SPIKEIN.out.accessions
-        .splitText()
-        .map { it.trim() }
-        .filter { it }
+        .splitCsv(sep: '\t', header: false)
+        .filter { row -> row && row[0]?.trim() }
+        .map { row ->
+            def acc   = row[0].trim()
+            def src   = row.size() > 1 ? (row[1] ?: '').trim() : ''
+            def taxid = row.size() > 2 ? (row[2] ?: '').trim() : ''
+            def recs  = row.size() > 3 ? (row[3] ?: '').trim() : ''
+            def fetch = row.size() > 4 ? (row[4] ?: '').trim() : ''
+            def ref   = no_file
+            if (src) {
+                def p = src.startsWith('~') ? src.replaceFirst('~', System.getProperty('user.home')) : src
+                ref = (p.startsWith('/') || p =~ /^[a-z]+:\/\//) ? file(p) : file("${workflow.launchDir}/${p}")
+                if (!ref.exists()) {
+                    error "Spike-in sheet: local FASTA '${src}' not found (looked for ${ref}). " +
+                          "Use an absolute path, or one relative to the directory you launch nextflow from."
+                }
+            }
+            [acc, taxid, recs, fetch, ref]
+        }
 
-    // Wrap the list so combine() keeps it as ONE element: [acc, [refseq, genbank]]
-    FETCH_SPIKEIN_REFS(ch_accessions.combine(ch_assembly_summary.map { [it] }))
+    // Wrap the list so combine() keeps it as ONE element: [acc, taxid, recs, fetch, ref, [refseq, genbank]]
+    ch_custom_accession_map = params.custom_accession_map
+        ? Channel.value(file(params.custom_accession_map, checkIfExists: true))
+        : Channel.value(file("$projectDir/assets/NO_FILE"))
+
+    FETCH_SPIKEIN_REFS(
+        ch_accessions.combine(ch_assembly_summary.map { [it] }),
+        ch_custom_accession_map
+    )
     ch_versions = ch_versions.mix(FETCH_SPIKEIN_REFS.out.versions.first())
     // accession -> taxid + organism, so the report can tie a spiked organism to a
     // detection by taxid rather than by the sheet's optional free-text name.

@@ -20,7 +20,9 @@ process MAP_TAXID_ASSEMBLY {
     input:
     tuple val(meta), file(gcfmapping)
     file(assembly)
-    path(custom_map, stageAs: "custom_accession_map.tsv")
+    // Staged into a dir (not renamed) so the NO_FILE placeholder keeps its name —
+    // renaming it made the "was a map given?" check below always true.
+    path(custom_map, stageAs: "custom_map/*")
 
     output:
     tuple val(meta), path("*merged.taxid.tsv"), optional:false, emit: taxidmerged
@@ -30,7 +32,7 @@ process MAP_TAXID_ASSEMBLY {
     script:
     def email          = params.email ? " -e ${params.email}" : ""
     def api_key        = params.ncbi_api_key ? " --api-key ${params.ncbi_api_key}" : ""
-    def custom_map_arg = custom_map.name != "NO_FILE" ? " --custom-map ${custom_map}" : ""
+    def custom_map_arg = !custom_map.name.startsWith("NO_FILE") ? " --custom-map ${custom_map}" : ""
 
     """
 

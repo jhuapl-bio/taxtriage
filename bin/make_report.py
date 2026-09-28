@@ -2081,9 +2081,19 @@ def _spike_expectations(items, manifests):
                 entry["by_acc"][acc] = entry["by_acc"].get(acc, 0) + got
             # Taxid is the reliable key: the sheet's name column is optional and
             # usually blank, so name matching silently fails on real sheets.
-            tid = str(d.get("taxid") or "").strip()
-            if tid:
-                entry["by_taxid"][tid] = entry["by_taxid"].get(tid, 0) + got
+            # A taxid is not required, though: `match_keys` (from the mixing step)
+            # splits the row's reads over detection keys — the taxid when known,
+            # else the record ACCESSION, which is exactly how match_paths.py keys
+            # a reference with no taxid. Older manifests without match_keys fall
+            # back to the single taxid.
+            mk = d.get("match_keys") or {}
+            if not mk:
+                tid = str(d.get("taxid") or "").strip()
+                mk = {tid: 1.0} if tid else {}
+            for key, frac in mk.items():
+                key = str(key).strip()
+                if key:
+                    entry["by_taxid"][key] = entry["by_taxid"].get(key, 0) + got * float(frac)
             nm = str(d.get("name") or "").strip().lower()
             if nm:
                 entry["by_name"][nm] = entry["by_name"].get(nm, 0) + got
@@ -2358,12 +2368,17 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                         gen_by_tid[tid] = ov["genus"]
             for sname, _d in items:
                 for d in json.loads((manifests.get(sname) or {}).get("spike_detail") or "[]"):
-                    tid = str(d.get("taxid") or "")
-                    if tid and tid not in name_by_tid:
-                        name_by_tid[tid] = d.get("name") or f"taxid {tid}"
-                        cat_by_tid[tid] = "Unknown"
-                        sp_by_tid[tid] = d.get("name") or ""
-                        gen_by_tid[tid] = ""
+                    keys = list((d.get("match_keys") or {}).keys()) or [str(d.get("taxid") or "")]
+                    for tid in keys:
+                        tid = str(tid or "")
+                        if tid and tid not in name_by_tid:
+                            # Single-key rows take the sheet name; a split row names each
+                            # key by itself (a taxid, or the accession it is keyed by).
+                            label = d.get("name") if len(keys) == 1 else ""
+                            name_by_tid[tid] = label or (f"taxid {tid}" if tid.isdigit() else tid)
+                            cat_by_tid[tid] = "Unknown"
+                            sp_by_tid[tid] = label or ""
+                            gen_by_tid[tid] = ""
             _tot = sum(exp_reads_by_tid.values()) or 1.0
             expected_fraction = {t: v / _tot for t, v in exp_reads_by_tid.items()}
             expected_set = set(expected_fraction)

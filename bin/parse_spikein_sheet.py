@@ -14,6 +14,30 @@ Accepted columns (case-insensitive, first match wins):
     replicates   replicates | replicate | reps | n_reps | repeats        (optional, default 1)
     level        level | series | group | tier                           (optional)
     name         name | organism | label | description                   (optional, cosmetic)
+    taxid        taxid | tax_id | taxonomy_id | ncbi_taxid               (optional)
+    record       record | records | seqid | contig | sequence | chrom    (optional)
+
+Local FASTA references
+----------------------
+The accession column may hold a path to a local FASTA (.fa/.fasta/.fna, optionally
+.gz) instead of an accession. The path is kept in a `source` column and the row is
+keyed by a clean id derived from the file name, so the path never leaks into read
+names or file names downstream. Relative paths are resolved against the Nextflow
+launch directory by the SPIKEIN subworkflow. One row = ONE organism: the report
+scores each row against a single taxid, so a FASTA holding several organisms must
+be split (or its records listed as accessions, one row each). Give `taxid` to set
+the organism's taxid explicitly; otherwise it is looked up from the FASTA headers.
+
+To spike only PART of a reference, name the FASTA record id(s) to keep in the
+`record` column (several: separated by ';' or ','). A single record becomes the
+row's id, so the same multi-organism file can feed several organisms:
+
+    accession,record,count,replicates
+    refs/orthopox.fasta,NC_003310.1,100,3      -> id NC_003310.1 (MPXV only)
+    refs/orthopox.fasta,NC_003310.1,1000,3
+    refs/orthopox.fasta,NC_006998.1,100,3      -> id NC_006998.1 (VACV only)
+
+`record` works on fetched accessions too (e.g. one chromosome of a GCF_ assembly).
 
 Series semantics
 ----------------
@@ -43,8 +67,10 @@ one dataset is built per (level, replicate):
 Replicates for a level = the maximum `replicates` seen on its rows.
 
 Output (TSV, one row per accession x level):
-    level_key  level_count  accession  count  replicates  name
-and, with --accessions, the distinct accession list one per line.
+    level_key  level_count  accession  count  replicates  name  taxid  source  records
+and, with --accessions, one line per distinct accession: accession, source, taxid,
+records (tab-separated; source is the local FASTA path or empty, taxid empty unless
+given, records the ';'-joined record ids to keep or empty for all).
 """
 
 import argparse
@@ -63,7 +89,27 @@ COLS = {
     "replicates": ["replicates", "replicate", "reps", "n_reps", "repeats", "rep"],
     "level": ["level", "series", "group", "tier", "mix"],
     "name": ["name", "organism", "label", "description", "taxon"],
+    "taxid": ["taxid", "tax_id", "taxonomy_id", "ncbi_taxid", "taxonomy"],
+    "record": ["record", "records", "seqid", "seq_id", "contig", "contigs",
+               "sequence", "chrom", "chromosome"],
 }
+
+FASTA_RE = re.compile(r"\.(?:fa|fasta|fna|fas|ffn|fsa|seq)(?:\.gz)?$", re.I)
+
+
+def is_local_path(acc):
+    """A path-like entry in the accession column (vs an NCBI accession)."""
+    return ("/" in acc or "\\" in acc or acc.startswith("~")
+            or bool(FASTA_RE.search(acc)))
+
+
+def path_to_id(path):
+    """test_output/orthopox.fasta.gz -> orthopox (safe for file and read names)."""
+    base = re.split(r"[/\\]", path.rstrip("/\\"))[-1]
+    base = re.sub(r"\.gz$", "", base, flags=re.I)
+    base = FASTA_RE.sub("", base) or base
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._-")
+    return base or "local_ref"
 
 # GCF_/GCA_ assemblies and nuccore accessions (NC_045512.2, CP012345, U00096.3…)
 ACC_RE = re.compile(r"^(?:GC[AF]_\d+\.\d+|[A-Z]{1,4}_?\d{5,}(?:\.\d+)?)$", re.I)
@@ -190,7 +236,15 @@ def main():
         if reps <= 0:
             raise SystemExit(f"ERROR: row {i}: replicates for {acc!r} must be > 0")
         lvl = pick(row, "level")
-        if not ACC_RE.match(acc):
+        taxid = pick(row, "taxid")
+        taxid = re.sub(r"\.0+$", "", taxid)   # spreadsheet cells turn 9606 into 9606.0
+        if taxid and not re.fullmatch(r"\d+", taxid):
+            raise SystemExit(f"ERROR: row {i}: taxid {taxid!r} for {acc!r} must be a number")
+        records = ";".join(r for r in re.split(r"[;,\s]+", pick(row, "record")) if r)
+        source = ""
+        if is_local_path(acc):
+            source, acc = acc, None   # id assigned below, once all paths are known
+        elif not ACC_RE.match(acc):
             # A warning, not an error: NCBI accession shapes change, and the
             # download step is the real authority on whether it resolves.
             print(f"[parse_spikein] WARNING: row {i}: {acc!r} does not look like an "
@@ -202,11 +256,54 @@ def main():
             "replicates": reps,
             "level": lvl,
             "name": pick(row, "name"),
+            "taxid": taxid,
+            "source": source,
+            "records": records,
             "lineno": i,
         })
 
     if not parsed:
         raise SystemExit(f"ERROR: {args.input!r} has a header but no usable rows")
+
+    # Rows that need a derived id: every local FASTA, and any accession narrowed to
+    # some records. One id per distinct (reference, records) pair; a single record
+    # IS the id (NC_003310.1), otherwise the file stem, suffixed on collision.
+    plain = {p["accession"] for p in parsed if p["accession"] and not p["records"]}
+    ids_by_key, used_ids = {}, set(plain)
+    for p in parsed:
+        if not (p["source"] or p["records"]):
+            continue
+        key = (p["source"] or p["accession"], p["records"])
+        if key not in ids_by_key:
+            recs = p["records"].split(";") if p["records"] else []
+            if len(recs) == 1:
+                base = re.sub(r"[^A-Za-z0-9._-]+", "_", recs[0]).strip("._-") or "record"
+            else:
+                base = path_to_id(p["source"]) if p["source"] else re.sub(r"[^A-Za-z0-9._-]+", "_", p["accession"])
+                if recs:
+                    base = f"{base}_{len(recs)}rec"
+            cand, k = base, 2
+            while cand in used_ids:
+                cand, k = f"{base}_{k}", k + 1
+            used_ids.add(cand)
+            ids_by_key[key] = cand
+        if not p["source"]:
+            p["source_acc"] = p["accession"]   # fetch THIS accession, keep only records
+        p["accession"] = ids_by_key[key]
+
+    # One taxid per accession across all its rows.
+    tax_by_acc = {}
+    for p in parsed:
+        if not p["taxid"]:
+            continue
+        prev = tax_by_acc.setdefault(p["accession"], p["taxid"])
+        if prev != p["taxid"]:
+            raise SystemExit(f"ERROR: {p['source'] or p['accession']!r} is given taxid "
+                             f"{prev} and {p['taxid']} on different rows")
+    src_by_acc = {p["accession"]: p["source"] for p in parsed}
+    rec_by_acc = {p["accession"]: p["records"] for p in parsed}
+    # an accession narrowed by `record` is fetched by its REAL accession
+    fetch_by_acc = {p["accession"]: p.get("source_acc", "") for p in parsed}
 
     # ── group into levels ────────────────────────────────────────────────────
     # No level column -> the count IS the level, so each amount forms its own
@@ -253,11 +350,15 @@ def main():
                 "count": m["count"],
                 "replicates": reps,
                 "name": m["name"],
+                "taxid": tax_by_acc.get(m["accession"], ""),
+                "source": src_by_acc.get(m["accession"], "") or fetch_by_acc.get(m["accession"], ""),
+                "records": rec_by_acc.get(m["accession"], ""),
             })
 
     out_rows.sort(key=lambda r: (r["level_count"], r["accession"]))
 
-    cols = ["level_key", "level_count", "accession", "count", "replicates", "name"]
+    cols = ["level_key", "level_count", "accession", "count", "replicates", "name",
+            "taxid", "source", "records"]
     with open(args.output, "w") as fh:
         fh.write("\t".join(cols) + "\n")
         for r in out_rows:
@@ -268,8 +369,10 @@ def main():
         for r in out_rows:
             seen.setdefault(r["accession"], 1)
         with open(args.accessions, "w") as fh:
+            # id <TAB> local path ('' = fetch) <TAB> sheet taxid <TAB> records <TAB> fetch accession
             for a in seen:
-                fh.write(a + "\n")
+                fh.write(f"{a}\t{src_by_acc.get(a, '')}\t{tax_by_acc.get(a, '')}\t"
+                         f"{rec_by_acc.get(a, '')}\t{fetch_by_acc.get(a, '')}\n")
 
     n_levels = len(groups)
     n_acc = len({r["accession"] for r in out_rows})

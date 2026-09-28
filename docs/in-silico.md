@@ -650,8 +650,50 @@ A non-numeric level label is mapped to that level's **total** spiked reads for t
 `c<N>` in the dataset id, since the id grammar carries an integer there.
 
 An accession may be a RefSeq/GenBank assembly (`GCF_`/`GCA_`), a nuccore accession,
-or a path to a local FASTA. References are resolved from the pipeline's
-`assembly_summary` first, then the NCBI `datasets` CLI, then Entrez.
+or a path to a local FASTA (`.fa`/`.fasta`/`.fna`, optionally `.gz`; absolute, or
+relative to the directory you launch Nextflow from). References are resolved from
+the pipeline's `assembly_summary` first, then the NCBI `datasets` CLI, then Entrez.
+A local FASTA is keyed by its file name (`test_output/orthopox.fasta` -> `orthopox`).
+
+**Spiking part of a reference.** Add a `record` column naming the FASTA record id(s)
+to keep (`;`-separated; version optional). One record becomes the row's id, so a
+single multi-organism file can feed several organisms, each at its own counts. Every
+distinct `count` is its own level, and `replicates` sets how many datasets are drawn
+at that level:
+
+```csv
+accession,record,count,replicates
+refs/orthopox.fasta,NC_003310.1,100,3
+refs/orthopox.fasta,NC_003310.1,1000,3
+refs/orthopox.fasta,NC_003310.1,10000,3
+refs/orthopox.fasta,NC_006998.1,500,2
+```
+
+`record` also narrows fetched accessions (e.g. one chromosome of a `GCF_` assembly).
+A missing record id fails the run and lists the ids the file does hold.
+
+**A taxid is optional.** Each spiked record is matched in the report by a _match
+key_: its taxid when one is known, else its own accession. That is the same
+fallback the main pipeline uses for a reference with no taxid, so the spike and its
+detection line up either way. The taxid is taken from, in order:
+
+1. an optional `taxid` column in the sheet;
+2. `--custom_accession_map`, matched on the row id (e.g. `orthopox`, or a `GCF_` id)
+   or on the record ids in the FASTA headers. This is the same map the main
+   pipeline uses;
+3. NCBI (the assembly summary for `GCF_`/`GCA_`, else esummary on the header
+   accessions).
+
+If none resolves, the record is reported by accession. A row whose FASTA holds
+several organisms (or several unmapped accessions) has its spiked reads split across
+them: equally per record for ISS, by length for NanoSim. Use `record` to spike just
+one.
+
+```csv
+accession,count,replicates,name,taxid
+/data/refs/my_isolate.fasta,500,3,My isolate,10244
+NC_063383.1,500,3,MPXV,
+```
 
 ### Nominating the background
 

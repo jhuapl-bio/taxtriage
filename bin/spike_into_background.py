@@ -124,8 +124,9 @@ def main():
                     help="Do not emit the level-0 background-only control dataset.")
     args = ap.parse_args()
 
-    # accession -> (taxid, organism)
+    # accession -> (taxid, organism); match keys -> [(key, n_records, bp)]
     taxinfo = {}
+    matchkeys = {}
     if args.taxid_map and os.path.exists(args.taxid_map):
         with open(args.taxid_map) as fh:
             for line in fh:
@@ -135,6 +136,30 @@ def main():
                         (f[1].strip() if len(f) > 1 else ""),
                         (f[2].strip() if len(f) > 2 else ""),
                     )
+                    ks = []
+                    for tok in (f[3].split(";") if len(f) > 3 else []):
+                        parts = tok.split("|")
+                        if parts[0].strip():
+                            n = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+                            bp = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+                            ks.append((parts[0].strip(), n, bp))
+                    if ks:
+                        matchkeys[f[0].strip()] = ks
+
+    def match_fractions(acc):
+        """{key: share of this organism's spiked reads}. A taxid is not required:
+        with none, the key is the accession, as match_paths.py keys an unmapped
+        reference. ISS pools (paired) simulate each record equally; NanoSim pools
+        (single-end) simulate the file as one genome, so reads follow length."""
+        ks = matchkeys.get(acc)
+        if not ks:
+            return {taxinfo.get(acc, ("", ""))[0] or acc: 1.0}
+        w = [(k, (n if args.paired else (bp or n))) for k, n, bp in ks]
+        tot = float(sum(x for _k, x in w)) or 1.0
+        out = {}
+        for k, x in w:
+            out[k] = out.get(k, 0.0) + x / tot
+        return out
 
     os.makedirs(args.outdir, exist_ok=True)
 
@@ -254,7 +279,8 @@ def main():
                 requested += count
                 tid, org = taxinfo.get(acc, ("", ""))
                 detail.append({"accession": acc, "requested": count, "spiked": got,
-                               "name": name or org, "taxid": tid})
+                               "name": name or org, "taxid": tid,
+                               "match_keys": {k: round(v, 6) for k, v in match_fractions(acc).items()}})
             row = {
                 "dataset_id": d["id"],
                 "parent_id": args.parent,

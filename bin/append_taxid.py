@@ -117,9 +117,9 @@ def parse_args(argv=None):
         required=False,
         default=None,
         help=(
-            "TSV file with columns 'accession' and 'taxid' for manually mapping "
-            "non-standard accessions absent from assembly summaries and NCBI. "
-            "The 'accession' column must match the Acc (nuccore accession) in the input."
+            "Delimited file with 'accession' and 'taxid' columns (optional 'name'). "
+            "Authoritative: overrides the assembly-summary / fuzzy-name mapping for "
+            "listed accessions. 'accession' must match the Acc (FASTA record id)."
         ),
     )
     return parser.parse_args(argv)
@@ -205,50 +205,45 @@ def map_gcf_to_taxid(input_df, ref_df, column):
     return input_df
 
 def apply_custom_map(mapped_df, custom_map_file):
-    """Apply a user-supplied accession->taxid mapping for non-standard accessions.
+    """Apply a user-supplied accession->taxid map (--custom_accession_map).
 
-    Reads a TSV with columns 'accession' and 'taxid'. For any row where
-    Mapped_Value is still empty AND the Acc appears in the custom map, fills in
-    the taxid. Rows already resolved by the assembly summary lookup are untouched.
+    The map is AUTHORITATIVE: an entry replaces whatever the assembly-summary step
+    assigned. That step matches local FASTA headers to assemblies by fuzzy NAME,
+    so a custom or private accession whose description resembles a known organism
+    can silently pick up the wrong taxid; an explicit user mapping must win.
+    Accessions not in the map are untouched (and still go to the NCBI backup if
+    they are empty). An optional name/organism column also sets Organism_Name.
 
-    Expected file format (tab-separated, with header):
-        accession\\ttaxid
-        OR833055.1\\t2697049
-        CUSTOM_SEQ_001\\t12345
+    Format (see bin/custom_accession_map.py): header with accession + taxid
+    columns, tab/comma/semicolon delimited, version-less keys allowed:
+        accession\ttaxid\tname
+        OR833055.1\t2697049\tSARS-CoV-2
+        CUSTOM_SEQ_001\t12345
     """
-    try:
-        custom_df = pd.read_csv(custom_map_file, sep='\t', dtype=str)
-    except Exception as e:
-        print(f"WARNING: Could not read custom map file '{custom_map_file}': {e}. Skipping.")
+    from custom_accession_map import CustomAccessionMap
+
+    cmap = CustomAccessionMap.load(str(custom_map_file))
+    if not len(cmap):
         return mapped_df
 
-    required_cols = {"accession", "taxid"}
-    missing_cols = required_cols - set(custom_df.columns.str.lower())
-    if missing_cols:
-        print(
-            f"WARNING: Custom map file is missing required column(s): {missing_cols}. "
-            "Expected a TSV with headers 'accession' and 'taxid'. Skipping."
-        )
-        return mapped_df
+    filled = overridden = 0
+    for idx in mapped_df.index:
+        hit = cmap.get(str(mapped_df.at[idx, "Acc"]).strip())
+        if not hit:
+            continue
+        taxid, name = hit
+        prev = _clean_taxid(mapped_df.at[idx, "Mapped_Value"])
+        if prev and prev != taxid:
+            overridden += 1
+            print(f"Custom map: {mapped_df.at[idx, 'Acc']} taxid {prev} -> {taxid}")
+        elif not prev:
+            filled += 1
+        mapped_df.at[idx, "Mapped_Value"] = taxid
+        if name:
+            mapped_df.at[idx, "Organism_Name"] = name
 
-    custom_df.columns = custom_df.columns.str.lower()
-    custom_lookup = custom_df.set_index("accession")["taxid"].apply(_clean_taxid).to_dict()
-
-    def _is_missing(value):
-        if value is None:
-            return True
-        text = str(value).strip()
-        return text == "" or text.lower() == "nan"
-
-    missing_mask = mapped_df["Mapped_Value"].apply(_is_missing)
-    resolved = 0
-    for idx in mapped_df.index[missing_mask]:
-        acc = str(mapped_df.at[idx, "Acc"]).strip()
-        if acc in custom_lookup and custom_lookup[acc]:
-            mapped_df.at[idx, "Mapped_Value"] = custom_lookup[acc]
-            resolved += 1
-
-    print(f"Custom map resolved {resolved} of {int(missing_mask.sum())} unmapped accession(s).")
+    print(f"Custom map: filled {filled}, overrode {overridden} accession(s) "
+          f"({len(cmap)} entries in map).")
     return mapped_df
 
 
