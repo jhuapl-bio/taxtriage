@@ -205,11 +205,30 @@ class WorkflowTaxtriage {
     public static void initialise(params, log) {
         genomeExistsError(params, log)
         mergeHostTaxids(params, log)
+        warnRemovedFastpFlag(params, log)
 
         // if (!params.fasta) {
         //     log.error "Genome fasta file not specified with e.g. '--fasta genome.fa' or via a detectable config file."
         //     System.exit(1)
         // }
+    }
+
+    //
+    // fastp / fastplong used to run by default and was turned off with --skip_fastp.
+    // It is now opt-in via --enable_fastp, so --skip_fastp no longer does anything.
+    // Say so explicitly rather than letting it pass as a generic "unexpected param".
+    //
+    public static void warnRemovedFastpFlag(params, log) {
+        if (!params.containsKey('skip_fastp')) { return }
+        def v = params.skip_fastp
+        def skipRequested = (v instanceof String) ? v.toBoolean() : (v as boolean)
+        if (skipRequested) {
+            log.warn "--skip_fastp has been removed: fastp is now OFF by default, so this flag is no longer needed. " +
+                     "Use --enable_fastp to turn fastp/fastplong quality filtering on."
+        } else {
+            log.warn "--skip_fastp has been removed and is ignored. fastp is now OFF by default; " +
+                     "use --enable_fastp to turn fastp/fastplong quality filtering on."
+        }
     }
 
     //
@@ -312,7 +331,7 @@ class WorkflowTaxtriage {
     // Flags that may arrive as strings on NF v26 and must be coerced before
     // schema validation.
     private static final List<String> BOOLEAN_PARAMS = [
-        'annotate', 'centrifuge', 'trim', 'downsample', 'low_memory',
+        'annotate', 'centrifuge', 'trim', 'skip_trimming', 'downsample', 'low_memory',
         'download_taxdump', 'download_db', 'add_irregular_top_hits',
         'save_output_fastqs', 'save_unaligned', 'remove_commensal',
         'save_k2_read_assignment', 'save_classified_fastq',
@@ -323,7 +342,7 @@ class WorkflowTaxtriage {
         'enable_genbank', 'get_pathogens', 'conf_sens', 'disable_auto_weights',
         'auto_score_power', 'fuzzy', 'refresh_download', 'igenomes_ignore',
         'recursive_reference', 'decompress_pre_megahit', 'skip_plots',
-        'skip_stats', 'skip_fastp', 'skip_kraken2', 'skip_refpull',
+        'skip_stats', 'enable_fastp', 'skip_kraken2', 'skip_refpull',
         'skip_krona', 'skip_features', 'skip_pathogens', 'unknown_sample',
         'ignore_missing', 'reference_assembly', 'pathogenicity', 'get_features',
         'get_variants', 'compress_species', 'fast', 'enable_matrix', 'no_subkey',

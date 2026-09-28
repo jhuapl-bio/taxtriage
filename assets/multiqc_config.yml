@@ -183,15 +183,22 @@ sp:
     fn: "*organisms.report.txt"
   # paths:
   #   fn: "*.organisms.report.txt"
+# Read-QC sections depend on which optional steps ran. fastp/fastplong only runs
+# with --enable_fastp (off by default); when it is off its section is simply
+# absent and read QC comes from FastQC / NanoPlot (nanostat) and, for samples with trim=TRUE,
+# the Trim Galore reports (cutadapt). MultiQC skips any module with no input
+# files, so every combination renders without further config.
 module_order:
   - confidences
   - host_removal_stats
   - krakenreport
   - kraken
   - fastp
+  - cutadapt
+  - fastqc
+  - nanostat
   - bcftools
   - samtools
-  - fastqc
 report_section_order:
   confidences:
     order: 9999
@@ -205,9 +212,13 @@ report_section_order:
     order: 9995
   fastp:
     order: 9994
-  fastqc:
+  cutadapt:
     order: 9993
-  samtools:
+  fastqc:
     order: 9992
-  nf-core-taxtriage-summary:
+  nanostat:
     order: 9991
+  samtools:
+    order: 9990
+  nf-core-taxtriage-summary:
+    order: 9989

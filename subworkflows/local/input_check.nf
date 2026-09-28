@@ -280,7 +280,9 @@ def create_fastq_channel(LinkedHashMap row, List resolved = null) {
         }
     }
 
-    if (meta.is_bam) {
+    // --skip_trimming is a run-wide override: it turns trimming off even for rows
+    // (or a --fastq_1/--trim run) that asked for it.
+    if (meta.is_bam || params.skip_trimming) {
         meta.trim = false
     } else if (row.trim && row.trim.toString().toLowerCase() == "true"){
         meta.trim = true

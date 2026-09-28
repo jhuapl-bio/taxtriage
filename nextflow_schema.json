@@ -143,8 +143,13 @@
                 },
                 "trim": {
                     "type": "boolean",
-                    "description": "Whether or not to trim your fastq file(s)",
+                    "description": "Trim the reads given with --fastq_1 (single-sample mode only). Samplesheet runs use each row's trim column instead.",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "skip_trimming": {
+                    "type": "boolean",
+                    "description": "Disable adapter trimming for every sample, overriding trim=TRUE in the samplesheet (and --trim).",
+                    "fa_icon": "fas fa-ban"
                 },
                 "seq_summary": {
                     "type": "string",
@@ -872,10 +877,11 @@
                     "description": "Skip generating stats for each individual taxa per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "skip_fastp": {
+                "enable_fastp": {
                     "type": "boolean",
-                    "description": "Skip QC trimming",
-                    "fa_icon": "fas fa-file-signature"
+                    "description": "Run fastp (short reads) / fastplong (long reads) quality filtering and QC. Off by default.",
+                    "help_text": "fastp/fastplong is opt-in. When enabled it filters reads by quality (see --minq) and its JSON reports are added to the MultiQC report. When disabled, reads pass straight from trimming to classification and MultiQC read QC comes from FastQC/NanoPlot (and Trim Galore/cutadapt for samples with trim=TRUE).",
+                    "fa_icon": "fas fa-filter"
                 },
                 "skip_kraken2": {
                     "type": "boolean",

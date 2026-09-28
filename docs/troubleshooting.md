@@ -61,6 +61,8 @@ The `fastq_1` column in your samplesheet is missing a value on that row. Each ro
 
 ### FASTP
 
+Only runs when `--enable_fastp` is set.
+
 **Symptom:** FASTP fails with exit status `255`
 
 ```
@@ -70,7 +72,7 @@ Command error:
 
 **Causes and fixes:**
 
-- Read quality is lower than `--minq` threshold - lower `--minq` or use `--skip_fastp`
+- Read quality is lower than `--minq` threshold - lower `--minq` or drop `--enable_fastp` (fastp is off by default)
 - FASTQ file path is wrong or the file is empty - check your samplesheet paths
 
 ### KRAKEN2_KRAKEN2
@@ -192,7 +194,7 @@ Then re-run the pipeline. This only applies when running from the remote URL wit
 
 ## NanoPlot Failing on Empty Data
 
-If NanoPlot fails with an empty directory or empty FASTQ, that sample had no reads pass QC. Check the fastp log for that sample and consider lowering `--minq` or disabling fastp with `--skip_fastp`.
+If NanoPlot fails with an empty directory or empty FASTQ, that sample had no reads pass QC. If you ran with `--enable_fastp`, check the fastp log for that sample and consider lowering `--minq` or running without `--enable_fastp`.
 
 ---
 

@@ -853,7 +853,9 @@ workflow TAXTRIAGE {
     // reads that were handed to trimgalore rather than dropping out of the run.
     ch_trimgalore_reads = fallbackOnFailure(ch_trimgalore_in, TRIMGALORE.out.reads, TRIMGALORE.out.log, 'trimgalore')
 
-    ch_multiqc_files = ch_multiqc_files.mix(realOnly(TRIMGALORE.out.reads).collect { it[1] }.ifEmpty([]) )
+    // Hand MultiQC the trimming reports (parsed by its cutadapt module), not the
+    // trimmed FASTQs -- MultiQC has no parser for reads, so they added nothing.
+    ch_multiqc_files = ch_multiqc_files.mix(realOnly(TRIMGALORE.out.log).collect { it[1] }.ifEmpty([]) )
 
     PORECHOP(
         ch_reads.filter { (it[0].platform == 'OXFORD' || it[0].platform == "PACBIO") && it[0].trim  }
@@ -882,8 +884,12 @@ workflow TAXTRIAGE {
             meta, reads -> meta.sequencing_summary
         }
     )
-    //////////////////// RUN FASTP to get qc plots and output reads ////////////////////
-    if (!params.skip_fastp) {
+    //////////////////// OPTIONAL FASTP to get qc plots and output reads ////////////////////
+    // fastp / fastplong is opt-in (--enable_fastp). When it is off, reads go straight
+    // on to classification and nothing fastp-shaped reaches MultiQC, so the fastp
+    // section simply drops out of the report; read QC there comes from FastQC /
+    // NanoPlot (--skip_plots off) and the Trim Galore (cutadapt) logs (samples with trim=TRUE).
+    if (params.enable_fastp) {
         // add an empty list to ch_fastp_in, all entries
         ch_fastp_in = ch_reads.map { meta, reads -> [meta, reads, []] }
         //branch short and long reads, use fastplong for long reads and regular fastp for short end
