@@ -50009,6 +50009,7 @@ function _ensureMapExportControl() {
       ACCENT +
       ";opacity:0;cursor:crosshair}" +
       ".insil-band:hover{opacity:.07}" +
+      ".insil-click{cursor:pointer}" +
       ".insil-pt{cursor:crosshair}" +
       ".insil-pt:hover{stroke:#000;stroke-width:1.4}" +
       ".insil-row{cursor:crosshair}" +
@@ -50768,10 +50769,13 @@ function _ensureMapExportControl() {
           a.n > 1 ? ["F1 SD", a.f1_sd.toFixed(3)] : null,
           ["TP / FP / FN", a.tp.toFixed(1) + " / " + a.fp.toFixed(1) + " / " + a.fn.toFixed(1)],
           ["Organisms detected", a.detected.toFixed(1)],
+          ["", "Click for per-organism read breakdown"],
         ],
       );
       s +=
-        '<rect class="insil-band" x="' +
+        '<rect class="insil-band insil-click" data-count="' +
+        a.count +
+        '" x="' +
         (f.padL + f.band * i).toFixed(1) +
         '" y="' +
         f.padT +
@@ -50865,9 +50869,12 @@ function _ensureMapExportControl() {
         ["Precision", a.precision.toFixed(3)],
         ["Recall", a.recall.toFixed(3)],
         ["Replicates", String(a.n)],
+        ["", "Click for per-organism read breakdown"],
       ]);
       s +=
-        '<rect class="insil-band" x="' +
+        '<rect class="insil-band insil-click" data-count="' +
+        a.count +
+        '" x="' +
         (f.padL + f.band * i).toFixed(1) +
         '" y="' +
         f.padT +
@@ -50979,9 +50986,12 @@ function _ensureMapExportControl() {
           ? ["Spike not recovered", fmt(Math.max(0, Math.round(_mAct - (_mObs - _base)))) + " " + unit]
           : ["Unaligned", fmt(Math.max(0, Math.round(a.actual - a.observed))) + " " + unit],
         ["Replicates", String(a.n)],
+        ["", "Click for per-organism read breakdown"],
       ]);
       s +=
-        '<rect class="insil-band" x="' +
+        '<rect class="insil-band insil-click" data-count="' +
+        a.count +
+        '" x="' +
         (f.padL + f.band * i).toFixed(1) +
         '" y="' +
         f.padT +
@@ -51011,6 +51021,341 @@ function _ensureMapExportControl() {
     return card;
   }
 
+  // ── per-organism read breakdown (click a bar in the run charts) ──────────
+  // The run charts summarise each level as counts (TP/FP/FN) and totals. This
+  // dialog answers "where did the aligned reads actually go?": every organism
+  // in each replicate at that level, its reads and share of the aligned total,
+  // and its role. Roles are assigned HERE, against the tab's live cutoff, so
+  // they move with the cutoff slider exactly as the LoD curves do.
+  var INSIL_SUITE = null; // set by renderGroup; the dialog reads the live cutoff from it
+
+  var BD_ROLES = {
+    tp: { color: GOOD, spike: "True positive (spiked, called)", depth: "True positive" },
+    missed: { color: WARN, spike: "Spiked, below cutoff", depth: "Expected, below cutoff" },
+    fp_blank: { color: "#8e0000", spike: "Spike called in blank (FP)", depth: "False positive" },
+    fp: { color: BAD, spike: "False positive", depth: "False positive" },
+    background: { color: "#26a69a", spike: "Background (matrix)", depth: "Background" },
+    below: { color: "#bdbdbd", spike: "Below cutoff (not called)", depth: "Below cutoff (not called)" },
+  };
+  var BD_ORDER = ["tp", "missed", "fp_blank", "fp", "background", "below"];
+
+  function bdRole(r, d, group, cutoff) {
+    var tid = String(r[0]);
+    var called = +r[3] >= cutoff;
+    var exp = (d.expected_tids || []).indexOf(tid) >= 0;
+    if (isSpike(group)) {
+      if (d.is_control) {
+        // The blank defines the matrix; the only error possible here is calling
+        // something that was spiked elsewhere in the series.
+        if (called && (group.spiked_tids || []).indexOf(tid) >= 0) return "fp_blank";
+        return "background";
+      }
+      if (exp) return called ? "tp" : "missed";
+      if ((group.background_tids || []).indexOf(tid) >= 0) return "background";
+      return called ? "fp" : "below";
+    }
+    if (exp) return called ? "tp" : "missed";
+    return called ? "fp" : "below";
+  }
+
+  function closeBreakdown() {
+    var m = document.getElementById("insil-bd-modal");
+    if (m) m.remove();
+    document.removeEventListener("keydown", bdKey);
+  }
+  function bdKey(e) {
+    if (e.key === "Escape") closeBreakdown();
+  }
+
+  function openBreakdown(group, count) {
+    closeBreakdown();
+    var reps = (group.datasets || [])
+      .filter(function (d) {
+        return +d.target_count === +count;
+      })
+      .sort(function (a, b) {
+        return (a.replicate || 0) - (b.replicate || 0);
+      });
+    if (!reps.length) return;
+    var cutoff = effCutoff(INSIL_SUITE);
+    var unit = obsUnitOf(group);
+    var mode = isSpike(group) ? "spike" : "depth";
+    var cur = 0;
+
+    var back = el("div", {
+      id: "insil-bd-modal",
+      style:
+        "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10001;display:flex;" +
+        "align-items:center;justify-content:center",
+    });
+    var card = el("div", {
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "Per-organism read breakdown",
+      style:
+        "background:#fff;border-radius:10px;width:min(1040px,96vw);max-height:90vh;display:flex;" +
+        "flex-direction:column;overflow:hidden;box-shadow:0 10px 32px rgba(0,0,0,.3)",
+    });
+    back.appendChild(card);
+    back.addEventListener("click", function (e) {
+      if (e.target === back) closeBreakdown();
+    });
+    document.addEventListener("keydown", bdKey);
+
+    var head = el("div", {
+      style: "padding:.8em 1.1em;border-bottom:1px solid #eee;display:flex;align-items:center;gap:.6em",
+    });
+    head.appendChild(
+      el("div", { style: "font-weight:700;color:" + ACCENT }, [
+        group.parent +
+          " · " +
+          (+count === 0 && isSpike(group)
+            ? "level 0 (blank)"
+            : kfmt(count) + " " + (group.read_unit || "reads") + (isSpike(group) ? " spiked" : " deep")),
+      ]),
+    );
+    head.appendChild(
+      el("span", { style: "font-size:.8em;color:" + MUTED }, [
+        "where the aligned " + unit + " went · cutoff TASS " + (+cutoff).toFixed(1),
+      ]),
+    );
+    head.appendChild(el("span", { style: "flex:1" }));
+    var dlBtn = el("button", { class: "insil-exp-btn", type: "button" }, ["Download TSV"]);
+    head.appendChild(dlBtn);
+    var x = el(
+      "button",
+      {
+        type: "button",
+        "aria-label": "Close",
+        style: "border:0;background:none;font-size:1.5em;line-height:1;color:#888;cursor:pointer",
+      },
+      ["×"],
+    );
+    x.addEventListener("click", closeBreakdown);
+    head.appendChild(x);
+    card.appendChild(head);
+
+    var tabs = el("div", { style: "display:flex;gap:.4em;padding:.6em 1.1em 0;flex-wrap:wrap" });
+    var body = el("div", { style: "padding:.7em 1.1em 1em;overflow:auto" });
+    if (reps.length > 1) card.appendChild(tabs);
+    card.appendChild(body);
+
+    function rowsFor(d) {
+      var tot =
+        d.observed_total_reads ||
+        (d.breakdown || []).reduce(function (s, r) {
+          return s + (+r[2] || 0);
+        }, 0);
+      return (d.breakdown || []).map(function (r) {
+        return {
+          tid: String(r[0]),
+          name: r[1],
+          reads: +r[2] || 0,
+          tass: +r[3] || 0,
+          cat: r[4] || "",
+          role: bdRole(r, d, group, cutoff),
+          share: tot ? (+r[2] || 0) / tot : 0,
+        };
+      });
+    }
+
+    function draw() {
+      var d = reps[cur];
+      Array.prototype.forEach.call(tabs.children, function (b, i) {
+        b.style.background = i === cur ? "#ede7f6" : "#fff";
+        b.style.fontWeight = i === cur ? "700" : "600";
+      });
+      body.innerHTML = "";
+      if (!d.breakdown) {
+        body.appendChild(
+          el("div", { style: "color:" + MUTED + ";font-size:.9em" }, [
+            "This report was built before per-organism breakdowns were recorded. Re-run the report step to see it.",
+          ]),
+        );
+        return;
+      }
+      var rows = rowsFor(d);
+      var tot = rows.reduce(function (s, r) {
+        return s + r.reads;
+      }, 0);
+      var byRole = {};
+      rows.forEach(function (r) {
+        var b = (byRole[r.role] = byRole[r.role] || { reads: 0, n: 0 });
+        b.reads += r.reads;
+        b.n += 1;
+      });
+
+      body.appendChild(
+        el("div", { style: "font-size:.85em;color:#444;margin-bottom:.45em" }, [
+          fmt(tot) +
+            " " +
+            unit +
+            " aligned across " +
+            rows.length +
+            " organism" +
+            (rows.length === 1 ? "" : "s") +
+            " in " +
+            d.id,
+        ]),
+      );
+      // stacked proportion bar
+      var bar = el("div", {
+        style: "display:flex;height:22px;border-radius:5px;overflow:hidden;background:#f3f3f3;margin-bottom:.45em",
+      });
+      BD_ORDER.forEach(function (k) {
+        var b = byRole[k];
+        if (!b || !tot) return;
+        var w = (b.reads / tot) * 100;
+        bar.appendChild(
+          el("div", {
+            title: BD_ROLES[k][mode] + ": " + fmt(b.reads) + " " + unit + " (" + w.toFixed(1) + "%)",
+            style: "width:" + w + "%;background:" + BD_ROLES[k].color + ";min-width:" + (w > 0 ? "2px" : "0"),
+          }),
+        );
+      });
+      body.appendChild(bar);
+      var leg = el("div", { style: "display:flex;flex-wrap:wrap;gap:.35em 1.1em;font-size:.8em;margin-bottom:.8em" });
+      BD_ORDER.forEach(function (k) {
+        var b = byRole[k];
+        if (!b) return;
+        leg.appendChild(
+          el("span", { style: "display:inline-flex;align-items:center;gap:.35em" }, [
+            el("span", {
+              style: "width:10px;height:10px;border-radius:2px;display:inline-block;background:" + BD_ROLES[k].color,
+            }),
+            BD_ROLES[k][mode] +
+              " — " +
+              fmt(b.reads) +
+              " (" +
+              pct(tot ? b.reads / tot : 0, 1) +
+              ", " +
+              b.n +
+              " org" +
+              (b.n === 1 ? "" : "s") +
+              ")",
+          ]),
+        );
+      });
+      body.appendChild(leg);
+
+      // table
+      var h =
+        '<table style="border-collapse:collapse;width:100%;font-size:.82em"><thead><tr>' +
+        ["Role", "Organism", "Taxid / key", unit + " aligned", "% of aligned", "TASS", "Called", "Category"]
+          .map(function (c, i) {
+            return (
+              '<th style="text-align:' +
+              (i >= 3 && i <= 5 ? "right" : "left") +
+              ';padding:.35em .5em;border-bottom:2px solid #e6e1f5;color:#555;white-space:nowrap">' +
+              esc(c) +
+              "</th>"
+            );
+          })
+          .join("") +
+        "</tr></thead><tbody>";
+      rows.forEach(function (r) {
+        var R = BD_ROLES[r.role];
+        h +=
+          '<tr style="border-bottom:1px solid #f0edf7">' +
+          '<td style="padding:.3em .5em;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:.4em;background:' +
+          R.color +
+          '"></span>' +
+          esc(R[mode]) +
+          "</td>" +
+          '<td style="padding:.3em .5em">' +
+          esc(r.name) +
+          "</td>" +
+          '<td style="padding:.3em .5em;color:' +
+          MUTED +
+          '">' +
+          esc(r.tid) +
+          "</td>" +
+          '<td style="padding:.3em .5em;text-align:right;font-variant-numeric:tabular-nums">' +
+          fmt(r.reads) +
+          "</td>" +
+          '<td style="padding:.3em .5em;text-align:right;font-variant-numeric:tabular-nums">' +
+          pct(r.share, 2) +
+          "</td>" +
+          '<td style="padding:.3em .5em;text-align:right;font-variant-numeric:tabular-nums">' +
+          r.tass.toFixed(1) +
+          "</td>" +
+          '<td style="padding:.3em .5em">' +
+          (r.tass >= cutoff ? "yes" : "no") +
+          "</td>" +
+          '<td style="padding:.3em .5em;color:' +
+          MUTED +
+          '">' +
+          esc(r.cat) +
+          "</td></tr>";
+      });
+      if (!rows.length) {
+        h +=
+          '<tr><td colspan="8" style="padding:.6em .5em;color:' +
+          MUTED +
+          '">Nothing aligned in this dataset.</td></tr>';
+      }
+      body.insertAdjacentHTML("beforeend", h + "</tbody></table>");
+      if (isSpike(group) && !d.is_control) {
+        body.appendChild(
+          el("div", { style: "font-size:.75em;color:" + MUTED + ";margin-top:.6em" }, [
+            "Background = organisms also seen in the level-0 blank (the matrix); they are not counted as false positives. " +
+              "Reads are " +
+              unit +
+              " at the report's comparison level, so they can differ slightly from the strain rows elsewhere.",
+          ]),
+        );
+      }
+    }
+
+    reps.forEach(function (d, i) {
+      var b = el("button", { type: "button", class: "insil-exp-btn" }, ["replicate " + (d.replicate || i + 1)]);
+      b.addEventListener("click", function () {
+        cur = i;
+        draw();
+      });
+      tabs.appendChild(b);
+    });
+    dlBtn.addEventListener("click", function () {
+      var out = [
+        [
+          "dataset",
+          "replicate",
+          "role",
+          "organism",
+          "taxid",
+          unit + "_aligned",
+          "share_of_aligned",
+          "tass",
+          "called",
+          "category",
+          "cutoff",
+        ],
+      ];
+      reps.forEach(function (d) {
+        rowsFor(d).forEach(function (r) {
+          out.push([
+            d.id,
+            d.replicate,
+            BD_ROLES[r.role][mode],
+            r.name,
+            r.tid,
+            r.reads,
+            r.share.toFixed(6),
+            r.tass,
+            r.tass >= cutoff ? "yes" : "no",
+            r.cat,
+            cutoff,
+          ]);
+        });
+      });
+      dl(toDelim(out, "\t"), group.parent + "_c" + count + "_read_breakdown.tsv", "text/tab-separated-values");
+    });
+
+    draw();
+    document.body.appendChild(back);
+    x.focus();
+  }
+
   function renderGroupCharts(group) {
     var agg = aggByCount(group);
     if (!agg.length) return null;
@@ -51026,6 +51371,10 @@ function _ensureMapExportControl() {
     grid.appendChild(metricChart(agg, group));
     grid.appendChild(compositionChart(agg, group));
     grid.appendChild(recoveryChart(agg, group));
+    grid.addEventListener("click", function (e) {
+      var t = e.target && e.target.closest ? e.target.closest(".insil-click") : null;
+      if (t) openBreakdown(group, t.getAttribute("data-count"));
+    });
     wrap.appendChild(grid);
     return wrap;
   }
@@ -52101,6 +52450,7 @@ function _ensureMapExportControl() {
 
   // ── group ─────────────────────────────────────────────────────────────────
   function renderGroup(group, suite) {
+    INSIL_SUITE = suite;
     var box = el("div", {
       style: "border:1px solid #e6e1f5;border-radius:10px;padding:1em 1.1em;margin-bottom:1.2em;background:#fff",
     });
