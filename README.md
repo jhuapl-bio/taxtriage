@@ -288,7 +288,7 @@ nextflow drop -f https://github.com/jhuapl-bio/taxtriage
 ## Major workflow stages
 
 1. Optional subsampling or digital normalization.
-2. Platform-specific QC and adapter trimming.
+2. Platform-specific QC and adapter trimming (fastp / fastplong quality filtering is opt-in with `--enable_fastp`).
 3. Optional host depletion.
 4. Read-level classification with Kraken2 or Centrifuge.
 5. Candidate-organism and reference selection.

@@ -972,7 +972,7 @@ minimap2 \
      -ax sr \
     --split-prefix Miseq_Run_A.Miseq_Run_A.dwnld.references.prefix \
     Miseq_Run_A.dwnld.references.fasta \
-    Miseq_Run_A_1.fastp.fastq.gz Miseq_Run_A_2.fastp.fastq.gz \
+    Miseq_Run_A_1.fastq.gz Miseq_Run_A_2.fastq.gz \
     -L \
     -a | samtools sort | samtools view -b -h -o Miseq_Run_A.Miseq_Run_A.dwnld.references.bam
 ```

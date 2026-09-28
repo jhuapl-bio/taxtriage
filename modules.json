@@ -112,7 +112,12 @@
                     },
                     "fastp": {
                         "branch": "master",
-                        "git_sha": "d497a4868ace3302016ea8ed4b395072d5e833cd",
+                        "git_sha": "826a9b28d6da61097d60e1923bb8a2e51de3c5b4",
+                        "installed_by": ["modules"]
+                    },
+                    "fastplong": {
+                        "branch": "master",
+                        "git_sha": "6d46786420b4d7bc88eba026eb389c0c5535d120",
                         "installed_by": ["modules"]
                     },
                     "fastqc": {

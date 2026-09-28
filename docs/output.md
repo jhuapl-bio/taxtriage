@@ -53,6 +53,12 @@ These are the outputs you should review first after a successful run:
 │   ├── *_fastqc.html
 │   └── *_fastqc.zip
 │
+├── fastp/                               # (--enable_fastp, Illumina)
+│   └── *.fastp.html / *.fastp.json / *.fastp.log
+│
+├── fastplong/                           # (--enable_fastp, ONT/PacBio)
+│   └── *.fastplong.html / *.fastplong.json / *.fastplong.log
+│
 ├── nanoplot/                            # (ONT)
 │
 ├── mergedkrakenreport/
@@ -101,6 +107,8 @@ Standard FastQC outputs for Illumina samples:
 Aggregated report across all samples, including:
 
 - FastQC / NanoPlot summaries
+- Trim Galore (cutadapt) trimming stats (for samples with `trim=TRUE`)
+- fastp / fastplong filtering stats (only with `--enable_fastp`; the section is omitted otherwise)
 - Alignment statistics from samtools
 - Kraken2 classification summary
 - Software version traceability

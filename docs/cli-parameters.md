@@ -85,14 +85,15 @@ Start from reads you have already aligned. Pre-aligned samples skip QC, trimming
 
 ## Preprocessing and Read Filtering
 
-| Parameter                  | Description                                                                                                |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `--trim`                   | Enable adapter trimming (`"true"` or `"false"`). Defaults to `false`.                                      |
-| `--skip_fastp`             | Skip quality filtering with fastp entirely.                                                                |
-| `--minq <N>`               | Minimum read quality score. Default: `7` for ONT, `20` for Illumina. Disabled when `--skip_fastp` is set.  |
-| `--subsample <N>`          | Subsample to N reads per sample before classification. Useful for very large datasets.                     |
-| `--downsample`             | Use BBNorm (bbmap) to reduce redundant reads. Recommended for deep sequencing (e.g., >40 GB/sample).       |
-| `--decompress_pre_megahit` | Decompress reads before MEGAHIT assembly. Required for some HPC environments with I/O errors at this step. |
+| Parameter                  | Description                                                                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `--trim`                   | Trim the reads given with `--fastq_1` (single-sample mode only). Samplesheet runs use each row's `trim` column. Defaults to `false`. |
+| `--skip_trimming`          | Turn adapter trimming off for **every** sample, overriding `trim=TRUE` in the samplesheet and `--trim`.                              |
+| `--enable_fastp`           | Run fastp (Illumina) / fastplong (ONT, PacBio) quality filtering. **Off by default.** Replaces `--skip_fastp`.                       |
+| `--minq <N>`               | Minimum read quality score for fastplong. Default: `7`. Only used when `--enable_fastp` is set.                                      |
+| `--subsample <N>`          | Subsample to N reads per sample before classification. Useful for very large datasets.                                               |
+| `--downsample`             | Use BBNorm (bbmap) to reduce redundant reads. Recommended for deep sequencing (e.g., >40 GB/sample).                                 |
+| `--decompress_pre_megahit` | Decompress reads before MEGAHIT assembly. Required for some HPC environments with I/O errors at this step.                           |
 
 ---
 

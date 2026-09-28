@@ -76,6 +76,7 @@ include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
 include { COUNT_READS  } from '../modules/local/count_reads'
 include { PIGZ_COMPRESS } from '../modules/nf-core/pigz/compress/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
+include { FASTPLONG } from '../modules/nf-core/fastplong/main'
 include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
 include { ARTIC_GUPPYPLEX } from '../modules/nf-core/artic/guppyplex/main'
 include { MOVE_FILES } from '../modules/local/moveFiles.nf'
@@ -146,7 +147,9 @@ def dropEmptyReads(ch, String stage) {
 // one is still dropped, as before, rather than silently resurrected.
 def fallbackOnFailure(ch_in, ch_out, ch_ran, String stage) {
     ch_in
-        .map { meta, reads -> [meta.id, meta, reads] }
+        // ch_in may carry extra trailing elements (fastp's adapter_fasta slot, for
+        // example); index rather than destructure so any arity works here.
+        .map { row -> [row[0].id, row[0], row[1]] }
         .join(ch_out.map { meta, reads -> [meta.id, reads] }, by: 0, remainder: true)
         .filter { row -> row[1] != null }   // guard: output-only rows carry a null meta
         .join(ch_ran.map { meta, f -> [meta.id, true] }, by: 0, remainder: true)
@@ -850,7 +853,9 @@ workflow TAXTRIAGE {
     // reads that were handed to trimgalore rather than dropping out of the run.
     ch_trimgalore_reads = fallbackOnFailure(ch_trimgalore_in, TRIMGALORE.out.reads, TRIMGALORE.out.log, 'trimgalore')
 
-    ch_multiqc_files = ch_multiqc_files.mix(realOnly(TRIMGALORE.out.reads).collect { it[1] }.ifEmpty([]) )
+    // Hand MultiQC the trimming reports (parsed by its cutadapt module), not the
+    // trimmed FASTQs -- MultiQC has no parser for reads, so they added nothing.
+    ch_multiqc_files = ch_multiqc_files.mix(realOnly(TRIMGALORE.out.log).collect { it[1] }.ifEmpty([]) )
 
     PORECHOP(
         ch_reads.filter { (it[0].platform == 'OXFORD' || it[0].platform == "PACBIO") && it[0].trim  }
@@ -879,21 +884,40 @@ workflow TAXTRIAGE {
             meta, reads -> meta.sequencing_summary
         }
     )
-    //////////////////// RUN FASTP to get qc plots and output reads ////////////////////
-    if (!params.skip_fastp) {
-        ch_fastp_in = ch_reads
+    //////////////////// OPTIONAL FASTP to get qc plots and output reads ////////////////////
+    // fastp / fastplong is opt-in (--enable_fastp). When it is off, reads go straight
+    // on to classification and nothing fastp-shaped reaches MultiQC, so the fastp
+    // section simply drops out of the report; read QC there comes from FastQC /
+    // NanoPlot (--skip_plots off) and the Trim Galore (cutadapt) logs (samples with trim=TRUE).
+    if (params.enable_fastp) {
+        // add an empty list to ch_fastp_in, all entries
+        ch_fastp_in = ch_reads.map { meta, reads -> [meta, reads, []] }
+        //branch short and long reads, use fastplong for long reads and regular fastp for short end
+        ch_fastp_short = ch_fastp_in.filter { it[0].platform =~ /(?i)ILLUMINA/ }
+        ch_fastp_long = ch_fastp_in.filter { it[0].platform == 'OXFORD' || it[0].platform == "PACBIO" }.map{
+            meta, reads, _adapter_fasta -> [meta, reads]
+        }
+
         FASTP(
-            ch_fastp_in,
+            ch_fastp_short,
+            false,
+            false,
+            false
+        )
+        FASTPLONG(
+            ch_fastp_long,
             [],
             false,
             false
         )
         // Same fallback as trimgalore: a sample fastp could not process keeps the
         // reads it was given (de-hosted / trimmed) instead of vanishing before kraken2.
-        ch_reads = fallbackOnFailure(ch_fastp_in, FASTP.out.reads, FASTP.out.json, 'fastp')
-        ch_fastp_reads = FASTP.out.json
-        ch_fastp_html = FASTP.out.html
-        ch_multiqc_files = ch_multiqc_files.mix(realOnly(FASTP.out.json).collect { it[1] }.ifEmpty([]))
+        ch_reads_short = fallbackOnFailure(ch_fastp_short, FASTP.out.reads, FASTP.out.json, 'fastp')
+        ch_fastp_long = fallbackOnFailure(ch_fastp_long, FASTPLONG.out.reads, FASTPLONG.out.json, 'fastplong')
+        // combine ch_reads short and long together to ch_fastp_reads
+        ch_reads = ch_reads_short.mix(ch_fastp_long)
+        ch_multiqc_files = ch_multiqc_files.mix(realOnly(FASTP.out.json).collect { json -> json[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(realOnly(FASTPLONG.out.json).collect { json -> json[1] }.ifEmpty([]))
     }
 
     // Re-join the (already de-hosted) FASTA inputs now that all read-quality

@@ -54,10 +54,10 @@ Reduces each sample to N reads before any downstream processing. Useful for a fa
 
 ### Illumina
 
-**Tool:** FastQC, fastp  
-**Parameter:** `--minq 20` (default), `--skip_fastp`
+**Tool:** FastQC  
+**Parameter:** `--skip_plots` to disable
 
-Generates quality score distributions, adapter content plots, and per-base quality reports. Fastp filters low-quality reads based on `--minq`.
+Generates quality score distributions, adapter content plots, and per-base quality reports. These are the default read-QC plots in the MultiQC report (fastp is off by default, see Step 2b).
 
 ### Oxford Nanopore
 
@@ -72,16 +72,34 @@ Generates read length/quality plots from raw ONT output. NanoPlot is run on the 
 ### Illumina
 
 **Tool:** Trimgalore  
-**Parameter:** `--trim`
+**Parameter:** samplesheet `trim` column (`--trim` for `--fastq_1` runs); `--skip_trimming` turns it off for all samples
 
 Removes adapter sequences from paired or single-end Illumina reads.
 
 ### Oxford Nanopore
 
 **Tool:** Porechop  
-**Parameter:** `--trim`
+**Parameter:** samplesheet `trim` column (`--trim` for `--fastq_1` runs); `--skip_trimming` turns it off for all samples
 
 Removes adapter sequences from ONT reads.
+
+---
+
+## Step 2b: Quality Filtering with fastp / fastplong (Optional, off by default)
+
+**Tool:** fastp (Illumina), fastplong (ONT / PacBio)  
+**Parameters:** `--enable_fastp`, `--minq <N>` (fastplong minimum quality, default `7`)
+
+fastp is **disabled by default**. Pass `--enable_fastp` to run it after adapter trimming and before classification. A sample fastp cannot process keeps its unfiltered reads instead of dropping out of the run.
+
+|                                | Without `--enable_fastp` (default)                                                | With `--enable_fastp`            |
+| ------------------------------ | --------------------------------------------------------------------------------- | -------------------------------- |
+| Reads passed to classification | Trimmed (samples with `trim=TRUE`) or raw reads                                   | fastp / fastplong-filtered reads |
+| `--minq`                       | Ignored                                                                           | Applied by fastplong             |
+| Output folders                 | none                                                                              | `fastp/`, `fastplong/`           |
+| MultiQC read QC                | FastQC / NanoPlot, plus Trim Galore (cutadapt) stats for samples with `trim=TRUE` | Same, plus the fastp section     |
+
+> `--skip_fastp` has been removed. It is no longer needed because fastp is off unless requested; passing it only prints a warning.
 
 ---
 
