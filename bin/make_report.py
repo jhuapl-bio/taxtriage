@@ -2315,6 +2315,46 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
         _kinds = {(manifests.get(sn) or {}).get("kind", "") for sn, _ in items}
         is_spike = "spikein" in _kinds
         spike_expect = _spike_expectations(items, manifests) if is_spike else {}
+        # The suite compares ONE level (level_pick), but a spike is keyed by the
+        # taxid of the reference it came from — usually a strain/no-rank taxid
+        # (e.g. MPXV 10244, whose species is now 3431483). Roll each spike key up to
+        # the taxid its detection carries AT level_pick, using this group's own
+        # rows, or the spike can never match and plots as 0 aligned.
+        spike_alias = {}
+        if is_spike and level_pick in ("Species", "Genus"):
+            _gsn = {sn for sn, _ in items}
+            _grows = [r for r in subsample_rows if r.get("Specimen ID") in _gsn]
+            _genus_tid = {}
+            for r in _grows:
+                if r.get("Level") == "Genus":
+                    _genus_tid[str(r.get("Genus Name") or r.get("Detected Organism") or "")] = \
+                        str(r.get("Taxonomic ID #") or "")
+            for r in _grows:
+                lv, tid = r.get("Level"), str(r.get("Taxonomic ID #") or "")
+                if not tid or lv == level_pick:
+                    continue
+                if level_pick == "Species" and lv == "Strain":
+                    tgt = str(r.get("Subkey") or "")
+                elif level_pick == "Genus" and lv in ("Strain", "Species"):
+                    tgt = _genus_tid.get(str(r.get("Genus Name") or ""), "")
+                else:
+                    tgt = ""
+                if tgt and tgt != tid:
+                    spike_alias.setdefault(tid, tgt)
+            if spike_alias:
+                for e in spike_expect.values():
+                    merged = {}
+                    for k, v in (e.get("by_taxid") or {}).items():
+                        k2 = spike_alias.get(k, k)
+                        merged[k2] = merged.get(k2, 0) + v
+                    e["by_taxid"] = merged
+                _used = {k: v for k, v in spike_alias.items()
+                         if any(k in (d.get("match_keys") or {d.get("taxid"): 1})
+                                for sn, _ in items
+                                for d in json.loads((manifests.get(sn) or {}).get("spike_detail") or "[]"))}
+                if _used:
+                    print(f"[make_report] spike-in {parent}: rolled spike keys up to {level_pick}: "
+                          + ", ".join(f"{k}->{v}" for k, v in _used.items()), file=sys.stderr)
         # Spike-in groups count observed READS and scale the spiked count (records
         # = pairs for paired data) to reads, so observed, expected, baseline and
         # the Detections table all share one unit. Depth series keep pairs.
@@ -2370,7 +2410,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                 for d in json.loads((manifests.get(sname) or {}).get("spike_detail") or "[]"):
                     keys = list((d.get("match_keys") or {}).keys()) or [str(d.get("taxid") or "")]
                     for tid in keys:
-                        tid = str(tid or "")
+                        tid = spike_alias.get(str(tid or ""), str(tid or ""))
                         if tid and tid not in name_by_tid:
                             # Single-key rows take the sheet name; a split row names each
                             # key by itself (a taxid, or the accession it is keyed by).
@@ -2458,6 +2498,18 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
             precision = tp / (tp + fp) if (tp + fp) else 0.0
             recall = tp / (tp + fn) if (tp + fn) else 0.0
             man = manifests.get(sname, {})
+            # Where this dataset's aligned reads went, per organism, for the tab's
+            # click-through breakdown. Compact rows [taxid, name, reads, tass,
+            # category], largest first; roles (TP/FP/background/…) are assigned in
+            # the browser so they follow the tab's live cutoff slider.
+            _bd = sorted(
+                ([t, v["name"], int(v[rk]), round(float(v["tass"]), 2), v["category"]]
+                 for t, v in o.items() if v[rk] > 0),
+                key=lambda r: -r[2])
+            if is_spike:
+                _exp_tids = sorted((spike_expect.get(sname) or {}).get("by_taxid") or {})
+            else:
+                _exp_tids = sorted(expected_set)
             dataset_rows.append({
                 "id": sname,
                 "replicate": d["rep"],
@@ -2471,6 +2523,9 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                 "precision": round(precision, 4),
                 "recall": round(recall, 4),
                 "f1": round(_f1(precision, recall), 4),
+                "breakdown": _bd,
+                "expected_tids": _exp_tids,
+                "is_control": bool(is_spike and (spike_expect.get(sname) or {}).get("is_control")),
             })
             all_counts.add(d["count"])
             max_rep = max(max_rep, d["rep"])
@@ -2571,6 +2626,10 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
             # baseline comparison in the tab.
             "control_dataset": (control_snames[0] if is_spike and control_snames else None),
             "background_profile": background_profile if is_spike else None,
+            # Matrix organisms (anything seen in the level-0 blank) and every taxid
+            # spiked anywhere in the series — the breakdown dialog's role rules.
+            "background_tids": sorted(background_tids) if is_spike else [],
+            "spiked_tids": sorted(_spiked_taxids(spike_expect)) if is_spike else [],
             # Cutoff recommended by maximising F1 over spiked vs matrix across the
             # whole series — the LoD curves choosing the operating point.
             "recommended_cutoff": (
