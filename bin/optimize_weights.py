@@ -2330,13 +2330,16 @@ def calculate_hmp_percentile(
         except Exception as e:
             # print(f"Error in taxid lookup for hmp: {e}")
             continue
-    # Use read fraction (0–1 scale) to match HMP distribution mean/std which are also fractions
+    # The HMP table (assets/taxid_abundance_stats.hmp.tsv.gz) stores relative
+    # abundances in PERCENT (0–100; e.g. Bacteroides in stool has mean 54.3), so
+    # express the observed read share in percent too before comparing. Comparing
+    # a 0–1 fraction against percent means drove every z-score strongly negative.
     if total_reads > 0:
-        fraction_observed = float(value.get('numreads', 0) or 0) / total_reads
+        fraction_observed = 100.0 * float(value.get('numreads', 0) or 0) / total_reads
     else:
-        # Fallback: use pre-computed read_fraction if total_reads wasn't passed
-        fraction_observed = float(value.get('read_fraction', 0) or 0)
-    sum_abus_expected = sum([x.get('mean', 0) for x in abus])  # means are already fractions (0–1)
+        # Fallback: use pre-computed read_fraction (0–1) if total_reads wasn't passed
+        fraction_observed = 100.0 * float(value.get('read_fraction', 0) or 0)
+    sum_abus_expected = sum([x.get('mean', 0) for x in abus])  # means are percent (0–100)
     # sum_abus_expected = sum([x.get('norm_abundance', 0) for x in abus])  # means are already fractions (0–1)
 
     stdsum = sum([x.get('std', 0) for x in abus])

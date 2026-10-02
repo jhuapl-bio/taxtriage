@@ -43,10 +43,12 @@ function _ttMin(arr) {
 
 const BOOT = window.HEATMAP_BOOT || {};
 let DATA = BOOT.records || [];
-let ALL_COLS = (BOOT.all_cols || []).filter((c) => c !== "High ANI Matches" && c !== "ANI Annotated");
+let ALL_COLS = (BOOT.all_cols || []).filter(
+  (c) => c !== "High ANI Matches" && c !== "ANI Annotated" && c !== "HMP Ref Key",
+);
 // Analysis-only fields carried per-record (ANI list + capability flag) that
 // must never be exposed as detections-table columns.
-const _NON_DISPLAY_COLS = new Set(["High ANI Matches", "ANI Annotated"]);
+const _NON_DISPLAY_COLS = new Set(["High ANI Matches", "ANI Annotated", "HMP Ref Key"]);
 let NUMERIC = new Set(BOOT.numeric_cols || []);
 let SAMPLE_META = BOOT.sample_meta || {};
 const PROT = BOOT.prot_data || {};

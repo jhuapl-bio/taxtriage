@@ -40,6 +40,20 @@ from collections import defaultdict
 
 import pandas as pd
 
+from hmp_outliers import HMP_COLUMNS, HMP_HIDDEN_COLUMNS, annotate_rows, annotate_rows_from_json
+
+# Raw per-organism HMP fields match_paths.py writes into the paths JSON (only
+# meaningful when it ran with --hmp). Keyed by (sample, taxid, level, name) so
+# the report can fall back to them when no --distributions table is given.
+_HMP_JSON_KEYS = ("zscore", "hmp_mean", "hmp_std", "hmp_num_samples",
+                  "hmp_site_count", "normalized_sample_site")
+_HMP_JSON_SRC = {}
+
+
+def _hmp_row_key(r):
+    return (str(r.get("Specimen ID", "")), str(r.get("Taxonomic ID #", "")),
+            str(r.get("Level", "")), str(r.get("Detected Organism", "")))
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CLI
@@ -385,6 +399,21 @@ def parse_args(argv=None):
              "(mode, series counts, replicates, seed, sim_nreads, iss_model, ...). "
              "Populates the provenance panel on the In-Silico suite tab. When absent, "
              "the params are inferred from the subsample sample names/metadata.",
+    )
+    parser.add_argument(
+        "--distributions", "--hmp", dest="distributions", default=None, metavar="TSV[.gz]",
+        help="Optional: HMP healthy-abundance table (assets/taxid_abundance_stats.hmp.tsv.gz). "
+             "When given, every detection whose sample type maps to an HMP body site (stool, "
+             "oral, nasal, skin, throat, vaginal and their synonyms) is compared against the "
+             "healthy abundance distribution for that organism -- the same outlier information "
+             "the ODR PDF shows (faded rows + the ◆ n (p%) healthy-sample marker). Without it the "
+             "report falls back to any HMP fields already present in the paths JSON.",
+    )
+    parser.add_argument(
+        "--hmp_zscore_threshold", type=float, default=2.0, metavar="Z",
+        help="HMP abundance z-score at/above which a detection is 'Elevated' relative to "
+             "healthy subjects; below it the row is 'Within healthy range' and faded. "
+             "Matches create_report.py --zscore_threshold (default 2.0). Adjustable in the report.",
     )
     parser.add_argument(
         "--keep_insilico_rows", action="store_true",
@@ -1130,6 +1159,10 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
     else:
         _assign_src = {}
 
+    if int(org.get("hmp_site_count", 0) or 0) > 0:
+        _HMP_JSON_SRC[(str(sample_name), str(org.get("key", "")), str(level),
+                       str(org.get("name", "Unknown")))] = {k: org.get(k) for k in _HMP_JSON_KEYS}
+
     return {
         "Specimen ID":         sample_name,
         "Sample Type":         sample_type,
@@ -1283,7 +1316,9 @@ def load_json_inputs(paths, mintass=0, microbial_cats=None):
     for path in paths:
         path = path.strip()
         if not os.path.isfile(path):
-            expanded = glob.glob(path)
+            # A path that isn't a file but globs to itself (e.g. a dangling
+            # symlink) would recurse forever below -- treat it as missing.
+            expanded = [p for p in glob.glob(path) if p != path]
             if not expanded:
                 print(f"[make_report] WARNING: cannot find {path!r}, skipping", file=sys.stderr)
                 continue
@@ -2782,12 +2817,42 @@ def main():
                 print("[make_report] WARNING: NO metadata row matched this run — check that the "
                       "'sample' column uses the same ids as the pipeline.", file=sys.stderr)
 
+    # ── HMP healthy-abundance outliers ────────────────────────────────────────
+    # Same information the ODR PDF marks with faded rows + "◆ n (p%)": how this
+    # detection's abundance compares with healthy subjects at the body site.
+    # Computed here (report time) so it never touches TASS scoring.
+    hmp_payload = None
+    try:
+        if args.distributions and os.path.isfile(args.distributions):
+            hmp_payload = annotate_rows(rows, args.distributions, args.hmp_zscore_threshold)
+        else:
+            if args.distributions:
+                print(f"[make_report] WARNING: HMP table {args.distributions!r} not found; "
+                      "falling back to HMP fields in the JSON input", file=sys.stderr)
+            _src = {id(r): _HMP_JSON_SRC.get(_hmp_row_key(r)) for r in rows}
+            hmp_payload = annotate_rows_from_json(rows, _src, args.hmp_zscore_threshold)
+    except Exception as exc:  # never let the optional HMP layer break the report
+        print(f"[make_report] WARNING: HMP outlier annotation failed: {exc}", file=sys.stderr)
+        hmp_payload = None
+    if hmp_payload is None:
+        for r in rows:
+            for c in list(HMP_COLUMNS) + list(HMP_HIDDEN_COLUMNS):
+                r.pop(c, None)
+        print("[make_report] HMP outliers: none (no HMP table, or no sample type maps to an HMP body site)")
+    else:
+        _st = defaultdict(int)
+        for r in rows:
+            _st[r.get("HMP Status") or "n/a"] += 1
+        print(f"[make_report] HMP outliers (z >= {args.hmp_zscore_threshold:g} = elevated): "
+              + ", ".join(f"{k}={v}" for k, v in sorted(_st.items()))
+              + f"; {len(hmp_payload.get('ref', {}))} reference distribution(s) embedded")
+
     # ── derive column lists ────────────────────────────────────────────────────
     # These fields are carried on each record for client-side analysis (the
     # Feature Compare view + capability detection) but are NOT human-displayable
     # table columns — 'High ANI Matches' is a nested list — so keep them out of
     # the column picker / detections table.
-    _NON_DISPLAY_COLS = {"High ANI Matches", "ANI Annotated"}
+    _NON_DISPLAY_COLS = {"High ANI Matches", "ANI Annotated"} | set(HMP_HIDDEN_COLUMNS)
     all_cols = [c for c in (rows[0].keys() if rows else []) if c not in _NON_DISPLAY_COLS]
     numeric_cols = []
     if rows:
@@ -3095,9 +3160,14 @@ def main():
         "pipeline_commit":       pipeline_commit,              # global commit hash or None
         "insilico_suite":        insilico_suite,               # spike-in/dilution suite or None
         "has_insilico_suite":    bool(insilico_suite),         # true when subsample datasets present
+        "hmp":                   hmp_payload,                  # HMP healthy-abundance reference (None when unavailable)
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
+    # The payload is inlined in a <script>: a sample/organism/metadata string
+    # containing "</script" or "<!--" would otherwise end or derail the element.
+    # Both escapes are no-ops for the JSON value once parsed.
+    bootstrap_json = bootstrap_json.replace("</", "<\\/").replace("<!--", "<\\u0021--")
 
     # Build inline JS instead of writing a separate heatmap_boot.js file
     bootstrap_script = f"<script>\nwindow.HEATMAP_BOOT = {bootstrap_json};\n</script>"

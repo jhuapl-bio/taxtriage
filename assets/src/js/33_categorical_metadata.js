@@ -219,6 +219,13 @@ function _renderMetaBarChart(wrapId, data, metric, opts) {
 const _GEO_CACHE = {};
 function _geoFetchJSON(key, url) {
   if (_GEO_CACHE[key] !== undefined) return _GEO_CACHE[key];
+  // Offline builds (--offline_report / --offline_report_files) embed the
+  // boundaries as window.TT_OFFLINE.geo, so nothing is fetched at view time.
+  const _emb = typeof window !== "undefined" && window.TT_OFFLINE && window.TT_OFFLINE.geo;
+  if (_emb && _emb[key] && Array.isArray(_emb[key].features)) {
+    _GEO_CACHE[key] = Promise.resolve(_emb[key]);
+    return _GEO_CACHE[key];
+  }
   // Try each URL in turn so a single CDN hiccup doesn't disable the map.
   const tryNext = (i) => {
     if (i >= url.length) return Promise.reject(new Error("all geo sources failed"));

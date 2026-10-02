@@ -179,7 +179,7 @@ async function _mapExportSvgText(width, height) {
   const tilesMissing = tileEls.length > 0 && tiles.length === 0;
 
   // ── Vector overlays, then marker icons (Leaflet's own paint order) ──────
-  ["leaflet-overlay-pane", "leaflet-marker-pane"].forEach((cls) => {
+  ["leaflet-ttBasemap-pane", "leaflet-overlay-pane", "leaflet-marker-pane"].forEach((cls) => {
     const pane = container.querySelector("." + cls);
     if (!pane) return;
     Array.from(pane.children).forEach((el) => {

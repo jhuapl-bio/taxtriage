@@ -599,11 +599,27 @@ const _BASEMAPS = [
     maxZoom: 19,
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   },
+  {
+    /* Vector country outlines drawn from Natural Earth boundaries — no tile
+       server involved. Embedded in offline builds (window.TT_OFFLINE.geo), so
+       it is the default there and the last stop of the failover chain for an
+       online report that loses its network. */
+    id: "outline",
+    label: "Country outlines (offline)",
+    url: null,
+    vector: true,
+    attribution: "Boundaries © Natural Earth",
+  },
   { id: "none", label: "No basemap", url: null },
 ];
 
-/* The default basemap for a report nobody has expressed a preference in. */
-const _BASEMAP_DEFAULT_ID = "esri-gray";
+/* True when this report was built with its libraries + boundaries embedded. */
+const _TT_OFFLINE_BUILD = !!(typeof window !== "undefined" && window.TT_OFFLINE && window.TT_OFFLINE.build);
+
+/* The default basemap for a report nobody has expressed a preference in.
+   An offline build can't reach a tile server, so it starts on the embedded
+   country outlines instead of waiting for tiles to fail one provider at a time. */
+const _BASEMAP_DEFAULT_ID = _TT_OFFLINE_BUILD ? "outline" : "esri-gray";
 
 let _basemapLayer = null;
 let _basemapId = null;
@@ -641,7 +657,9 @@ function _basemapFailover(spec, why) {
       " Switched to <b>" +
       next.label +
       "</b>." +
-      (next.url
+      (next.vector
+        ? " Drawing country outlines instead of map tiles — markers, clusters and drawn regions all still work."
+        : next.url
         ? " Pick a different basemap from the control on the map if this one is no better."
         : " No tile source answered, so the map is drawing without a basemap — markers, clusters and drawn " +
           "regions all still work."),
@@ -681,6 +699,9 @@ function _applyBasemap(id, auto) {
     _leafletMap.removeLayer(_basemapLayer);
     _basemapLayer = null;
   }
+  const _ctr0 = _leafletMap.getContainer && _leafletMap.getContainer();
+  if (_ctr0) _ctr0.style.background = "";
+  if (typeof _leafletMap.setMaxZoom === "function") _leafletMap.setMaxZoom(spec.maxZoom || 19);
   _basemapId = spec.id;
   const sel = document.getElementById("map-basemap-sel");
   if (sel && sel.value !== spec.id) sel.value = spec.id;
@@ -688,6 +709,10 @@ function _applyBasemap(id, auto) {
     try {
       localStorage.setItem(_BASEMAP_LS_KEY, spec.id);
     } catch (e) {}
+  }
+  if (spec.vector) {
+    _applyVectorBasemap(spec, auto);
+    return;
   }
   if (!spec.url) {
     // A deliberate "No basemap" is not a problem worth a banner; one the
@@ -735,6 +760,49 @@ function _applyBasemap(id, auto) {
         "no referrer, which is the usual reason), so every tile comes back as an <b>Access blocked</b> image.",
     );
   });
+}
+
+/* Vector basemap: Natural Earth country outlines in their own pane, below the
+   overlay (regions) and marker panes so switching to it later never covers
+   anything. Uses the embedded boundaries in offline builds, otherwise fetches
+   them like the metadata choropleth does; if neither works, fall over to
+   "No basemap". */
+function _applyVectorBasemap(spec, auto) {
+  if (typeof _geoCountries !== "function" || typeof L.geoJSON !== "function") {
+    _basemapFailover(spec, "could not be drawn in this browser.");
+    return;
+  }
+  if (!_leafletMap.getPane("ttBasemapPane")) {
+    const pane = _leafletMap.createPane("ttBasemapPane");
+    pane.style.zIndex = 250; // tilePane 200 < this < overlayPane 400
+    pane.style.pointerEvents = "none";
+  }
+  if (!auto) _mapNotice("");
+  _geoCountries()
+    .then((features) => {
+      if (_basemapId !== spec.id || !_leafletMap) return; // user moved on meanwhile
+      if (!features || !features.length) throw new Error("no boundaries");
+      if (_basemapLayer) _leafletMap.removeLayer(_basemapLayer);
+      _basemapLayer = L.geoJSON(
+        { type: "FeatureCollection", features: features },
+        {
+          pane: "ttBasemapPane",
+          interactive: false,
+          attribution: spec.attribution,
+          style: { color: "#9aa5b1", weight: 0.7, fillColor: "#eef1f4", fillOpacity: 1 },
+        },
+      );
+      _basemapLayer.addTo(_leafletMap);
+      const ctr = _leafletMap.getContainer();
+      if (ctr) ctr.style.background = "#cfe0ee"; // water
+    })
+    .catch(() => {
+      if (_basemapId !== spec.id) return;
+      _basemapFailover(
+        spec,
+        "boundaries could not be loaded (offline, and this report was not built with --offline_report).",
+      );
+    });
 }
 
 /* On-map control: basemap picker + the fullscreen toggle live together in the
@@ -898,7 +966,9 @@ function _doInitMap() {
   const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
   if (geoRows.length === 0) return; // no geo data
 
-  _leafletMap = L.map("map-container", { zoomControl: true });
+  // maxZoom up front: with no tile layer (offline outline basemap / "No basemap")
+  // Leaflet has no zoom range, and markercluster throws "Map has no maxZoom".
+  _leafletMap = L.map("map-container", { zoomControl: true, maxZoom: 19 });
 
   const _savedBase = _savedBasemapId();
   // `auto` on the fallback: an untouched default is not a choice worth storing.

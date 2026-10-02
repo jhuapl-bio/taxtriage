@@ -456,7 +456,7 @@
                 "offline_report": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Download the report's CDN libraries (d3, xlsx, jspdf, Leaflet, Font Awesome) at build time and embed them inline so the report opens without internet access. Requires network connectivity during the build step.",
+                    "description": "Embed the report's libraries (d3, xlsx, jspdf, Leaflet, Font Awesome) and map boundaries inline so the report opens without internet access. Uses the bundled assets/offline_report_libs and downloads only what is missing.",
                     "fa_icon": "fas fa-wifi"
                 },
                 "offline_report_files": {
@@ -837,6 +837,12 @@
                     "default": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/assets/taxid_abundance_stats.hmp.tsv.gz",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "report_hmp_zscore": {
+                    "type": "number",
+                    "default": 2.0,
+                    "description": "Interactive report: HMP abundance z-score at/above which a detection is 'Elevated' relative to healthy subjects at its body site. Detections below it are faded as 'within healthy range' (the PDF report's diamond rows). Adjustable inside the report.",
+                    "fa_icon": "fas fa-wave-square"
+                },
                 "custom_accession_map": {
                     "type": ["string", "null"],
                     "format": "file-path",
@@ -867,10 +873,19 @@
             "fa_icon": "fas fa-terminal",
             "description": "Not all steps are required to make a report, choose what to skip upfront. Be aware some analysis plots will be missing depending on what you skip.",
             "properties": {
+                "enable_plots": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Run FastQC (short reads) and NanoPlot (long reads) QC plots. Off by default.",
+                    "help_text": "The QC plots are opt-in: they add run time (NanoPlot especially, on large ONT data) and the TaxTriage report does not need them. When enabled their output is added to the MultiQC report. FASTA inputs never get them.",
+                    "fa_icon": "fas fa-chart-area"
+                },
                 "skip_plots": {
                     "type": "boolean",
-                    "description": "Skip upfront QC plotting to save time",
-                    "fa_icon": "fas fa-file-signature"
+                    "default": false,
+                    "description": "Deprecated: QC plots are now off unless --enable_plots is given. If set, it still disables them.",
+                    "fa_icon": "fas fa-file-signature",
+                    "hidden": true
                 },
                 "skip_stats": {
                     "type": "boolean",

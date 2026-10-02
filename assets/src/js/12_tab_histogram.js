@@ -1081,6 +1081,9 @@ function _renderOneRow(row) {
   if (row.__noveltyNoAlign) tr.classList.add("novelty-noalign-row");
   const _oflag = typeof ttOFlagStateFor === "function" ? ttOFlagStateFor(row) : null;
   if (_oflag) tr.classList.add("org-flagged");
+  // HMP: faded when the abundance is within the healthy range (PDF ◆ rows).
+  const _hmpCls = typeof ttHmpRowClass === "function" ? ttHmpRowClass(row) : "";
+  if (_hmpCls) tr.classList.add(_hmpCls);
   const _rk = _tblRowKey(row);
   if (_tblPinned.has(_rk)) tr.classList.add("row-pinned");
   tr.addEventListener("click", (e) => {
@@ -1152,6 +1155,20 @@ function _renderOneRow(row) {
         contentSpan.appendChild(_bc);
       }
       if (_oflag) contentSpan.insertAdjacentHTML("beforeend", _orgFlagBadgeHTML(row));
+      if (typeof ttHmpMarkerHTML === "function") {
+        const _hm = ttHmpMarkerHTML(row);
+        if (_hm) {
+          contentSpan.insertAdjacentHTML("beforeend", _hm);
+          const _hmEl = contentSpan.lastElementChild;
+          _hmEl.removeAttribute("title");
+          _hmEl.addEventListener("mouseover", (ev) => {
+            ev.stopPropagation();
+            showTip(ttHmpTipHTML(row), ev);
+          });
+          _hmEl.addEventListener("mousemove", moveTip);
+          _hmEl.addEventListener("mouseout", hideTip);
+        }
+      }
       if (row.__belowCutoffAligned || row.__noveltyNoAlign) {
         const _stb = document.createElement("span");
         _stb.innerHTML = _subThresholdBadgeHTML(row);
@@ -1236,6 +1253,9 @@ function _renderOneRow(row) {
       a.style.color = "#1565c0";
       a.addEventListener("click", (e) => e.stopPropagation());
       td.appendChild(a);
+    }
+    if ((c === "HMP Status" || c === "HMP Z-Score") && typeof ttHmpDecorateCell === "function") {
+      ttHmpDecorateCell(td, row, c);
     }
     if (c === "BSL Level" && val) {
       const n = parseInt(val.replace("BSL-", "")) || 0;

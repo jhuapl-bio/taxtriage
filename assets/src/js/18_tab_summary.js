@@ -766,6 +766,14 @@ const _SUM_COLS = [
     tip: "<b>% Reads</b><br>Percent of reads in the sample attributed to this detection row.<br><br><span style='color:#ccc'>Higher values indicate larger representation in that sample.</span>",
   },
   {
+    key: "__hmpSortZ",
+    label: "Healthy (HMP)",
+    align: "center",
+    num: true,
+    hmp: true,
+    tip: "<b>Healthy (HMP)</b><br>How this organism's abundance compares with healthy subjects at the same body site (HMP reference distributions) — the outlier information shown in the ODR PDF.<br><br><span style='color:#ccc'>Grey bar: healthy 5–95% range, box = interquartile range, tick = median (log scale). Dot: this sample's % reads — <b style='color:#2b8a3e'>green</b> within the healthy range (row faded, ◆ n (p%) marker), <b style='color:#e8590c'>orange</b> elevated (z ≥ threshold), <b style='color:#ff6b6b'>red</b> never seen in healthy subjects (<i>new</i>). <b style='color:#ff6b6b'>sterile site</b>: blood / plasma / WB / CSF-type samples, where no organism is expected in health (HMP has no distribution). Sort orders by z-score. Hover a cell for the full distribution.</span>",
+  },
+  {
     key: "# Reads Aligned",
     label: "Reads",
     align: "right",
@@ -1001,8 +1009,10 @@ function _renderSummaryTable(fd) {
     (c) =>
       !(c.key === "_spark" && _sumViewLevel !== "Strain") &&
       !(c.key === "_vfamr" && !HAS_PROT) &&
-      !(c.key === "_novelty" && !HAS_NOVELTY),
+      !(c.key === "_novelty" && !HAS_NOVELTY) &&
+      !(c.hmp && !(typeof ttHmpAvailable === "function" && ttHmpAvailable())),
   );
+  const _showHmpCol = _visSumCols.some((c) => c.hmp);
 
   // Sort
   let rows = [...fd];
@@ -1132,13 +1142,19 @@ function _renderSummaryTable(fd) {
         _rescued_s ? " rescued-row" : ""
       }${r.__belowCutoffVFAMR ? " below-cutoff-row" : ""}${r.__belowCutoffAligned ? " below-cutoff-aligned-row" : ""}${
         r.__noveltyNoAlign ? " novelty-noalign-row" : ""
-      }${_sumPinned.has(key) ? " row-pinned" : ""}">` +
+      }${_sumPinned.has(key) ? " row-pinned" : ""}${
+        typeof ttHmpRowClass === "function" && ttHmpRowClass(r) ? " " + ttHmpRowClass(r) : ""
+      }">` +
       `<td style="position:relative;padding-right:70px;padding-left:4px;white-space:nowrap;overflow:hidden;">` +
       `<span style="display:inline-block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;max-width:100%">${_orgBadges(
         r,
-      )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_oflagBadge}${_rescueBadge}${_belowCutoffBadgeHTML(
-        r,
-      )}${_subThresholdBadgeHTML(r)}${typeof insilicoBadgeHTML === "function" ? insilicoBadgeHTML(r) : ""}</span>` +
+      )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_oflagBadge}${
+        typeof ttHmpMarkerHTML === "function"
+          ? ttHmpMarkerHTML(r).replace('data-hmp-mark="1"', `data-hmp-key="${key}"`)
+          : ""
+      }${_rescueBadge}${_belowCutoffBadgeHTML(r)}${_subThresholdBadgeHTML(r)}${
+        typeof insilicoBadgeHTML === "function" ? insilicoBadgeHTML(r) : ""
+      }</span>` +
       // Star sits inline, right after the organism text.
       `${_watchStarHTML(r, true, null, true)}` +
       // Right-anchored group: level badge (flush right), then the pin hint
@@ -1176,6 +1192,7 @@ function _renderSummaryTable(fd) {
       (HAS_PROT ? `<td style="text-align:center">${_vfamrCellHTML(r)}</td>` : "") +
       (HAS_NOVELTY ? `<td style="text-align:center">${_noveltyCellHTML(r)}</td>` : "") +
       `<td style="text-align:right">${num(r["% Reads"]).toFixed(2)}</td>` +
+      (_showHmpCol ? `<td style="text-align:center">${ttHmpCellHTML(r, key)}</td>` : "") +
       `<td style="text-align:right" title="${_fmtInt(r["# Reads Aligned"])}">${
         _fmtBig(r["# Reads Aligned"]).short
       }</td>` +
@@ -1257,6 +1274,12 @@ function _renderSummaryTable(fd) {
   slice.forEach(function (r) {
     _sumSliceMap.set(_sumRowKey(r), r);
   });
+  // HMP healthy-range markers / distribution cells: hover for the full plot.
+  if (typeof ttHmpWireTips === "function") {
+    ttHmpWireTips(wrap, function (k) {
+      return _sumSliceMap.get(k);
+    });
+  }
   // In-silico dilution-series badges: hover for the depth-matched comparison
   // card, click for the full modal. No-op when the run had no --sim_subsample.
   if (typeof wireInsilicoBadges === "function") {
