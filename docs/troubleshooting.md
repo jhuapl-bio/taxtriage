@@ -26,7 +26,7 @@ Command error:
 Several steps are inherently slow:
 
 - **MultiQC** (final step) - specially with alot of samples
-- **NanoPlot** - can be very slow for ONT data; disable with `--skip_plots` if not needed
+- **NanoPlot** - can be very slow for ONT data; off by default; only runs with `--enable_plots`
 - **Alignment** - more top hits = more reference FASTAs = longer alignment
 - **De novo / reference assembly** - avoid unless needed (`--use_denovo`, `--reference_assembly`)
 - **Kraken2 loading** - use `--low_memory` if RAM is limited but this is much slower

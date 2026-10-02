@@ -22,37 +22,43 @@ Optional protein-annotation XLSX files (from `--annotate_proteins` / `--annotate
 
 ## Offline Reports
 
-The report's own data and JavaScript are always inlined, but a handful of third-party libraries (D3, SheetJS/xlsx, jsPDF, Leaflet, Leaflet.markercluster, and Font Awesome) are loaded from a public CDN when the report is opened. By default those `<script>` / `<link>` tags are left pointing at the CDN, so the machine **viewing** the report needs internet access the first time it loads. For air-gapped or intermittently connected environments, two parameters fold those libraries directly into `all.odr.html` at build time, producing a report that opens with no network at all.
+The report's own data and JavaScript are always inlined. A few third-party pieces are normally fetched from the internet when the report is **opened**: the libraries D3, SheetJS/xlsx, jsPDF, Leaflet, Leaflet.markercluster and Font Awesome (icons + webfonts), plus Natural Earth country / state boundaries (Metadata choropleth, map-group views). For air-gapped or intermittently connected viewers, the offline modes fold all of them into `all.odr.html` at build time, so the report opens and works with no network at all.
 
-| Mode                           | What happens                                                                                                                                       | When to use                                                    |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| _default_ (neither flag)       | CDN `<script>`/`<link>` tags are kept; the browser fetches the libraries on load.                                                                  | The viewing machine has internet. Smallest report file.        |
-| `--offline_report`             | The build step **downloads** each library and embeds it inline. Requires internet on the machine running the pipeline (not on the viewer).         | The pipeline host is online but report viewers may be offline. |
-| `--offline_report_files <dir>` | Local copies of the libraries in `<dir>` are embedded inline, so **no network access is needed at all**. Takes precedence over `--offline_report`. | Fully air-gapped builds, or to pin exact library versions.     |
+| Mode                           | What happens                                                                                                                                                                                                      | When to use                                                |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| _default_ (neither flag)       | CDN `<script>`/`<link>` tags are kept; the browser fetches libraries and boundaries on load.                                                                                                                      | The viewing machine has internet. Smallest report file.    |
+| `--offline_report`             | Embeds the library bundle shipped in `assets/offline_report_libs/` (no network needed, even inside the container) and **downloads only what the bundle lacks** (e.g. after a version bump in the template).       | The usual choice for offline viewers.                      |
+| `--offline_report_files <dir>` | Embeds the copies in `<dir>` with **no network access at all**; a missing file fails the build with an error naming it. Combine with `--offline_report` to download anything the folder lacks instead of failing. | Air-gapped build hosts, or to pin your own library copies. |
 
-In both offline modes the fonts and marker images those stylesheets reference (Font Awesome webfonts, Leaflet markers) are embedded as base64 data URIs too, so icons and the geographic map markers render offline as well. Only the interactive map's boundary **tiles** still come from a public map service, but the ranked geographic list works without them.
+What an offline build embeds:
 
-### Preparing an `--offline_report_files` directory
+- **Libraries**: every CDN `<script>`/`<link>` in the template, inlined.
+- **Fonts and images** that the stylesheets reference (Font Awesome webfonts, as woff2 only; Leaflet control images), as data URIs.
+- **Boundaries**: Natural Earth countries (110m) and states/provinces (50m) as `window.TT_OFFLINE.geo`, slimmed to the names the report matches on and rounded geometry (~1.5 MB).
 
-A helper script downloads exactly the files the template references (reading the CDN URLs straight out of `assets/heatmap.html`, so it stays in sync with version bumps) and saves them, along with the fonts/images each stylesheet needs, into `assets/offline_report_libs/`:
+The build then checks that no `<script src>` or `<link href>` still points at the network, and fails if one does. An offline report adds roughly 4–5 MB.
+
+**Map tiles cannot be embedded** (there are millions of them). In an offline build the Mapping tab starts on the **Country outlines (offline)** basemap, which draws the embedded boundaries as a vector map under the sample markers, clusters and drawn regions. It is coarse at street-level zoom. The tile basemaps stay in the picker for when the viewer happens to be online. An online report that loses its connection falls back through the tile providers to the outlines, then to _No basemap_.
+
+### The library bundle (`assets/offline_report_libs/`)
+
+The folder holds the libraries, fonts and boundaries, plus `manifest.json`, which maps each CDN URL in `assets/heatmap.html` to its file. That lets the build embed exactly the version the template asks for, and warn (or, with `--offline_report`, re-download) when the folder is out of date. Licenses are listed in its `README.md`.
+
+After bumping a library version in `assets/heatmap.html`, refresh it from a machine with internet access:
 
 ```bash
-python scripts/fetch_offline_report_libs.py
+python scripts/fetch_offline_report_libs.py            # -> assets/offline_report_libs
+python scripts/fetch_offline_report_libs.py -o mylibs  # or any folder for --offline_report_files
 ```
-
-Run it once from a machine with internet access, commit or copy the resulting folder alongside the pipeline, then build offline reports with:
-
-```bash
-nextflow run . <your args> --offline_report_files assets/offline_report_libs
-```
-
-Files are matched to the template's CDN URLs by **basename**, so the internal folder layout does not matter. All that matters is that each referenced file (e.g. `d3.min.js`, `all.min.css`, `fa-solid-900.woff2`) is present somewhere under the directory. If a referenced file is missing, the build fails with an error naming the file and its URL. A repo ships with a ready-made `assets/offline_report_libs/` (see its `README.md`) that you can use directly.
 
 To test the embedding without running the whole pipeline:
 
 ```bash
 python bin/report_template.py -t assets/heatmap.html \
     -o report_offline.html --offline_report_files assets/offline_report_libs
+# or rebuild a finished run's report offline:
+python bin/make_report.py -i <outdir>/report/all.odr.json -t assets/heatmap.html \
+    -o all.odr.offline.html --offline_report
 ```
 
 See [CLI Parameters → Output, Reporting, and Visualization](cli-parameters.md#output-reporting-and-visualization) for the flag reference.
@@ -190,6 +196,18 @@ Picking a new color updates the box, its member rows, the heatmap/legend, and an
 - **Sample Type** is its own column (no longer folded into the keyword chips).
 - The **sparkline** in each row draws the genome per-position coverage profile; clicking it jumps to the Histogram tab pre-filtered to that organism + sample, and hovering previews coverage across positions.
 - The **High Consequence** KPI card lists the flagged organisms and the samples they were seen in on hover.
+
+### Healthy-abundance (HMP) outliers
+
+The same outlier information the ODR PDF shows: each detection is compared with how abundant that organism is in **healthy subjects** at the sample's body site, using the HMP distributions (`assets/taxid_abundance_stats.hmp.tsv.gz`, or `--distributions`). It applies to sample types that map to an HMP site — `stool`, `oral`, `nasal`, `skin`, `throat`, `vaginal` and synonyms such as `gut`/`feces`, `sputum`/`saliva`, `NP`/`NPS`/`nasopharyngeal`/`nose`/`nares`, `OP`/`oropharyngeal`, `lung`/`BAL` (oral + nasal). Normally sterile sample types — `blood`, `plasma`, `serum`, `WB`/`whole blood`, `CSF`, `sterile`, … — have no HMP distribution because nothing is expected there in health: every detection is marked **sterile site** (never faded). Environmental, urine and unknown sample types show `—`. Matching is case-insensitive and also works on words inside the type (`NP swab`, `whole_blood`).
+
+- **z = (sample % reads − healthy mean %) / healthy sd %**. At or above the threshold (`--report_hmp_zscore`, default `2.0`, same as the PDF) the detection is **Elevated**; below it, it is **Within healthy range**: the row is faded and carries the PDF's grey `◆ n (p%) ◆` marker — _n_ healthy reference samples carried the organism, _p_% of all reference samples for the site. An organism never seen in healthy subjects at the site is **Absent in healthy** (`new`).
+- The Summary tab's **Healthy (HMP)** column plots the healthy range on a log scale (5–95 % whiskers, interquartile box, median tick) with this sample's abundance as a dot, plus the z-score; it sorts by z. Hover it (or the `◆` marker, or the Table tab's _HMP Status_ / _HMP Z-Score_ cells) for the full healthy distribution histogram, percentile and prevalence.
+- When a strain's own taxid has no healthy reference, it is compared at species level, using the species' abundance in that sample (the tooltip says so).
+- **Fade healthy-range (HMP)** and the **z <** box in the Summary and Table toolbars turn the fading off or change the threshold live.
+- The Table tab and data exports carry the figures as columns: _HMP Status_, _HMP Z-Score_, _HMP Healthy Percentile_, _HMP Healthy Mean %_, _HMP Prevalence %_, _HMP Healthy Samples_, _HMP Reference Samples_, _HMP Body Site_.
+
+This is computed when the report is built and never changes TASS scores. Rebuilding a report by hand: `make_report.py ... --distributions assets/taxid_abundance_stats.hmp.tsv.gz`.
 
 ### MicrobeRT columns
 

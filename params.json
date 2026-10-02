@@ -27,7 +27,7 @@
     "minmapq": 5,
     "refresh_download": false,
     "skip_stats": false,
-    "skip_plots": false,
+    "enable_plots": false,
     "skip_consensus": false,
     "skip_variants": false,
     "subsample": null

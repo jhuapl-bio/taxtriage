@@ -52,7 +52,7 @@ The final analysis output is an **Organism Discovery Report (ODR)** - 2 files (a
 
 TaxTriage ingests raw FASTQ data and processes it through the following major stages:
 
-1. **Read QC** - FastQC / NanoPlot / pycoQC
+1. **Read QC** - FastQC / NanoPlot (opt-in, `--enable_plots`) / pycoQC
 2. **Trimming** - Trimgalore (Illumina) / Porechop (ONT); optional fastp / fastplong quality filtering with `--enable_fastp` (off by default)
 3. **Host Removal** - Minimap2 against host reference
 4. **Metagenomics Classification** - Kraken2 (+ Krona plots)

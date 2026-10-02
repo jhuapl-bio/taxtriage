@@ -7638,3 +7638,29 @@ body.tt-map-maximised-body #banner {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── HMP healthy-abundance outliers (js/50_hmp_outliers.js) ──────────────────
+   Rows whose abundance is within the range seen in healthy subjects at the
+   body site are faded and carry the PDF's grey "◆ n (p%) ◆" marker. */
+#summary-top-wrap tr.hmp-within-row td,
+#table-body tr.hmp-within-row td {
+  opacity: 0.55;
+}
+#summary-top-wrap tr.hmp-within-row:hover td,
+#table-body tr.hmp-within-row:hover td,
+#summary-top-wrap tr.hmp-within-row.row-pinned td,
+#table-body tr.hmp-within-row.row-pinned td {
+  opacity: 0.95;
+}
+.hmp-mark {
+  color: #868e96;
+  margin-left: 5px;
+  font-style: normal;
+  font-size: 0.85em;
+  white-space: nowrap;
+  cursor: help;
+}
+.hmp-mark small {
+  font-size: 0.82em;
+  margin: 0 1px;
+}

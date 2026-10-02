@@ -1,0 +1,26 @@
+{
+    "template": "heatmap.html",
+    "files": {
+        "https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js": "d3.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js": "xlsx.full.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js": "jspdf.umd.min.js",
+        "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js": "leaflet.js",
+        "https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js": "leaflet.markercluster.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css": "all.min.css",
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/fa-brands-400.woff2": "fa-brands-400.woff2",
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/fa-regular-400.woff2": "fa-regular-400.woff2",
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/fa-solid-900.woff2": "fa-solid-900.woff2",
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/fa-v4compatibility.woff2": "fa-v4compatibility.woff2",
+        "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css": "leaflet.css",
+        "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/layers.png": "layers.png",
+        "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/layers-2x.png": "layers-2x.png",
+        "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png": "marker-icon.png",
+        "https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css": "MarkerCluster.css",
+        "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson": "ne_110m_admin_0_countries.geojson",
+        "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson": "ne_110m_admin_0_countries.geojson",
+        "https://cdn.jsdelivr.net/gh/johan/world.geo.json@master/countries.geo.json": "ne_110m_admin_0_countries.geojson",
+        "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_50m_admin_1_states_provinces.geojson": "ne_50m_admin_1_states_provinces.geojson",
+        "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/ne_50m_admin_1_states_provinces.geojson": "ne_50m_admin_1_states_provinces.geojson",
+        "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_1_states_provinces.geojson": "ne_50m_admin_1_states_provinces.geojson"
+    }
+}

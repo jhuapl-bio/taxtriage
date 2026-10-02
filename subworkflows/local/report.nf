@@ -391,9 +391,15 @@ workflow REPORT {
             // copies to embed inline. Otherwise a NO_FILE placeholder is staged and
             // the report either downloads the libs at build time (--offline_report)
             // or leaves them as CDN links (default).
+            // --offline_report alone stages the library bundle shipped in
+            // assets/offline_report_libs, so the build embeds those (no network
+            // needed inside the container) and only downloads anything missing.
+            def _bundled_libs = file("$projectDir/assets/offline_report_libs")
             ch_offline_report_files = params.offline_report_files
                 ? Channel.fromPath(params.offline_report_files, checkIfExists: true)
-                : Channel.value(file("$projectDir/assets/NO_FILE_embedding"))
+                : (params.offline_report && _bundled_libs.exists()
+                    ? Channel.value(_bundled_libs)
+                    : Channel.value(file("$projectDir/assets/NO_FILE_embedding")))
 
             // Optional sample-QC rule list (params.report_flag_rules). Staged like
             // every other optional input so it resolves inside a container; its own
@@ -436,6 +442,13 @@ workflow REPORT {
                   ).collectFile(name: 'insilico_params.json')
                 : Channel.value(file("$projectDir/assets/NO_FILE_insilico_params"))
 
+            // HMP healthy-abundance table for the report's outlier markers. Under
+            // --unknown_sample the workflow hands in a generic NO_FILE; swap it for a
+            // dedicated placeholder so it can't collide with another staged input.
+            ch_hmp_distributions = distributions
+                .map { f -> f.name.startsWith('NO_FILE') ? file("$projectDir/assets/NO_FILE_hmp") : f }
+                .first()
+
             CREATE_COMPARISON_REPORT(
                 ch_comparison_jsons,
                 ch_template,
@@ -449,7 +462,8 @@ workflow REPORT {
                 ch_flag_rules,
                 ch_insilico_suite_jsons,
                 ch_insilico_manifest_files,
-                ch_insilico_params_file
+                ch_insilico_params_file,
+                ch_hmp_distributions
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report

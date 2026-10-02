@@ -49,7 +49,7 @@ These are the outputs you should review first after a successful run:
 │   ├── <sample>.<taxid>.vcf.gz          # Variant calls
 │   └── <sample>.consensus.fa            # Consensus assembly
 │
-├── fastqc/                              # (Illumina)
+├── fastqc/                              # (Illumina, --enable_plots)
 │   ├── *_fastqc.html
 │   └── *_fastqc.zip
 │
@@ -59,7 +59,7 @@ These are the outputs you should review first after a successful run:
 ├── fastplong/                           # (--enable_fastp, ONT/PacBio)
 │   └── *.fastplong.html / *.fastplong.json / *.fastplong.log
 │
-├── nanoplot/                            # (ONT)
+├── nanoplot/                            # (ONT, --enable_plots)
 │
 ├── mergedkrakenreport/
 │   └── krakenreport.merged_mqc.tsv      # Top hits per sample from Kraken2
@@ -86,7 +86,7 @@ These are the outputs you should review first after a successful run:
 
 ### FastQC (`fastqc/`)
 
-Standard FastQC outputs for Illumina samples:
+Standard FastQC outputs for Illumina samples (only with `--enable_plots`):
 
 - `*_fastqc.html` - Interactive quality metrics report
 - `*_fastqc.zip` - Archived report with raw data

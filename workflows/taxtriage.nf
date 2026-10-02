@@ -888,7 +888,7 @@ workflow TAXTRIAGE {
     // fastp / fastplong is opt-in (--enable_fastp). When it is off, reads go straight
     // on to classification and nothing fastp-shaped reaches MultiQC, so the fastp
     // section simply drops out of the report; read QC there comes from FastQC /
-    // NanoPlot (--skip_plots off) and the Trim Galore (cutadapt) logs (samples with trim=TRUE).
+    // NanoPlot (--enable_plots) and the Trim Galore (cutadapt) logs (samples with trim=TRUE).
     if (params.enable_fastp) {
         // add an empty list to ch_fastp_in, all entries
         ch_fastp_in = ch_reads.map { meta, reads -> [meta, reads, []] }
@@ -925,12 +925,15 @@ workflow TAXTRIAGE {
     ch_reads = ch_reads.mix(ch_fasta_reads)
     // test to make sure that fastq files are not empty files
 
-    //////////////////// RUN OPTIONAL FASTQC to get qc plots for multiqc  ////////////////////
+    //////////////////// OPT-IN FASTQC / NANOPLOT qc plots for multiqc  ////////////////////
+    // Off by default (they are slow, NanoPlot especially, and the report does not
+    // need them); --enable_plots turns them on. The old --skip_plots still wins
+    // if both are given.
     // Skip QC plots for FASTA inputs: if host removal ran, those reads were
     // converted to FASTQ with dummy quality scores by samtools-fastq, so the
     // plots would be meaningless.  If host removal did not run, the files are
     // still FASTA and FastQC / NanoPlot would error.
-    if (!params.skip_plots) {
+    if (params.enable_plots && !params.skip_plots) {
         FASTQC(
             ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ && !it[0].is_fasta }
         )

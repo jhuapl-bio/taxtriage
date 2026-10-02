@@ -73,6 +73,9 @@ process CREATE_COMPARISON_REPORT {
     // Optional insilico_params.json describing the subsampling run parameters (mode, series,
     // replicates, seed, sim_nreads, iss_model, ...). Populates the suite tab's provenance panel. NO_FILE to skip.
     path(insilico_params)
+    // HMP healthy-abundance table (assets/taxid_abundance_stats.hmp.tsv.gz or --distributions).
+    // Drives the report's healthy-range outlier markers (the PDF's ◆ rows). NO_FILE_hmp to skip.
+    path(hmp_distributions)
 
     output:
         path "versions.yml"           , emit: versions
@@ -166,12 +169,15 @@ process CREATE_COMPARISON_REPORT {
     // A staged directory (not a NO_FILE placeholder) -> embed those local library
     // copies inline. Else if params.offline_report -> download + embed at build
     // time. Else (default) -> leave CDN links so the report fetches libs on load.
-    def offline_arg = ''
+    //   dir only            -> embed the dir's copies, no network (air-gapped)
+    //   dir + offline_report -> dir first, download whatever it lacks
+    //   offline_report only  -> download everything at build time
+    def offline_bits = []
     if (offline_report_files && !offline_report_files.name.startsWith('NO_FILE')) {
-        offline_arg = "--offline_report_files ${offline_report_files}"
-    } else if (params.offline_report) {
-        offline_arg = "--offline_report"
+        offline_bits << "--offline_report_files ${offline_report_files}"
     }
+    if (params.offline_report) offline_bits << "--offline_report"
+    def offline_arg = offline_bits.join(' ')
 
     // ── Sample-QC flag defaults ───────────────────────────────────────────────
     // params.report_flag_* seed the report's whole-sample rule set. Nothing here
@@ -282,6 +288,13 @@ process CREATE_COMPARISON_REPORT {
     }
     def export_arg = export_bits.join(' ')
 
+    // ── HMP healthy-abundance outliers ────────────────────────────────────────
+    def hmp_arg = ''
+    if (hmp_distributions && !hmp_distributions.name.startsWith('NO_FILE') && !hmp_distributions.name.startsWith('~')) {
+        hmp_arg = "--distributions ${hmp_distributions}"
+        if (params.report_hmp_zscore != null) hmp_arg += " --hmp_zscore_threshold ${params.report_hmp_zscore}"
+    }
+
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
@@ -291,6 +304,7 @@ process CREATE_COMPARISON_REPORT {
         ${flag_arg} \\
         ${org_flag_arg} \\
         ${insil_json_arg} ${insil_manifest_arg} ${insil_params_arg} \\
+        ${hmp_arg} \\
         ${export_arg}
 
     cat <<-END_VERSIONS > versions.yml

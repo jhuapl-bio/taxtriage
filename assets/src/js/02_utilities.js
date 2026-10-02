@@ -498,6 +498,8 @@ function _collapseSpecimens(rows) {
     // callers must not mutate through a row they were handed.
     merged.__specimenMembers = specimenMembers.slice();
     merged.__mergedCount = specimenMembers.length;
+    // HMP healthy-abundance z / percentile follow the merged "% Reads".
+    if (typeof ttHmpStamp === "function") ttHmpStamp(merged, true);
     out.push(merged);
   });
   return out;

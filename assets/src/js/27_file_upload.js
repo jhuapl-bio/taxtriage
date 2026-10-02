@@ -655,6 +655,10 @@
 
     step("BSL levels", () => _computeBslLevels());
 
+    step("HMP status", () => {
+      if (typeof ttHmpStampAll === "function") ttHmpStampAll();
+    });
+
     // Invalidate immediately, then rebuild after the browser has committed the
     // upload-status paint. Each UI surface is guarded independently so a chart
     // error cannot prevent the banner or sidebar from showing the new samples.

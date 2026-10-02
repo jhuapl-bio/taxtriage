@@ -55,15 +55,15 @@ Reduces each sample to N reads before any downstream processing. Useful for a fa
 ### Illumina
 
 **Tool:** FastQC  
-**Parameter:** `--skip_plots` to disable
+**Parameter:** off by default; `--enable_plots` to run
 
-Generates quality score distributions, adapter content plots, and per-base quality reports. These are the default read-QC plots in the MultiQC report (fastp is off by default, see Step 2b).
+Generates quality score distributions, adapter content plots, and per-base quality reports. When enabled they are added to the MultiQC report (fastp is also opt-in, see Step 2b).
 
 ### Oxford Nanopore
 
 **Tool:** pycoQC (requires `--sequencing_summary`) for Illumina, NanoPlot for ONT
 
-Generates read length/quality plots from raw ONT output. NanoPlot is run on the raw reads. pycoQC uses the sequencing summary file for additional detail.
+Generates read length/quality plots from raw ONT output. NanoPlot runs on the raw reads only with `--enable_plots`. pycoQC uses the sequencing summary file for additional detail.
 
 ---
 
