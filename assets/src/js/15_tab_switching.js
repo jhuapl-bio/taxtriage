@@ -7,6 +7,9 @@
 document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     if (btn.classList.contains("tab-disabled")) return;
+    // Hidden / disabled by the report config or the Admin dialog (51_admin_panel.js).
+    // Checked here so every programmatic btn.click() is refused too.
+    if (btn.classList.contains("tab-admin-hidden") || btn.classList.contains("tab-admin-disabled")) return;
     document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
     document.querySelectorAll(".pane").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
@@ -78,7 +81,12 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   // Tabs a keyboard user can actually land on: visible + not disabled.
   const navTabs = () =>
     allTabs().filter(
-      (b) => !b.classList.contains("hidden") && !b.classList.contains("tab-disabled") && b.offsetParent !== null,
+      (b) =>
+        !b.classList.contains("hidden") &&
+        !b.classList.contains("tab-disabled") &&
+        !b.classList.contains("tab-admin-hidden") &&
+        !b.classList.contains("tab-admin-disabled") &&
+        b.offsetParent !== null,
     );
 
   function syncA11y() {

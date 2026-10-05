@@ -3178,6 +3178,17 @@
         >
           <i class="fas fa-file-export"></i> <span>Export…</span>
         </button>
+        <!-- Admin dialog: tab visibility, every pipeline param, Nextflow run info,
+             software versions and the report config (51_admin_panel.js). Removed
+             at load when the report was built with the dialog switched off. -->
+        <button
+          type="button"
+          id="admin-btn"
+          class="sidebar-export-btn sidebar-admin-btn"
+          title="Admin — tab visibility, pipeline parameters, run info, software versions, report config"
+        >
+          <i class="fas fa-user-gear"></i> <span>Admin…</span>
+        </button>
         <label
           >Search (Sample / Organism)
           <button
@@ -4380,6 +4391,7 @@
     <script src="src/js/48_organism_flags.js"></script>
     <script src="src/js/49_organism_flags_ui.js"></script>
     <script src="src/js/50_hmp_outliers.js"></script>
+    <script src="src/js/51_admin_panel.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

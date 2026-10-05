@@ -465,6 +465,20 @@
                     "description": "Path to a directory of local copies of the report's CDN libraries (and any fonts/marker images they reference). When set, these files are embedded inline instead of being downloaded — a fully offline build. Takes precedence over --offline_report.",
                     "fa_icon": "fas fa-folder-open"
                 },
+                "report_config": {
+                    "type": ["string", "null"],
+                    "format": "file-path",
+                    "default": null,
+                    "description": "JSON or YAML file configuring the interactive report: hide, disable, reorder or rename tabs, pick the tab it opens on, and control the Admin dialog.",
+                    "help_text": "Keys: tabs.hidden / tabs.disabled / tabs.show (whitelist) / tabs.default / tabs.order / tabs.labels, admin.enabled / admin.allow_tab_toggle / admin.sections / admin.redact, title. See assets/report_config.example.yml. The report's Admin dialog can download a config built from its current tab settings.",
+                    "fa_icon": "fas fa-sliders"
+                },
+                "report_admin": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Embed run info (Nextflow run metadata, every pipeline parameter, software versions) in the interactive report for its Admin dialog. Set false to leave it out of the HTML entirely.",
+                    "fa_icon": "fas fa-user-gear"
+                },
                 "skip_consensus": {
                     "type": "boolean",
                     "description": "Skip the consensus report",

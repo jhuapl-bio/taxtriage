@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# TaxTriage interactive report config  (--report_config report_config.yml)
+#
+# Controls what the interactive report (all.odr.html) shows. Everything is
+# optional; leave a key out to keep the default. JSON with the same shape works
+# too. Check a file locally with:
+#     python bin/report_admin.py --validate report_config.yml
+# The report's Admin dialog (right panel → "Admin…") can download a config
+# built from whatever tab layout you set there.
+#
+# Tab ids: summary, heatmap, tass, sunburst, coverage, proteins (VF/AMR),
+#          histogram, novelty, explore, table, runmeta (Metadata), map
+#          (Mapping), trends, insilico.  Aliases like vfamr / metadata /
+#          mapping are accepted.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# title: "Outbreak investigation — run 42"   # banner + browser-tab title
+
+tabs:
+  hidden: [insilico] # removed from the tab bar
+  disabled: [] # visible but greyed out, not clickable
+  # show: [summary, heatmap, table]   # whitelist: every other tab is hidden
+  default: summary # tab the report opens on
+  # order: [summary, table, heatmap]  # listed tabs first, the rest keep their order
+  # labels:
+  #   table: Detections
+  #   runmeta: Samples
+  # Per-tab form also works:
+  #   novelty: hidden
+  #   explore: disabled
+
+admin:
+  enabled: true # false: no Admin button and NO run info in the HTML
+  allow_tab_toggle: true # false: viewers cannot change tab visibility
+  sections: [tabs, params, run, versions, config]
+  # Blank run-info fields / param values before they are embedded.
+  # "paths" = launch/work/project/out dirs, config files, command line, user.
+  redact: [] # e.g. [paths] or [userName, workDir, input]

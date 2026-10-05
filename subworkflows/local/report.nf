@@ -45,6 +45,7 @@ workflow REPORT {
         ch_novelty_candidates  // [meta, *.novelty.candidates.tsv] (empty unless --novelty)
         ch_annotate_reports    // [meta, *.annotate_report.tsv]    (de-novo VF/AMR; NO_FILE unless --annotate)
         ch_insilico_manifests  // [*_subsample_manifest.tsv]       (empty unless --sim_subsample)
+        ch_versions_in         // versions.yml files from upstream processes (report Admin dialog)
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
@@ -449,6 +450,31 @@ workflow REPORT {
                 .map { f -> f.name.startsWith('NO_FILE') ? file("$projectDir/assets/NO_FILE_hmp") : f }
                 .first()
 
+            // ── Admin dialog feeds ───────────────────────────────────────────────
+            // Run info: Nextflow run metadata + every param grouped by schema
+            // section, serialised once at wiring time (so it reflects the
+            // effective params after the workflow's own overrides). Software
+            // versions: the upstream versions.yml files concatenated. Both are
+            // skipped under --report_admin false, which keeps them out of the HTML.
+            ch_report_run_info = params.report_admin
+                ? Channel.value(WorkflowTaxtriage.reportRunInfoJson(workflow, params))
+                    .collectFile(name: 'report_run_info.json')
+                : Channel.value(file("$projectDir/assets/NO_FILE_run_info"))
+            ch_report_versions = params.report_admin
+                ? ch_versions_in.unique()
+                    .collectFile(name: 'report_software_versions.yml', newLine: true)
+                    .ifEmpty { file("$projectDir/assets/NO_FILE_versions") }
+                : Channel.value(file("$projectDir/assets/NO_FILE_versions"))
+            // --report_config (JSON or YAML) -> JSON. YAML is converted with the
+            // SnakeYAML bundled in Nextflow; if that is unavailable the raw file is
+            // staged and make_report.py parses it instead.
+            def _rc_json = params.report_config ? WorkflowTaxtriage.reportConfigJson(params.report_config) : null
+            ch_report_config = !params.report_config
+                ? Channel.value(file("$projectDir/assets/NO_FILE_report_config"))
+                : (_rc_json != null
+                    ? Channel.value(_rc_json).collectFile(name: 'report_config.json')
+                    : Channel.value(file(params.report_config, checkIfExists: true)))
+
             CREATE_COMPARISON_REPORT(
                 ch_comparison_jsons,
                 ch_template,
@@ -463,7 +489,10 @@ workflow REPORT {
                 ch_insilico_suite_jsons,
                 ch_insilico_manifest_files,
                 ch_insilico_params_file,
-                ch_hmp_distributions
+                ch_hmp_distributions,
+                ch_report_run_info,
+                ch_report_versions,
+                ch_report_config
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report

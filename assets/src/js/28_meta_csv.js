@@ -443,6 +443,13 @@ function __ttRunInit() {
       requestAnimationFrame(function () {
         try {
           __ttRunInit();
+          // Report config: re-apply tab visibility (init may have toggled
+          // optional tabs) and open on the configured default tab.
+          try {
+            if (typeof TTAdmin !== "undefined") TTAdmin.afterInit();
+          } catch (e2) {
+            console.warn("[taxtriage] report config:", e2);
+          }
         } catch (e) {
           console.error("[taxtriage] report init failed:", e);
           var msg = document.getElementById("tt-loading-msg");

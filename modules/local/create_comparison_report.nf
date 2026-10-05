@@ -76,6 +76,14 @@ process CREATE_COMPARISON_REPORT {
     // HMP healthy-abundance table (assets/taxid_abundance_stats.hmp.tsv.gz or --distributions).
     // Drives the report's healthy-range outlier markers (the PDF's ◆ rows). NO_FILE_hmp to skip.
     path(hmp_distributions)
+    // Admin dialog feeds. run_info: Nextflow run metadata + all params grouped by
+    // schema section (WorkflowTaxtriage.reportRunInfoJson). software_versions: the
+    // upstream versions.yml files concatenated. report_config: --report_config as
+    // JSON (or the raw YAML when Nextflow could not convert it). Each takes its
+    // own NO_FILE_* placeholder when absent.
+    path(run_info)
+    path(software_versions)
+    path(report_config)
 
     output:
         path "versions.yml"           , emit: versions
@@ -295,6 +303,22 @@ process CREATE_COMPARISON_REPORT {
         if (params.report_hmp_zscore != null) hmp_arg += " --hmp_zscore_threshold ${params.report_hmp_zscore}"
     }
 
+    // ── Admin dialog / report config ─────────────────────────────────────────
+    // (Strict syntax can't call a closure variable like a function, so the
+    // NO_FILE / '~' rename check is spelled out per input.)
+    def admin_bits = []
+    if (run_info && !run_info.name.startsWith('NO_FILE') && !run_info.name.startsWith('~')) {
+        admin_bits << "--run_info ${run_info}"
+    }
+    if (software_versions && !software_versions.name.startsWith('NO_FILE') && !software_versions.name.startsWith('~')) {
+        admin_bits << "--software_versions ${software_versions}"
+    }
+    if (report_config && !report_config.name.startsWith('NO_FILE') && !report_config.name.startsWith('~')) {
+        admin_bits << "--report_config ${report_config}"
+    }
+    if (!params.report_admin)     admin_bits << "--no_admin"
+    def admin_arg = admin_bits.join(' ')
+
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
@@ -305,6 +329,7 @@ process CREATE_COMPARISON_REPORT {
         ${org_flag_arg} \\
         ${insil_json_arg} ${insil_manifest_arg} ${insil_params_arg} \\
         ${hmp_arg} \\
+        ${admin_arg} \\
         ${export_arg}
 
     cat <<-END_VERSIONS > versions.yml

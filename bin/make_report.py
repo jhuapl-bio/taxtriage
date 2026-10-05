@@ -437,6 +437,28 @@ def parse_args(argv=None):
              "seeds for the In-Silico suite tab. When absent, target counts are parsed from the "
              "subsample sample names.",
     )
+    adm = parser.add_argument_group(
+        "Report config / Admin dialog",
+        "Tab visibility and the Admin dialog (run info, all params, software versions).",
+    )
+    adm.add_argument(
+        "--report_config", default=None, metavar="JSON|YAML",
+        help="Report config: hide / disable / reorder / rename tabs, the opening tab, Admin "
+             "dialog options. See bin/report_admin.py or assets/report_config.example.yml.",
+    )
+    adm.add_argument(
+        "--run_info", default=None, metavar="JSON",
+        help="Nextflow run metadata + every param grouped by schema section "
+             "(WorkflowTaxtriage.reportRunInfoJson). Shown in the Admin dialog.",
+    )
+    adm.add_argument(
+        "--software_versions", default=None, metavar="YML",
+        help="Concatenated nf-core versions.yml files. Shown in the Admin dialog.",
+    )
+    adm.add_argument(
+        "--no_admin", action="store_true",
+        help="Leave run info / params / versions out of the HTML and hide the Admin dialog.",
+    )
     return parser.parse_args(argv)
 
 
@@ -3136,6 +3158,44 @@ def main():
     else:
         print("[make_report] Organism QC: no default rules (no --org-flag-* criteria given).")
 
+    # ── report config + Admin dialog ─────────────────────────────────────────
+    import report_admin as _ra
+    _rc_raw = None
+    if args.report_config and not os.path.basename(args.report_config).startswith("NO_FILE"):
+        _rc_raw = _ra.load_config_file(args.report_config)
+    report_config, _rc_warn = _ra.normalize_config(
+        _rc_raw, os.path.basename(args.report_config) if _rc_raw is not None else None)
+    for _w in _rc_warn:
+        print(f"[make_report] WARNING: report config: {_w}", file=sys.stderr)
+    if args.no_admin:
+        report_config["admin"]["enabled"] = False
+    if _rc_raw is not None:
+        _t = report_config["tabs"]
+        print(f"[make_report] Report config: hidden={_t['hidden'] or '-'} disabled={_t['disabled'] or '-'} "
+              f"default={_t['default'] or '-'} admin={'on' if report_config['admin']['enabled'] else 'off'}")
+    _run_info = None
+    if args.run_info and not os.path.basename(args.run_info).startswith("NO_FILE"):
+        try:
+            _run_info = _ra.load_run_info(args.run_info)
+        except Exception as exc:
+            print(f"[make_report] WARNING: could not read --run_info: {exc}", file=sys.stderr)
+    _versions = []
+    if args.software_versions and not os.path.basename(args.software_versions).startswith("NO_FILE"):
+        try:
+            _versions = _ra.parse_versions(args.software_versions)
+        except Exception as exc:
+            print(f"[make_report] WARNING: could not read --software_versions: {exc}", file=sys.stderr)
+    admin_payload = _ra.build_admin_payload(
+        report_config, run_info=_run_info, versions=_versions,
+        argv=[os.path.basename(sys.argv[0])] + sys.argv[1:], disabled=args.no_admin,
+    )
+    if admin_payload:
+        _np = sum(len(g.get("params") or []) for g in admin_payload["param_groups"])
+        print(f"[make_report] Admin dialog: run info {'captured' if _run_info else 'not supplied'}, "
+              f"{_np} param(s), {len(_versions)} software version row(s)")
+    else:
+        print("[make_report] Admin dialog: disabled (no run info embedded)")
+
     # ── build bootstrap payload ───────────────────────────────────────────────
     payload = _sanitize({
         "records":               rows,
@@ -3161,6 +3221,8 @@ def main():
         "insilico_suite":        insilico_suite,               # spike-in/dilution suite or None
         "has_insilico_suite":    bool(insilico_suite),         # true when subsample datasets present
         "hmp":                   hmp_payload,                  # HMP healthy-abundance reference (None when unavailable)
+        "report_config":         report_config,                # tab visibility / Admin dialog options (normalised)
+        "run_info":              admin_payload,                # Admin dialog: run metadata, params, versions (None = disabled)
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))

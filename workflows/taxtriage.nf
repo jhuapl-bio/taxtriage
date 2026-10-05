@@ -1358,7 +1358,8 @@ workflow TAXTRIAGE {
                 ch_novelty_summary,     // [meta, *.novelty.summary.tsv]
                 ch_novelty_candidates,  // [meta, *.novelty.candidates.tsv]
                 ch_annotate_report_tsv, // [meta, *.annotate_report.tsv] de-novo VF/AMR for unaligned samples
-                ch_insilico_manifests   // *_subsample_manifest.tsv (empty unless --sim_subsample)
+                ch_insilico_manifests,  // *_subsample_manifest.tsv (empty unless --sim_subsample)
+                ch_versions             // software versions so far -> report Admin dialog
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }
