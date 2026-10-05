@@ -7664,3 +7664,341 @@ body.tt-map-maximised-body #banner {
   font-size: 0.82em;
   margin: 0 1px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Report config + Admin dialog (51_admin_panel.js)
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* Own classes, so the data-driven .hidden / .tab-disabled toggles never undo them. */
+.tab-btn.tab-admin-hidden {
+  display: none !important;
+}
+.tab-btn.tab-admin-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.tab-btn.tab-admin-disabled:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #c9daf8;
+}
+.sidebar-admin-btn {
+  color: #455a64;
+  border-color: #cfd8dc;
+  background: linear-gradient(#fff, #f5f7f8);
+}
+.sidebar-admin-btn:hover {
+  color: #263238;
+  border-color: #607d8b;
+  background: #eceff1;
+}
+.tt-admin-modal {
+  width: min(94vw, 900px);
+  height: min(86vh, 760px);
+  display: flex;
+  flex-direction: column;
+}
+.tt-admin-head-sub {
+  font-weight: 400;
+  font-size: 0.85em;
+  opacity: 0.8;
+  font-family: monospace;
+}
+.tt-admin-nav {
+  display: flex;
+  gap: 0.45em;
+  padding: 0.6em 1em;
+  border-bottom: 1px solid #e4ebf5;
+  background: #f8fbff;
+  overflow-x: auto;
+  flex: 0 0 auto;
+}
+.tt-admin-navbtn {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  gap: 0 0.5em;
+  align-items: center;
+  padding: 0.4em 0.7em;
+  border: 1px solid #d3e0f2;
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  color: #44526b;
+}
+.tt-admin-navbtn i {
+  grid-row: 1 / span 2;
+  color: #90a4c4;
+}
+.tt-admin-nav-main {
+  font-weight: 700;
+  font-size: 0.84em;
+  color: #24324a;
+}
+.tt-admin-nav-sub {
+  font-size: 0.72em;
+  color: #7b8aa3;
+}
+.tt-admin-navbtn:hover {
+  border-color: #90b4e0;
+  background: #f4f9ff;
+}
+.tt-admin-navbtn.active {
+  border-color: #1565c0;
+  background: #e8f1ff;
+  box-shadow: inset 0 0 0 1px #1565c0;
+}
+.tt-admin-navbtn.active i,
+.tt-admin-navbtn.active .tt-admin-nav-main {
+  color: #1565c0;
+}
+.tt-admin-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.8em 1.1em 1em;
+  font-size: 0.86em;
+  color: #2b3445;
+}
+.tt-admin-intro {
+  margin: 0 0 0.7em;
+  color: #4a5568;
+  line-height: 1.45;
+}
+.tt-admin-h {
+  margin: 0.9em 0 0.4em;
+  font-size: 0.95em;
+  color: #1565c0;
+}
+.tt-admin-h:first-child {
+  margin-top: 0;
+}
+.tt-admin-note {
+  margin: 0 0 0.7em;
+  padding: 0.45em 0.7em;
+  border-radius: 5px;
+  background: #e8f1ff;
+  color: #1e3a66;
+}
+.tt-admin-note.warn {
+  background: #fff4e0;
+  color: #7a4a00;
+}
+.tt-admin-empty {
+  padding: 1em;
+  border: 1px dashed #c5d5e8;
+  border-radius: 6px;
+  color: #5a6b85;
+  background: #fafcff;
+}
+.tt-admin-body {
+  white-space: normal;
+}
+.tt-admin-table,
+.tt-admin-kv {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.tt-admin-table td,
+.tt-admin-kv td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tt-admin-tabs th:nth-child(2),
+.tt-admin-tabs td:nth-child(2) {
+  width: 7em;
+}
+.tt-admin-table th,
+.tt-admin-table td,
+.tt-admin-kv th,
+.tt-admin-kv td {
+  padding: 0.35em 0.55em;
+  border-bottom: 1px solid #edf1f7;
+  text-align: left;
+  vertical-align: top;
+}
+.tt-admin-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f3f7fc;
+  color: #44526b;
+  font-size: 0.92em;
+  z-index: 1;
+}
+.tt-admin-table .c {
+  text-align: center;
+  width: 5.5em;
+}
+.tt-admin-kv th {
+  width: 11em;
+  color: #5a6b85;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tt-admin-table code,
+.tt-admin-kv code {
+  font-size: 0.95em;
+  word-break: break-all;
+}
+.tt-admin-tabs tr.is-hidden td:first-child {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.tt-admin-tabid {
+  margin-left: 0.35em;
+  font-family: monospace;
+  font-size: 0.85em;
+  color: #9aa7bb;
+}
+.tt-admin-pill {
+  display: inline-block;
+  padding: 0.05em 0.5em;
+  border-radius: 999px;
+  font-size: 0.82em;
+  white-space: nowrap;
+  margin: 0.1em 0;
+}
+.tt-admin-pill.ok {
+  background: #e6f4ea;
+  color: #1e6b34;
+}
+.tt-admin-pill.muted {
+  background: #eef1f5;
+  color: #7b8aa3;
+}
+.tt-admin-pill.chg {
+  background: #fff1d6;
+  color: #8a5300;
+}
+.tt-admin-na {
+  color: #9aa7bb;
+}
+.tt-admin-bool {
+  font-family: monospace;
+}
+.tt-admin-bool-true {
+  color: #1e6b34;
+}
+.tt-admin-bool-false {
+  color: #9b2c2c;
+}
+.tt-admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em 0.9em;
+  margin-bottom: 0.6em;
+}
+.tt-admin-toolbar input[type="search"] {
+  flex: 1 1 14em;
+  min-width: 10em;
+  border: 1px solid #c5d5e8;
+  border-radius: 5px;
+  padding: 0.35em 0.5em;
+}
+.tt-admin-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  white-space: nowrap;
+}
+.tt-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin-top: 0.8em;
+}
+.tt-admin-spacer {
+  flex: 1 1 auto;
+}
+.tt-admin-actions button,
+.tt-admin-toolbar button,
+.tt-admin-cmd-head button {
+  border: 1px solid #c5d5e8;
+  border-radius: 5px;
+  padding: 0.35em 0.75em;
+  background: #fff;
+  color: #1565c0;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+.tt-admin-actions button:hover,
+.tt-admin-toolbar button:hover,
+.tt-admin-cmd-head button:hover {
+  background: #e8f1ff;
+  border-color: #1565c0;
+}
+.tt-admin-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.tt-admin-group {
+  margin-bottom: 0.6em;
+  border: 1px solid #e4ebf5;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.tt-admin-group > summary {
+  cursor: pointer;
+  padding: 0.45em 0.7em;
+  background: #f3f7fc;
+  font-weight: 700;
+  color: #24324a;
+}
+.tt-admin-count {
+  font-weight: 400;
+  color: #7b8aa3;
+}
+.tt-admin-gdesc {
+  padding: 0.35em 0.7em 0;
+  color: #6b7a92;
+  font-size: 0.92em;
+}
+.tt-admin-prow.changed td {
+  background: #fffaf0;
+}
+.tt-admin-prow .pname {
+  width: 38%;
+}
+.tt-admin-prow .pdef {
+  width: 22%;
+  color: #7b8aa3;
+}
+.pdesc {
+  margin-top: 0.15em;
+  font-size: 0.86em;
+  color: #7b8aa3;
+  line-height: 1.35;
+}
+.tt-admin-pre,
+.tt-admin-cmd pre {
+  margin: 0;
+  padding: 0.6em 0.75em;
+  background: #0f1b2d;
+  color: #e3ecf8;
+  border-radius: 6px;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.tt-admin-cmd {
+  margin-top: 0.6em;
+}
+.tt-admin-cmd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.3em;
+  font-weight: 600;
+  color: #5a6b85;
+}
+.tt-admin-feats {
+  margin-top: 0.6em;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em;
+}
+body.report-pdf-printing #tt-admin-overlay {
+  display: none !important;
+}

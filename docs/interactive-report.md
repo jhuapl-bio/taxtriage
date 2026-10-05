@@ -468,6 +468,53 @@ The **Precise (lat/long)** map in Mapping & Geography carries the same button, i
 
 ---
 
+## Admin dialog and report config
+
+The **Admin…** button in the right panel opens a dialog with five sections. Clicking the banner's **Run info** button opens the same dialog at Run info.
+
+| Section           | What it shows                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Tabs**          | Every tab with checkboxes for **Visible** and **Enabled** and a radio for the tab the report **opens on**. Changes apply right away and are kept in that browser only. **Reset to report defaults** undoes them. Tabs with no data in the run are marked _no data_.                                                                                                              |
+| **Parameters**    | Every pipeline parameter, grouped by its `nextflow_schema.json` section, with its value, default and description: a complete version of MultiQC's _Workflow Summary_. You can filter by text, show only **changed** params, and download them as a Nextflow `-params-file` to reproduce the run.                                                                                 |
+| **Run info**      | Nextflow run metadata (run name, session, start time, command line, Nextflow and pipeline version, revision/commit, profile, container engine, launch/work/project/output dirs, config files), plus how this report was built: build time, sample and row counts, which optional datasets are present, the default TASS cutoff and its source, and the `make_report.py` command. |
+| **Software**      | Tool versions from the `versions.yml` files of the processes that fed the report, with a filter and CSV download. A tool reported at more than one version is flagged.                                                                                                                                                                                                           |
+| **Report config** | The configuration that currently applies, as YAML, including your tab changes. You can copy it or download it as YAML or JSON and pass it back with `--report_config`.                                                                                                                                                                                                           |
+
+Run info, parameters and versions are captured when the pipeline builds the report. Set `--report_admin false` to leave all of it out of the HTML. The Admin button is then removed too.
+
+### `--report_config`
+
+A JSON or YAML file that sets the report's layout. Every key is optional. An annotated example is in `assets/report_config.example.yml`.
+
+```yaml
+title: "Outbreak run 42" # banner + browser-tab title
+tabs:
+  hidden: [novelty, insilico] # removed from the tab bar
+  disabled: [explore] # visible but greyed out, not clickable
+  # show:   [summary, heatmap, table]   # whitelist: every other tab is hidden
+  default: heatmap # tab the report opens on
+  order: [summary, table] # listed tabs first, the rest keep their order
+  labels: { table: Detections } # rename tabs
+  # per-tab form also works:  novelty: hidden / explore: disabled
+admin:
+  enabled: true # false = no Admin button and no run info in the HTML
+  allow_tab_toggle: true # false = viewers cannot change tab visibility
+  sections: [tabs, params, run, versions, config]
+  redact: [paths] # blank run-info fields / param values before embedding
+```
+
+The tab ids are `summary`, `heatmap`, `tass`, `sunburst`, `coverage`, `proteins` (VF/AMR), `histogram`, `novelty`, `explore`, `table`, `runmeta` (Metadata), `map` (Mapping), `trends` and `insilico`. Aliases such as `vfamr`, `metadata` and `mapping` also work.
+
+`admin.redact` takes run-info field names (`userName`, `workDir`, `commandLine`, …) and param names (`input`, `db`, …). The `paths` token covers the launch, work, project and output dirs, the config files, the command line and the user name. Redacted values are replaced before they are written into the HTML.
+
+A config never changes what the pipeline computes. A hidden tab's data is still in the report and still part of the exports. Unknown keys or tab names produce a warning in the task log, not an error. You can check a file locally with:
+
+```bash
+python bin/report_admin.py --validate my_report_config.yml
+```
+
+A tab that the config hides stays hidden even when its data is present. A tab with no data, such as VF/AMR without `--annotate`, stays hidden whatever the config says.
+
 ## Related
 
 - [Output](output.md): full list of files in `report/` and elsewhere

@@ -349,7 +349,8 @@ class WorkflowTaxtriage {
         'sort_alphabetical', 'show_potentials', 'show_opportunistics',
         'show_commensals', 'show_unidentified', 'integrate_strain_table',
         'skip_multiqc', 'email_on_fail', 'plaintext_email', 'monochrome_logs',
-        'help', 'validate_params', 'show_hidden_params', 'enable_conda'
+        'help', 'validate_params', 'show_hidden_params', 'enable_conda',
+        'report_admin'
     ]
 
     public static void coerceBooleanParams(params) {
@@ -543,5 +544,154 @@ class WorkflowTaxtriage {
             files << Nextflow.file(genbank, checkIfExists: true)
         }
         return files.size() == 1 ? files[0] : files
+    }
+    //
+    // INTERACTIVE REPORT — Admin panel feeds
+    //
+    // The report's Admin dialog shows the run's Nextflow metadata and EVERY
+    // pipeline parameter grouped by its nextflow_schema.json section (like the
+    // MultiQC "Workflow Summary", but complete and with each param's default so
+    // the dialog can mark what was changed). Built here, not in the workflow
+    // body, to keep that body under the JVM's 64 KB class-constant limit.
+    //
+
+    // Longest JSON a single param value may take before it is elided. Stops
+    // config-sized maps (e.g. igenomes' params.genomes) bloating the report.
+    private static final int REPORT_PARAM_MAX_CHARS = 4000
+
+    // Make any value JSON-serialisable: Paths, GStrings, dates -> String;
+    // maps and lists recursed.
+    private static Object reportJsonSafe(v) {
+        if (v == null || v instanceof Boolean || v instanceof Number || v instanceof String) { return v }
+        if (v instanceof Map) { return v.collectEntries { k, x -> [(k.toString()): reportJsonSafe(x)] } }
+        if (v instanceof Collection) { return v.collect { reportJsonSafe(it) } }
+        if (v.getClass().isArray()) { return (v as List).collect { reportJsonSafe(it) } }
+        return v.toString()
+    }
+
+    private static Object reportClip(v) {
+        def safe = reportJsonSafe(v)
+        if (safe == null || safe instanceof Boolean || safe instanceof Number) { return safe }
+        def txt = (safe instanceof String) ? safe : groovy.json.JsonOutput.toJson(safe)
+        if (txt.length() > REPORT_PARAM_MAX_CHARS) {
+            return "(${txt.length()} characters — omitted from the report)".toString()
+        }
+        return safe
+    }
+
+    // nf-core's notion of "changed": a schema default that differs, or (no
+    // default) any non-empty value.
+    private static boolean reportParamChanged(value, dflt) {
+        if (dflt == null) { return !(value == null || value == '' || value == false) }
+        return value?.toString() != dflt?.toString()
+    }
+
+    public static String reportRunInfoJson(workflow, params) {
+        def wf = [
+            runName         : workflow.runName,
+            sessionId       : workflow.sessionId?.toString(),
+            start           : workflow.start?.toString(),
+            resume          : workflow.resume,
+            commandLine     : workflow.commandLine,
+            profile         : workflow.profile,
+            pipeline        : workflow.manifest?.name,
+            pipelineVersion : workflow.manifest?.version,
+            repository      : workflow.repository,
+            revision        : workflow.revision,
+            commitId        : workflow.commitId,
+            nextflowVersion : workflow.nextflow?.version?.toString(),
+            nextflowBuild   : workflow.nextflow?.build?.toString(),
+            containerEngine : workflow.containerEngine,
+            container       : reportClip(workflow.container),
+            launchDir       : workflow.launchDir?.toString(),
+            workDir         : workflow.workDir?.toString(),
+            projectDir      : workflow.projectDir?.toString(),
+            outdir          : params.outdir?.toString(),
+            userName        : workflow.userName,
+            configFiles     : (workflow.configFiles ?: []).collect { it.toString() },
+        ]
+
+        // Every param, grouped by schema section. Anything set but absent from
+        // the schema lands in a trailing "Other" group so nothing is hidden.
+        def groups = []
+        def seen   = [] as Set
+        try {
+            def schema = new groovy.json.JsonSlurper().parseText(
+                new File("${workflow.projectDir}/nextflow_schema.json").text)
+            def defs = (schema.get('definitions') ?: schema.get('$defs') ?: [:]) as Map
+            defs.each { gid, g ->
+                def rows = []
+                ((g.get('properties') ?: [:]) as Map).each { name, spec ->
+                    seen << name
+                    def value = params.containsKey(name) ? params.get(name) : null
+                    rows << [
+                        name       : name,
+                        value      : reportClip(value),
+                        'default'  : reportClip(spec.get('default')),
+                        type       : reportJsonSafe(spec.type),
+                        description: spec.description,
+                        hidden     : spec.hidden ? true : false,
+                        changed    : reportParamChanged(value, spec.get('default')),
+                    ]
+                }
+                if (rows) { groups << [id: gid, title: g.get('title') ?: gid, description: g.get('description'), params: rows] }
+            }
+        } catch (Exception e) {
+            // No / unreadable schema: everything falls through to "Other".
+        }
+        // Nextflow mirrors a kebab-case CLI flag (--foo-bar) as camelCase
+        // (fooBar); skip both spellings when a snake_case form is the real one.
+        def kebab = params.keySet().findAll { it.toString().contains('-') }
+        def camelOfKebab = kebab.collect { k -> k.toString().replaceAll(/-(\w)/) { m -> m[1].toUpperCase() } } as Set
+        def other = params.keySet().collect { it.toString() }.findAll { k ->
+            !seen.contains(k) && !k.contains('-') && !camelOfKebab.contains(k)
+        }.sort().collect { k ->
+            [name: k, value: reportClip(params.get(k)), 'default': null, type: null,
+             description: null, hidden: false, changed: true]
+        }
+        if (other) {
+            groups << [id: 'other', title: 'Other (not in nextflow_schema.json)',
+                       description: 'Params set by a config file or the command line that the schema does not declare.',
+                       params: other]
+        }
+
+        return groovy.json.JsonOutput.toJson([
+            captured_at: java.time.OffsetDateTime.now().toString(),
+            workflow   : reportJsonSafe(wf),
+            param_groups: groups,
+        ])
+    }
+
+    //
+    // --report_config: JSON or YAML -> JSON text for make_report.py.
+    // YAML is parsed here with the SnakeYAML that ships inside Nextflow, so the
+    // report container never needs PyYAML. Returns null when SnakeYAML is not
+    // on the classpath; the caller then stages the raw file instead and
+    // make_report.py parses it itself.
+    //
+    public static String reportConfigJson(path) {
+        def f = Nextflow.file(path.toString(), checkIfExists: true)
+        def text = f.text
+        def name = f.name.toLowerCase()
+        def parsed
+        try {
+            if (name.endsWith('.json')) {
+                parsed = new groovy.json.JsonSlurper().parseText(text)
+            } else {
+                def yamlCls
+                try {
+                    yamlCls = Class.forName('org.yaml.snakeyaml.Yaml')
+                } catch (Throwable t) {
+                    return null
+                }
+                parsed = yamlCls.getDeclaredConstructor().newInstance().load(text)
+            }
+        } catch (Exception e) {
+            Nextflow.error("--report_config ${path}: could not parse (${e.message ?: e.class.simpleName}). Expected a JSON or YAML mapping.")
+        }
+        if (parsed != null && !(parsed instanceof Map)) {
+            Nextflow.error("--report_config ${path}: the top level must be a mapping (e.g. `tabs:` / `admin:`), got ${parsed.getClass().simpleName}.")
+        }
+        return groovy.json.JsonOutput.toJson(reportJsonSafe(parsed ?: [:]))
     }
 }

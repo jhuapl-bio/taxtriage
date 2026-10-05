@@ -353,6 +353,9 @@
         novelty: typeof NOVELTY !== "undefined" && NOVELTY ? NOVELTY : { samples: {} },
         novelty_downloads: typeof NOVELTY_DL !== "undefined" && Array.isArray(NOVELTY_DL) ? NOVELTY_DL : [],
         has_novelty: !!(typeof HAS_NOVELTY !== "undefined" && HAS_NOVELTY),
+        // Report config + Admin dialog payload ride along unchanged.
+        report_config: (BOOT && BOOT.report_config) || null,
+        run_info: (BOOT && BOOT.run_info) || null,
         // User annotations typed into the report (detection-row notes +
         // custom metadata columns). Metadata cell *values* already ride
         // along on run_metadata_records above.
