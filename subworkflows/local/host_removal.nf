@@ -28,6 +28,36 @@ include { SAMTOOLS_STATS as FILTERED_STATS } from '../../modules/nf-core/samtool
 include { CHECK_GZIPPED_READS } from '../../modules/local/check_reads_exist'
 include { DOWNLOAD_DB as FILTER_DB_DOWNLOAD } from '../../modules/local/download_db'
 include { FETCH_HOST_REFS } from '../../modules/local/fetch_host_refs'
+include { FETCH_HOST_REFS as DEACON_FETCH_HOST_REFS } from '../../modules/local/fetch_host_refs'
+include { DEACON_INDEX_FETCH } from '../../modules/local/deacon_index_fetch'
+include { DEACON_INDEX_BUILD } from '../../modules/local/deacon_index_build'
+include { DEACON_FILTER } from '../../modules/local/deacon_filter'
+
+// Deacon prebuilt indexes that `deacon index fetch` knows by name.
+def deaconPrebuilt() { return ['panhuman-1', 'panmouse-1'] }
+
+// Classify a --deacon_index / hosts.config `deacon_index` value: an .idx path
+// (local or remote) is used as-is, anything else is a name to fetch.
+def deaconIndexSource(String v) {
+    if (v.endsWith('.idx') || v.contains('/')) {
+        return ['path', v]
+    }
+    if (!deaconPrebuilt().contains(v)) {
+        log.warn "Deacon index '${v}' is not a known prebuilt (${deaconPrebuilt().join(', ')}); trying 'deacon index fetch ${v}' anyway."
+    }
+    return ['fetch', v]
+}
+
+// Cache key for a Deacon index built from user FASTAs: name + a short hash of
+// path/size/mtime, so a changed file under the same name is rebuilt.
+def hostFastaKey(List paths) {
+    def files = paths.collect { p -> file(p, checkIfExists: true) }
+    def base  = files.size() == 1
+        ? files[0].name.replaceAll(/\.(fa|fna|fasta|fas)(\.gz)?$/, '').replaceAll(/\.gz$/, '')
+        : 'custom_host'
+    def sig = files.collect { f -> "${f.toUriString()}:${f.size()}:${f.lastModified()}" }.join('|')
+    return "${base}_${sig.md5().take(8)}".replaceAll(/[^A-Za-z0-9._-]/, '_')
+}
 
 workflow HOST_REMOVAL {
     take:
@@ -56,7 +86,9 @@ workflow HOST_REMOVAL {
             ],
 
         ]
-        // Resolve the de-hosting reference, in priority order:
+        // minimap2 route (default). With --use_deacon the Deacon route below is
+        // used instead and resolves its own index. Resolve the de-hosting
+        // reference, in priority order:
         //   1. --remove_reference_file : a local FASTA the user supplied
         //   2. --genome <key> with a `fasta` path (the iGenomes entries)
         //   3. --genome <key> with `accessions` (the named host targets in
@@ -68,7 +100,87 @@ workflow HOST_REMOVAL {
         ch_host_fasta = Channel.empty()
         def run_reference_removal = false
 
-        if (params.remove_reference_file){
+        def ref_list = params.remove_reference_file
+            ? params.remove_reference_file.toString().split(',').collect { it.trim() }.findAll { it }
+            : []
+        def run_deacon = false
+
+        if (params.use_deacon) {
+            // ── Deacon (minimizer-based) host depletion ────────────────────────
+            // Index resolution, first match wins:
+            //   1. --deacon_index <path.idx>          a local/remote prebuilt index
+            //   2. --deacon_index <name>              a Deacon prebuilt (panhuman-1,
+            //                                         panmouse-1), auto-fetched
+            //   3. --remove_reference_file *.idx      reuse the existing flag for an index
+            //   4. --remove_reference_file a.fa[,b.fa] build an index from local FASTA(s)
+            //   5. --genome <key> with `deacon_index` (hosts.config, e.g. human ->
+            //      panhuman-1), unless --deacon_prefer_prebuilt false
+            //   6. --genome <key> with `fasta` (iGenomes)      -> build
+            //   7. --genome <key> with `accessions`            -> fetch from NCBI, build
+            //   8. nothing given                               -> panhuman-1
+            // Fetched/built indexes are cached in --deacon_index_dir.
+            run_deacon = true
+            def mode = null
+            def idx_val = null
+            def entry_idx = genome_entry?.deacon_index ? genome_entry.deacon_index.toString() : null
+
+            if (params.deacon_index) {
+                def r_ = deaconIndexSource(params.deacon_index.toString()); mode = r_[0]; idx_val = r_[1]
+            } else if (ref_list && ref_list.every { it.endsWith('.idx') }) {
+                if (ref_list.size() > 1) {
+                    error "--use_deacon accepts a single prebuilt index; got ${ref_list.size()} .idx files in --remove_reference_file. Build one combined index from the FASTAs instead."
+                }
+                def r_ = ['path', ref_list[0]]; mode = r_[0]; idx_val = r_[1]
+            } else if (ref_list) {
+                if (ref_list.any { it.endsWith('.idx') }) {
+                    error "--remove_reference_file mixes .idx and FASTA files; pass either one Deacon index or FASTA file(s)."
+                }
+                def r_ = ['build_local', ref_list]; mode = r_[0]; idx_val = r_[1]
+            } else if (entry_idx && params.deacon_prefer_prebuilt) {
+                def r_ = deaconIndexSource(entry_idx); mode = r_[0]; idx_val = r_[1]
+            } else if (genome_entry && genome_entry.fasta) {
+                def r_ = ['build_local', [genome_entry.fasta.toString()]]; mode = r_[0]; idx_val = r_[1]
+            } else if (genome_entry && genome_entry.accessions) {
+                def r_ = ['build_host', genome_entry.accessions]; mode = r_[0]; idx_val = r_[1]
+            } else {
+                log.info "--use_deacon with no index, --remove_reference_file or --genome: defaulting to the prebuilt 'panhuman-1' index."
+                def r_ = ['fetch', 'panhuman-1']; mode = r_[0]; idx_val = r_[1]
+            }
+
+            ch_deacon_index = Channel.empty()
+            if (mode == 'path') {
+                log.info "Deacon: using index ${idx_val}"
+                ch_deacon_index = Channel.value(file(idx_val, checkIfExists: true))
+            } else if (mode == 'fetch') {
+                log.info "Deacon: fetching prebuilt index '${idx_val}' (≈3-4 GB, cached after the first run)"
+                DEACON_INDEX_FETCH(Channel.of(idx_val))
+                ch_deacon_index = DEACON_INDEX_FETCH.out.index.first()
+            } else if (mode == 'build_local') {
+                def key = (genome_entry && !ref_list) ? params.genome.toString() : hostFastaKey(idx_val)
+                log.info "Deacon: building index '${key}' from ${idx_val.join(', ')}"
+                DEACON_INDEX_BUILD(
+                    Channel.of([ key, idx_val.collect { file(it, checkIfExists: true) } ])
+                )
+                ch_deacon_index = DEACON_INDEX_BUILD.out.index.first()
+            } else if (mode == 'build_host') {
+                log.info "Deacon: building index for host target '${params.genome}' from ${idx_val} (fetched from NCBI)"
+                DEACON_FETCH_HOST_REFS(
+                    Channel.of([ params.genome, idx_val, file(params.assembly ?: params.assembly_summary_refseq ?: "$projectDir/assets/NO_FILE") ])
+                )
+                DEACON_INDEX_BUILD(
+                    DEACON_FETCH_HOST_REFS.out.fasta.map { target, fasta -> [ target, [ fasta ] ] }
+                )
+                ch_deacon_index = DEACON_INDEX_BUILD.out.index.first()
+            }
+
+            DEACON_FILTER(ch_reads, ch_deacon_index)
+            ch_filtered_reads = DEACON_FILTER.out.reads
+            ch_host_removal_stats = DEACON_FILTER.out.stats
+                .filter{ !it[0].insilico }.collect{it[1]}.ifEmpty([])
+        } else if (params.remove_reference_file){
+            if (ref_list.any { it.endsWith('.idx') }) {
+                error "--remove_reference_file points at a Deacon index (.idx); add --use_deacon, or give a FASTA for minimap2."
+            }
             ch_host_fasta = Channel.value(file(params.remove_reference_file, checkIfExists: true))
             run_reference_removal = true
         } else if (genome_entry && genome_entry.fasta) {
@@ -112,21 +224,6 @@ workflow HOST_REMOVAL {
             ch_host_removal_stats = REMOVE_HOSTREADS.out.stats
                 .filter{ !it[0].insilico }.collect{it[1]}.ifEmpty([])
 
-            // Check the filtered output and fallback to original reads if filtered reads are empty
-            CHECK_GZIPPED_READS(ch_filtered_reads, 4)
-            ch_valid_reads = CHECK_GZIPPED_READS.out.check_result
-            ch_orig_reads = ch_valid_reads.filter({
-                it[1].name == 'emptyfile.txt'
-            }).join(ch_reads).map({
-                meta, result, reads -> return [meta, reads]
-            })
-            ch_filtered_reads = ch_valid_reads.filter({
-                it[1].name == 'minimum_reads_check.txt'
-            }).join(ch_filtered_reads).map({
-                meta, result, reads -> return [meta, reads]
-            })
-            ch_reads = ch_orig_reads.mix(ch_filtered_reads)
-
             // Continue processing the final reads
             FILTERED_SAMTOOLS_INDEX(
                 ch_bam_hosts
@@ -163,7 +260,24 @@ workflow HOST_REMOVAL {
             )
             ch_reads = FILTER_KRAKEN2.out.unclassified_reads_fastq
         }
-        // filter out all ch_reads fastq files that are empty
+        // Shared by the minimap2 and Deacon routes: check the filtered output and
+        // fall back to the original reads when de-hosting left nothing (or
+        // removed the outputs because every read was host).
+        if (run_reference_removal || run_deacon){
+            CHECK_GZIPPED_READS(ch_filtered_reads, 4)
+            ch_valid_reads = CHECK_GZIPPED_READS.out.check_result
+            ch_orig_reads = ch_valid_reads.filter({
+                it[1].name == 'emptyfile.txt'
+            }).join(ch_reads).map({
+                meta, result, reads -> return [meta, reads]
+            })
+            ch_filtered_reads = ch_valid_reads.filter({
+                it[1].name == 'minimum_reads_check.txt'
+            }).join(ch_filtered_reads).map({
+                meta, result, reads -> return [meta, reads]
+            })
+            ch_reads = ch_orig_reads.mix(ch_filtered_reads)
+        }
 
     emit:
         unclassified_reads = ch_reads

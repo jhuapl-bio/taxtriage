@@ -380,8 +380,70 @@
                 "remove_reference_file": {
                     "type": "string",
                     "format": "file-path",
-                    "description": "Local FASTA file to remove host reads from your files. Used prior to kraken2.",
+                    "description": "Local FASTA file to remove host reads from your files. Used prior to kraken2. With --use_deacon this may also be a comma-separated list of FASTAs (built into one Deacon index) or a prebuilt Deacon .idx.",
                     "fa_icon": "fas fa-file-signature",
+                    "default": null
+                },
+                "use_deacon": {
+                    "type": "boolean",
+                    "description": "De-host with Deacon (fast minimizer filtering) instead of minimap2.",
+                    "help_text": "Index resolution, first match wins: `--deacon_index` (path or prebuilt name) → `--remove_reference_file` (a `.idx`, or FASTA(s) to build from) → `--genome` target's `deacon_index` (e.g. `human` → `panhuman-1`) → `--genome` iGenomes `fasta` / host-target `accessions` (built) → default `panhuman-1`. Fetched/built indexes are cached in `--deacon_index_dir`.",
+                    "fa_icon": "fas fa-filter",
+                    "default": false
+                },
+                "deacon_index": {
+                    "type": ["string", "null"],
+                    "description": "Deacon index: a path to a prebuilt .idx, or the name of a Deacon prebuilt to auto-fetch (panhuman-1, panmouse-1). Only used with --use_deacon.",
+                    "fa_icon": "fas fa-database",
+                    "default": null
+                },
+                "deacon_index_dir": {
+                    "type": ["string", "null"],
+                    "format": "directory-path",
+                    "description": "Cache directory for fetched/built Deacon indexes. Defaults to <host_reference_dir>/deacon.",
+                    "fa_icon": "fas fa-folder",
+                    "default": null
+                },
+                "deacon_index_url": {
+                    "type": "string",
+                    "description": "Base URL prebuilt Deacon indexes are downloaded from; the file fetched is <url>/<name>.k31w15.idx. The trailing /deacon/3 is the index-format version for deacon 0.13-0.15.",
+                    "fa_icon": "fas fa-link",
+                    "default": "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3"
+                },
+                "deacon_insecure_download": {
+                    "type": "boolean",
+                    "description": "Skip TLS certificate verification when downloading a prebuilt Deacon index (curl -k / wget --no-check-certificate). Only for hosts or proxies with broken CA setups.",
+                    "fa_icon": "fas fa-unlock",
+                    "default": false
+                },
+                "deacon_prefer_prebuilt": {
+                    "type": "boolean",
+                    "description": "With --use_deacon and a --genome target that names a deacon_index (human -> panhuman-1, mouse -> panmouse-1), fetch that prebuilt instead of building from the target's accessions.",
+                    "fa_icon": "fas fa-download",
+                    "default": true
+                },
+                "deacon_kmer": {
+                    "type": "integer",
+                    "description": "k-mer length for Deacon indexes built from FASTA (k + w - 1 <= 96 and odd).",
+                    "fa_icon": "fas fa-sliders-h",
+                    "default": 31
+                },
+                "deacon_window": {
+                    "type": "integer",
+                    "description": "Minimizer window size for Deacon indexes built from FASTA.",
+                    "fa_icon": "fas fa-sliders-h",
+                    "default": 15
+                },
+                "deacon_abs_threshold": {
+                    "type": ["integer", "null"],
+                    "description": "deacon filter -a: minimum distinct minimizer hits to call a read host (Deacon default 2).",
+                    "fa_icon": "fas fa-sliders-h",
+                    "default": null
+                },
+                "deacon_rel_threshold": {
+                    "type": ["number", "null"],
+                    "description": "deacon filter -r: minimum fraction of a read's minimizers that must hit (Deacon default 0.01).",
+                    "fa_icon": "fas fa-sliders-h",
                     "default": null
                 },
                 "include_singletons_hostremoval": {
@@ -783,7 +845,7 @@
                     "type": "string",
                     "description": "Name of an iGenomes reference, or of a named host target used for de-hosting.",
                     "fa_icon": "fas fa-book",
-                    "help_text": "Two kinds of key are accepted.\n\n**iGenomes keys** (`GRCh38`, `GRCm38`, ...) resolve to a FASTA under `--igenomes_base`, exactly as before. See the [nf-core website docs](https://nf-co.re/usage/reference_genomes).\n\n**Named host targets** (defined in `conf/hosts.config`) resolve to one or more RefSeq assembly accessions, which the pipeline fetches from NCBI on first use and caches in `--host_reference_dir`. Their taxids are also merged into `--remove_taxids` and `--report_flag_exclude_taxids`, so surviving host reads are kept out of the report. Available targets: `human` (9606), `aedes` (7159, 7160), `anopheles` (7165), `culex` (7176), `mosquito-any` (Aedes + Anopheles + Culex), `ixodes` (6945), `tick-any` (Ixodes). Example: `--genome mosquito-any`.\n\n`--remove_reference_file` takes priority over both."
+                    "help_text": "Two kinds of key are accepted.\n\n**iGenomes keys** (`GRCh38`, `GRCm38`, ...) resolve to a FASTA under `--igenomes_base`, exactly as before. See the [nf-core website docs](https://nf-co.re/usage/reference_genomes).\n\n**Named host targets** (defined in `conf/hosts.config`) resolve to one or more RefSeq assembly accessions, which the pipeline fetches from NCBI on first use and caches in `--host_reference_dir`. Their taxids are also merged into `--remove_taxids` and `--report_flag_exclude_taxids`, so surviving host reads are kept out of the report. Available targets: `human` (9606), `mouse` (10090), `aedes` (7159, 7160), `anopheles` (7165), `culex` (7176), `mosquito-any` (Aedes + Anopheles + Culex), `ixodes` (6945), `tick-any` (Ixodes). Example: `--genome mosquito-any`.\n\n`--remove_reference_file` takes priority over both. With `--use_deacon`, `human` and `mouse` use the Deacon prebuilt pangenome indexes (`panhuman-1`, `panmouse-1`); other targets are built into a Deacon index."
                 },
                 "host_reference_dir": {
                     "type": ["string", "null"],
