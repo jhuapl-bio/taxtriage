@@ -256,12 +256,20 @@ The [Taxid Resolution Order](#taxid-resolution-order) above runs **accession →
 
 ## Host Removal
 
-| Parameter                          | Description                                                                                                                                                   |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--genome <key>`                   | Host reference for de-hosting. Either an iGenomes key (`GRCh37`, `BDGP6`, `GRCz10`, …) or one of the named host targets below (e.g. `--genome mosquito-any`). |
-| `--host_reference_dir <path>`      | Where host-target genomes fetched from NCBI are cached. Default: `<outdir>/host_references`.                                                                  |
-| `--remove_reference_file <path>`   | FASTA file - reads aligned to these accessions are removed. Takes priority over `--genome`.                                                                   |
-| `--include_singletons_hostremoval` | Retain singleton reads during paired-end host removal. Default: `FALSE`. Ignored for MEGAHIT/diamond runs.                                                    |
+| Parameter                                           | Description                                                                                                                                                             |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--genome <key>`                                    | Host reference for de-hosting. Either an iGenomes key (`GRCh37`, `BDGP6`, `GRCz10`, …) or one of the named host targets below (e.g. `--genome mosquito-any`).           |
+| `--host_reference_dir <path>`                       | Where host-target genomes fetched from NCBI are cached. Default: `<outdir>/host_references`.                                                                            |
+| `--remove_reference_file <path>`                    | FASTA file - reads aligned to these accessions are removed. Takes priority over `--genome`.                                                                             |
+| `--include_singletons_hostremoval`                  | Retain singleton reads during paired-end host removal. Default: `FALSE`. Ignored for MEGAHIT/diamond runs.                                                              |
+| `--use_deacon`                                      | De-host with [Deacon](https://github.com/bede/deacon) (minimizer filtering) instead of minimap2. See [Deacon host depletion](#deacon-host-depletion). Default: `false`. |
+| `--deacon_index <path\|name>`                       | A prebuilt Deacon `.idx`, or a prebuilt name to auto-fetch (`panhuman-1`, `panmouse-1`).                                                                                |
+| `--deacon_index_dir <path>`                         | Cache for fetched/built Deacon indexes. Default: `<host_reference_dir>/deacon`.                                                                                         |
+| `--deacon_index_url <url>`                          | Where prebuilt indexes are downloaded from (`<url>/<name>.k31w15.idx`). Default: Deacon's own bucket, index format `3`.                                                 |
+| `--deacon_insecure_download`                        | Skip TLS certificate checks when downloading a prebuilt index (`curl -k`). Default: `false`.                                                                            |
+| `--deacon_prefer_prebuilt`                          | For `--genome human`/`mouse`, fetch the Deacon pangenome index rather than building one from the RefSeq assembly. Default: `true`.                                      |
+| `--deacon_kmer` / `--deacon_window`                 | k and minimizer window for indexes built from FASTA. Defaults: `31` / `15`.                                                                                             |
+| `--deacon_abs_threshold` / `--deacon_rel_threshold` | `deacon filter -a` / `-r` match thresholds. Defaults: Deacon's own (`2` / `0.01`).                                                                                      |
 
 ### Named host targets
 
@@ -272,7 +280,8 @@ so later runs re-use the download.
 
 | Target         | Taxids                 | RefSeq assemblies                                                          |
 | -------------- | ---------------------- | -------------------------------------------------------------------------- |
-| `human`        | 9606                   | `GCF_000001405.40`                                                         |
+| `human`        | 9606                   | `GCF_000001405.40` (Deacon: `panhuman-1`)                                  |
+| `mouse`        | 10090                  | `GCF_000001635.27` (Deacon: `panmouse-1`)                                  |
 | `aedes`        | 7159, 7160             | `GCF_002204515.2`, `GCF_035046485.1`                                       |
 | `anopheles`    | 7165                   | `GCF_943734735.2`                                                          |
 | `culex`        | 7176                   | `GCF_015732765.1`                                                          |
@@ -286,7 +295,42 @@ Because read-level removal is never complete, a target's taxids are also merged 
 an empty string to opt out of that merge for it.
 
 To add a host, add an entry to `conf/hosts.config` with `taxids`, `accessions` and a
-`description` - no code change is needed.
+`description` (plus an optional `deacon_index`) - no code change is needed.
+
+### Deacon host depletion
+
+`--use_deacon` swaps the minimap2 + samtools de-hosting step for
+[Deacon](https://github.com/bede/deacon), which discards reads sharing enough minimizers
+with a host index. It is much faster and uses ~5 GB RAM for the human pangenome. Outputs
+(`*.hostremoved.fastq.gz`, the MultiQC host-removal table, the fall-back to original reads
+when everything is host) match the minimap2 route; per-sample Deacon JSON summaries are
+also written. `--min_mapq_host` and the singleton options do not apply.
+
+The index is resolved in this order (first match wins):
+
+1. `--deacon_index /path/to/index.idx` - a local (or remote) prebuilt index.
+2. `--deacon_index panhuman-1` - a Deacon prebuilt, downloaded from `--deacon_index_url` (add `--deacon_insecure_download` if certificate checks fail on your host).
+3. `--remove_reference_file host.idx` - the existing flag, pointed at a Deacon index.
+4. `--remove_reference_file host1.fa[,host2.fa.gz,...]` - local FASTA(s), built into one index.
+5. `--genome <target>` whose `hosts.config` entry has a `deacon_index` (`human` → `panhuman-1`, `mouse` → `panmouse-1`), unless `--deacon_prefer_prebuilt false`.
+6. `--genome <iGenomes key>` - the iGenomes FASTA, built into an index.
+7. `--genome <target>` - the target's RefSeq accessions, fetched from NCBI and built into an index.
+8. Nothing given - `panhuman-1`.
+
+Fetched and built indexes are cached in `--deacon_index_dir`, so they are only
+downloaded/built once. Built indexes are named after the source (plus a short hash of
+path/size/mtime for local FASTAs) and `k`/`w`, so a changed FASTA or k/w rebuilds.
+
+```bash
+# Human pangenome, auto-downloaded
+--use_deacon --genome human
+# Mosquito vectors: fetched from NCBI, built into a Deacon index
+--use_deacon --genome mosquito-any
+# Your own host FASTAs
+--use_deacon --remove_reference_file host_a.fa.gz,host_b.fa
+# An index you already have
+--use_deacon --deacon_index /refs/panhuman-1.k31w15.idx
+```
 
 ---
 

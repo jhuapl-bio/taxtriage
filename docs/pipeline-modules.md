@@ -105,10 +105,12 @@ fastp is **disabled by default**. Pass `--enable_fastp` to run it after adapter 
 
 ## Step 3: Host Removal (Optional)
 
-**Tool:** Minimap2 or Kraken2 (with `--filter_kraken2`)
-**Parameters:** `--genome`, `--remove_reference_file`, `--min_mapq_host`, `--filter_kraken2 <k2_db>`
+**Tool:** Minimap2, Deacon (with `--use_deacon`) or Kraken2 (with `--filter_kraken2`)
+**Parameters:** `--genome`, `--remove_reference_file`, `--min_mapq_host`, `--use_deacon`, `--deacon_index`, `--filter_kraken2 <k2_db>`
 
 Reads that align to the host reference (e.g., human genome) are removed. Unclassified (non-host) reads are retained for classification.
+
+With `--use_deacon`, reads are depleted by minimizer matching against a Deacon index instead (a prebuilt pangenome such as `panhuman-1`, or one built from your host FASTA / `--genome` target). See [Deacon host depletion](cli-parameters.md#deacon-host-depletion).
 
 > Studies show Minimap2 has a slightly lower false-negative rate than Bowtie2 for host depletion. See [PMC9040843](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/) and [s41467-021-26865-w](https://www.nature.com/articles/s41467-021-26865-w).
 
