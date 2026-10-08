@@ -292,7 +292,7 @@
 })();
 
 // ── Run Metadata analysis sub-tab state ──────────────────────────────
-let _activeMetaSub = null; // "longi" | "geo" | "host" | "ghm" | "net" | "cmp"
+let _activeMetaSub = null; // "longi" | "geo" | "host" | "ghm" | "net" | "cmp" | "align"
 
 // Heavy report build. Defined as a named function (was an immediately-invoked
 // IIFE) so the deferred scheduler below can run it AFTER the loading overlay

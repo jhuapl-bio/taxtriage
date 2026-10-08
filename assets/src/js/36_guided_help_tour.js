@@ -261,8 +261,11 @@
       icon: "fa-chart-line",
       title: "Trends & group analysis",
       fig: FIG.runmeta,
-      desc: "Longitudinal change over time, host & disease breakdowns, and the group heatmap / network / cross-entry comparison — all reading the shared Group by selection.",
-      tips: ["Group by columns are defined in the Metadata tab; the bar here mirrors that selection."],
+      desc: "Longitudinal change over time, host & disease breakdowns, the group heatmap / network / cross-entry comparison — all reading the shared Group by selection — and Alignment Trends: how often each stretch of a reference is zero, low or high depth across samples.",
+      tips: [
+        "Group by columns are defined in the Metadata tab; the bar here mirrors that selection.",
+        "Alignment Trends: drag across the frequency track to zoom; the pipeline's own comparison is under Pipeline results.",
+      ],
     },
     {
       sel: "#sidebar",
@@ -871,7 +874,7 @@
         sel: "#meta-subtabs",
         icon: "fa-chart-line",
         title: "Trends sub-views",
-        desc: "Longitudinal, host & disease, group heatmap, group network and cross-entry comparison.",
+        desc: "Longitudinal, host & disease, group heatmap, group network, cross-entry comparison and alignment trends.",
         tips: ["Sub-tabs grey out until the metadata they need is present."],
       },
     ],

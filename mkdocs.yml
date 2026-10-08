@@ -175,6 +175,7 @@ nav:
           - Pipeline Modules: pipeline-modules.md
           - Output: output.md
           - Interactive Report: interactive-report.md
+          - Alignment Trends: alignment-trends.md
           - TASS Scoring: tass-scoring.md
           - Microbial Categories: microbial-categories.md
           - Novelty Detection: novelty-detection.md

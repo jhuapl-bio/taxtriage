@@ -40,6 +40,7 @@ function _switchMetaSub(id, opts) {
   if (id === "ghm" && typeof _mgBuildGroupHeatmap === "function") _mgBuildGroupHeatmap();
   if (id === "net" && typeof _mgBuildNetwork === "function") _mgBuildNetwork();
   if (id === "cmp" && typeof _buildComparison === "function") _buildComparison();
+  if (id === "align" && typeof window.drawAlignTrends === "function") window.drawAlignTrends();
 }
 
 // Inspect RUN_META and enable/disable each sub-tab; auto-switch away from
@@ -125,6 +126,9 @@ function _updateMetaSubTabStates() {
     { id: "ghm", ok: hasGroups, warn: _groupWarn },
     { id: "net", ok: hasGroups, warn: _groupWarn },
     { id: "cmp", ok: hasCmp, warn: "" },
+    // Alignment Trends reads per-sample depth profiles, not metadata — always
+    // available (the sub-pane explains itself when no profiles are present).
+    { id: "align", ok: true, warn: "" },
   ];
 
   let firstEnabled = null;

@@ -1508,7 +1508,7 @@ function _tabLabel(tab) {
 async function _renderMetaSubTabsForPdf() {
   // "ghm" / "net" are the grouping-driven views; they only render when the
   // user has an active grouping, and _switchMetaSub skips disabled tabs below.
-  const subIds = ["longi", "host", "ghm", "net", "cmp"];
+  const subIds = ["longi", "host", "ghm", "net", "cmp", "align"];
   const originalSub = _activeMetaSub;
   for (const id of subIds) {
     const btn = document.querySelector(`.meta-subtab[data-metasub="${id}"]`);
