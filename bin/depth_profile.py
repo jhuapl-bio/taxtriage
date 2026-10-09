@@ -80,9 +80,45 @@ def decode_depth(b):
     return 0.0 if b <= 0 else (2.0 ** (b / 16.0)) - 1.0
 
 
+def _window_profile_np(regions, length, window):
+    """Vectorised window_profile (numpy). Runs inside one window — almost all of
+    them on a deeply covered genome — are summed with bincount; the few that
+    straddle a window edge are split in a short Python loop."""
+    import numpy as np
+    length = int(length)
+    n = max(1, (length + window - 1) // window)
+    arr = np.asarray(regions, dtype=np.float64).reshape(-1, 3)
+    s = np.clip(arr[:, 0], 0, length).astype(np.int64)
+    e = np.clip(arr[:, 1], 0, length).astype(np.int64)
+    d = arr[:, 2]
+    keep = e > s
+    s, e, d = s[keep], e[keep], d[keep]
+    b0 = s // window
+    b1 = (e - 1) // window
+    one = b0 == b1
+    ln = (e - s)[one].astype(np.float64)
+    cov = np.bincount(b0[one], weights=ln, minlength=n)[:n]
+    dsum = np.bincount(b0[one], weights=ln * d[one], minlength=n)[:n]
+    for si, ei, di in zip(s[~one].tolist(), e[~one].tolist(), d[~one].tolist()):
+        for b in range(si // window, min(n - 1, (ei - 1) // window) + 1):
+            lo = b * window
+            ov = min(ei, lo + window, length) - max(si, lo)
+            if ov > 0:
+                cov[b] += ov
+                dsum[b] += ov * di
+    lo = np.arange(n, dtype=np.int64) * window
+    blen = np.maximum(1, np.minimum(lo + window, length) - lo).astype(np.float64)
+    return (dsum / blen).tolist(), np.minimum(100.0, cov * 100.0 / blen).tolist()
+
+
 def window_profile(regions, length, window):
     """Mean depth and percent-breadth per window from non-overlapping
     (start, end, depth) runs on one accession."""
+    if len(regions) > 2000:
+        try:
+            return _window_profile_np(regions, length, window)
+        except ImportError:
+            pass
     n = max(1, (int(length) + window - 1) // window)
     dsum = [0.0] * n
     cov = [0] * n
