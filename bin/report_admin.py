@@ -70,6 +70,9 @@ TAB_ALIASES = {
     "vfamr": "proteins", "vf_amr": "proteins", "vf/amr": "proteins", "amr": "proteins",
     "vf": "proteins", "protein": "proteins",
     "histograms": "histogram", "hist": "histogram",
+    # Alignment Trends is a sub-tab of Trends, so its names address that tab.
+    "alignment_trends": "trends", "align_trends": "trends", "aligntrends": "trends",
+    "depth_trends": "trends",
     "tass_comparison": "tass",
     "metadata": "runmeta", "run_metadata": "runmeta", "meta": "runmeta",
     "mapping": "map", "geo": "map",

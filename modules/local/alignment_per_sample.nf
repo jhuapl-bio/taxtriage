@@ -97,6 +97,8 @@ process ALIGNMENT_PER_SAMPLE {
     def output_dir = "search_results"
     def compress_species = params.rank ? " --rank ${params.rank} " : " "
     def pident = params.pident ? " --pident ${params.pident} " : " "
+    // Windowed per-reference depth profile for the Alignment Trends tab / --alignment_trends
+    def depth_profile = params.depth_profile_windows != null ? " --depth_profile_windows ${params.depth_profile_windows} " : " "
 
     /* groovylint-disable-next-line UnnecessaryCollectCall */
     def fastas_arg = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
@@ -154,7 +156,7 @@ process ALIGNMENT_PER_SAMPLE {
         $workflow_revision $commitID $platform $sampletype_thresholds \\
         $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $insilico_flag $parent_arg $reward_factor $dispersion_factor \\
         $mapq_breadth_power $mapq_gini_power $rescue_args \\
-        $annotate_report_arg $pident \\
+        $annotate_report_arg $pident $depth_profile \\
         $meta_csv_arg
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true

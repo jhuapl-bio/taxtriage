@@ -75,7 +75,9 @@
     try {
       const raw = atob(bh.b64);
       const bins = Array.from({ length: raw.length }, (_, i) => raw.charCodeAt(i));
-      return { bin_size: bh.bin_size, total_len: bh.total_len, bins, breaks: bh.breaks || [0] };
+      // Keep every other field (contig_names, covered_intervals) — the
+      // specimen-union and Alignment Trends views read them.
+      return Object.assign({}, bh, { bins, breaks: bh.breaks || [0] });
     } catch (e) {
       return null;
     }
@@ -91,6 +93,9 @@
       contigs: strain.contigs || [],
       depth_histogram: strain.depth_histogram || {},
       breadth_histogram: _decodeBreadthHist(strain.breadth_histogram),
+      // Cross-sample depth profile (Alignment Trends tab); kept encoded and
+      // decoded lazily by 52_tab_align_trends.js.
+      depth_profile: strain.depth_profile || null,
     };
   }
 

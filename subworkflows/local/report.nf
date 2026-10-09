@@ -26,6 +26,7 @@ include { ORGANISM_MERGE_REPORT as SINGLE_REPORT } from '../../modules/local/rep
 include { ORGANISM_MERGE_REPORT as SINGLE_REPORT_INSILICO } from '../../modules/local/report_merge'
 include { CREATE_COMPARISON_REPORT } from '../../modules/local/create_comparison_report'
 include { COMBINE_SAMPLES_JSON } from '../../modules/local/combine_samples_json'
+include { ALIGNMENT_TRENDS } from '../../modules/local/alignment_trends'
 include { NOVELTY_COLLECT } from '../../modules/local/novelty_collect'
 include { MICROBERT_PREDICT } from '../../modules/local/microbert_predict'
 include { MICROBERT_PARSE } from '../../modules/local/microbert_parse'
@@ -314,6 +315,17 @@ workflow REPORT {
                 .map { meta, json -> json }
                 .collect()
 
+            // ── Cross-sample alignment trends (on unless --alignment_trends false) ─
+            // Zero / low / high depth window frequencies + recurrent regions over
+            // the real (non-control, non-simulated) samples, from the depth_profile
+            // each per-sample JSON carries. Published to <outdir>/alignment_trends/.
+            // Its JSON is also embedded in the HTML report (Trends > Alignment Trends).
+            ch_alignment_trends_json = Channel.value(file("$projectDir/assets/NO_FILE_alignment_trends"))
+            if (params.alignment_trends && params.depth_profile_windows) {
+                ALIGNMENT_TRENDS( ch_comparison_jsons )
+                ch_alignment_trends_json = ALIGNMENT_TRENDS.out.json
+            }
+
             // ── Protein annotation XLSX files (only from --annotate_proteins /
             //    --annotate_meta; not from use_diamond or get_features) ──────────
             ch_prot_annotations = ORGANISM_MERGE_REPORT.out.annot_xlsx
@@ -492,7 +504,8 @@ workflow REPORT {
                 ch_hmp_distributions,
                 ch_report_run_info,
                 ch_report_versions,
-                ch_report_config
+                ch_report_config,
+                ch_alignment_trends_json
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report

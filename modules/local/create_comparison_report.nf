@@ -84,6 +84,10 @@ process CREATE_COMPARISON_REPORT {
     path(run_info)
     path(software_versions)
     path(report_config)
+    // all.alignment_trends.json from ALIGNMENT_TRENDS (--alignment_trends), shown in
+    // Trends > Alignment Trends as the pipeline's cross-sample comparison.
+    // NO_FILE_alignment_trends placeholder when the step is off.
+    path(alignment_trends_json)
 
     output:
         path "versions.yml"           , emit: versions
@@ -318,6 +322,9 @@ process CREATE_COMPARISON_REPORT {
     }
     if (!params.report_admin)     admin_bits << "--no_admin"
     def admin_arg = admin_bits.join(' ')
+    def trends_arg = (alignment_trends_json && !alignment_trends_json.name.startsWith('NO_FILE') && !alignment_trends_json.name.startsWith('~'))
+        ? "--alignment_trends_json ${alignment_trends_json}"
+        : ''
 
     """
     make_report.py -i ${json_inputs} \\
@@ -329,7 +336,7 @@ process CREATE_COMPARISON_REPORT {
         ${org_flag_arg} \\
         ${insil_json_arg} ${insil_manifest_arg} ${insil_params_arg} \\
         ${hmp_arg} \\
-        ${admin_arg} \\
+        ${admin_arg} ${trends_arg} \\
         ${export_arg}
 
     cat <<-END_VERSIONS > versions.yml

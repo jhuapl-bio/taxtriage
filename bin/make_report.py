@@ -446,6 +446,12 @@ def parse_args(argv=None):
         help="Report config: hide / disable / reorder / rename tabs, the opening tab, Admin "
              "dialog options. See bin/report_admin.py or assets/report_config.example.yml.",
     )
+    parser.add_argument(
+        "--alignment_trends_json", default=None, metavar="JSON",
+        help="all.alignment_trends.json from bin/alignment_trends.py (--alignment_trends). Embedded "
+             "so the Trends > Alignment Trends sub-tab can show the pipeline's cross-sample "
+             "comparison next to the live, adjustable analysis.",
+    )
     adm.add_argument(
         "--run_info", default=None, metavar="JSON",
         help="Nextflow run metadata + every param grouped by schema section "
@@ -1397,6 +1403,8 @@ def load_json_inputs(paths, mintass=0, microbial_cats=None):
                                 }
                                 if _bhist:
                                     _cd_entry["breadth_histogram"] = _bhist
+                                if strain.get("depth_profile"):
+                                    _cd_entry["depth_profile"] = strain["depth_profile"]
                                 contig_data[_key] = _cd_entry
             continue
 
@@ -1434,6 +1442,8 @@ def load_json_inputs(paths, mintass=0, microbial_cats=None):
                         }
                         if _bhist:
                             _cd_entry["breadth_histogram"] = _bhist
+                        if strain.get("depth_profile"):
+                            _cd_entry["depth_profile"] = strain["depth_profile"]
                         contig_data[_key] = _cd_entry
 
     return rows, sample_meta, contig_data
@@ -3196,6 +3206,33 @@ def main():
     else:
         print("[make_report] Admin dialog: disabled (no run info embedded)")
 
+    # ── Pipeline-side alignment trends (--alignment_trends) ───────────────────
+    # The per-window table is dropped (the report recomputes windows live from
+    # each JSON's depth_profile); the reference summary, recurrent regions and
+    # per-sample rows are what the "Pipeline results" view needs.
+    alignment_trends = None
+    _atj = args.alignment_trends_json
+    if _atj and not os.path.basename(_atj).startswith("NO_FILE") and os.path.isfile(_atj):
+        try:
+            with open(_atj) as fh:
+                _at = json.load(fh)
+            _MAX_AT_REGIONS = 20000
+            _regs = _at.get("regions") or []
+            alignment_trends = {
+                "params":     _at.get("params") or {},
+                "n_samples":  _at.get("n_samples"),
+                "references": _at.get("references") or [],
+                "regions":    _regs[:_MAX_AT_REGIONS],
+                "n_regions":  len(_regs),
+                "samples":    _at.get("samples") or [],
+                "source":     os.path.basename(_atj),
+            }
+            print(f"[make_report] Alignment trends: {len(alignment_trends['references'])} reference(s), "
+                  f"{len(_regs)} recurrent region(s) embedded"
+                  + (f" (capped at {_MAX_AT_REGIONS})" if len(_regs) > _MAX_AT_REGIONS else ""))
+        except Exception as exc:
+            print(f"[make_report] WARNING: could not read --alignment_trends_json: {exc}", file=sys.stderr)
+
     # ── build bootstrap payload ───────────────────────────────────────────────
     payload = _sanitize({
         "records":               rows,
@@ -3223,6 +3260,7 @@ def main():
         "hmp":                   hmp_payload,                  # HMP healthy-abundance reference (None when unavailable)
         "report_config":         report_config,                # tab visibility / Admin dialog options (normalised)
         "run_info":              admin_payload,                # Admin dialog: run metadata, params, versions (None = disabled)
+        "alignment_trends":      alignment_trends,             # pipeline --alignment_trends results (None when not run)
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))

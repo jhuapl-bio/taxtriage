@@ -653,6 +653,25 @@ A malformed rule is reported on stderr and skipped rather than failing the run. 
 
 ---
 
+## Alignment Trends
+
+Cross-sample frequency of zero, low and high depth windows along each reference, and the recurrent regions they form. Full description: [Alignment Trends](alignment-trends.md).
+
+| Parameter                              | Default | Description                                                                                                            |
+| -------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `--depth_profile_windows`              | `400`   | Target windows per reference for the depth profile in every per-sample JSON (feeds the report tab). `0` disables it.   |
+| `--alignment_trends`                   | `true`  | Run the pipeline-side analysis; writes `<outdir>/alignment_trends/` and embeds it in the report. `false` turns it off. |
+| `--trend_min_samples`                  | `2`     | Counted samples needed before a reference or window is analysed.                                                       |
+| `--trend_min_reads`                    | `10`    | Reads a sample needs on a reference to count.                                                                          |
+| `--trend_min_reads_per_window`         | `20`    | Expected reads per window (reads × window ÷ reference length) for a sample to count there.                             |
+| `--trend_low_frac`                     | `0.2`   | LOW = window depth below this × the sample's mean depth.                                                               |
+| `--trend_high_frac`                    | `3.0`   | HIGH = window depth above this × the sample's mean depth.                                                              |
+| `--trend_low_abs` / `--trend_high_abs` | –       | Absolute depth cutoffs; override the relative ones.                                                                    |
+| `--trend_min_freq`                     | `0.5`   | Fraction of counted samples a state must recur in to form a region.                                                    |
+| `--trend_min_region_windows`           | `1`     | Minimum consecutive windows per region.                                                                                |
+| `--trend_plots`                        | `10`    | PNG plots for the top N references (`0` = none).                                                                       |
+| `--trend_matrix`                       | `false` | Also write the long per-sample × window matrix TSV.                                                                    |
+
 ## Deprecated Parameters
 
 These parameters are no longer actively supported:

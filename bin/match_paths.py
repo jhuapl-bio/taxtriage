@@ -605,6 +605,11 @@ def parse_args(argv=None):
                         help="Bin size (bp) for the positional breadth/depth histogram embedded in the JSON "
                              "output and rendered as a coverage track in heatmap.html. Larger values reduce "
                              "JSON size; 2000 bp is a good default for bacterial genomes. Set to 0 to disable.")
+    parser.add_argument("--depth_profile_windows", type=int, default=400,
+                        help="Target number of windows per strain for the cross-sample depth_profile embedded "
+                             "in the JSON (read by alignment_trends.py and the report's Alignment Trends tab). "
+                             "Window size is the smallest 100*2^k bp giving <= this many windows over the "
+                             "strain's total reference length. Set to 0 to disable.")
     parser.add_argument("--min_threshold", type=float, default=0.2, help="Min Jaccard similarity to report.")
     parser.add_argument("--abu_file", required=False, help="Path to ground truth coverage file (abu.txt).")
     parser.add_argument("--use_variance", required=False, action='store_true', help="Use variance instead of Gini index.")
@@ -3788,6 +3793,32 @@ def main():
                 if _ivals and len(_ivals) <= _MAX_COVERED_INTERVAL_NUMS:
                     _breadth_bins_by_key[_skey]['covered_intervals'] = _ivals
 
+    # ── Cross-sample depth profile (Alignment Trends) ────────────────────────
+    # Per-accession windowed mean depth + breadth for EVERY accession of the
+    # strain (zero-read ones included), each in its own coordinates and on a
+    # fixed window ladder so samples line up. See bin/depth_profile.py.
+    _depth_profile_by_key = {}
+    _dp_target = int(getattr(args, 'depth_profile_windows', 400) or 0)
+    if _dp_target > 0:
+        try:
+            from depth_profile import build_profile as _build_depth_profile
+            _dp_accs = defaultdict(list)
+            for _acc, _hit in reference_hits.items():
+                _dp_accs[str(_hit.get('key', _acc))].append(
+                    (_acc, int(_hit.get('length', 0) or 0), _hit.get('covered_regions') or []))
+            for _skey, _accs in _dp_accs.items():
+                if not any(_r for _, _, _r in _accs):
+                    continue
+                _rl_n = sum(float(reference_hits[_a].get('numreads', 0) or 0) for _a, _, _ in _accs)
+                _rl = (sum(float(reference_hits[_a].get('avg_read_length', 0) or 0) *
+                           float(reference_hits[_a].get('numreads', 0) or 0) for _a, _, _ in _accs) / _rl_n
+                       if _rl_n else None)
+                _prof = _build_depth_profile(_accs, _dp_target, read_len=_rl, reads=_rl_n)
+                if _prof:
+                    _depth_profile_by_key[_skey] = _prof
+        except Exception as _dp_err:
+            print(f"WARNING: depth_profile skipped: {_dp_err}")
+
     # Sort contigs by reads desc, cap at 100 per strain (prevent JSON bloat)
     for _skey in _contig_by_key:
         _contig_by_key[_skey].sort(key=lambda x: x['reads'], reverse=True)
@@ -3871,6 +3902,9 @@ def main():
                 _dhist = dict(_depth_hist_by_key.get(_skey, {}))
                 if _dhist and any(_dhist.values()):
                     _strain['depth_histogram'] = _dhist
+                _dprof = _depth_profile_by_key.get(_skey)
+                if _dprof:
+                    _strain['depth_profile'] = _dprof
                 _bbins = _breadth_bins_by_key.get(_skey)
                 if _bbins and _bbins.get('bins'):
                     import base64 as _b64

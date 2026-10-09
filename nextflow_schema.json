@@ -1711,6 +1711,93 @@
                     "fa_icon": "fas fa-filter"
                 }
             }
+        },
+        "alignment_trends": {
+            "title": "Alignment trends",
+            "type": "object",
+            "fa_icon": "fas fa-wave-square",
+            "description": "Cross-sample analysis of zero, low and high depth regions in the alignments.",
+            "properties": {
+                "depth_profile_windows": {
+                    "type": "integer",
+                    "default": 400,
+                    "description": "Target number of windows per reference for the depth profile embedded in every per-sample JSON (feeds the report's Alignment Trends tab and --alignment_trends). 0 disables it.",
+                    "help_text": "The window size is the smallest 100*2^k bp that gives at most this many windows over the reference's total length, so every sample of a reference lands on the same (or an integer-multiple) grid.",
+                    "fa_icon": "fas fa-ruler-horizontal"
+                },
+                "alignment_trends": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Run the cross-sample alignment trend analysis (on by default; --alignment_trends false turns it off): how often each window of each reference is zero, low or high depth across samples, and the recurrent regions.",
+                    "help_text": "Outputs <outdir>/alignment_trends/all.alignment_trends.{regions,windows,samples,summary}.tsv, .json, .xlsx and per-reference PNGs. Recurrent zero/low regions highlight parts of the reference assemblies the samples do not carry (deletions, divergent or novel loci); recurrent high regions highlight repeats, rRNA operons, mobile elements or plasmid copy number.",
+                    "fa_icon": "fas fa-wave-square"
+                },
+                "trend_min_samples": {
+                    "type": "integer",
+                    "default": 2,
+                    "description": "Informative samples needed before a reference or window is analysed.",
+                    "fa_icon": "fas fa-users"
+                },
+                "trend_min_reads": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Minimum reads a sample must have on a reference to count toward its trends.",
+                    "fa_icon": "fas fa-filter"
+                },
+                "trend_min_reads_per_window": {
+                    "type": "number",
+                    "default": 20,
+                    "description": "Minimum expected reads per window (sample reads x window / reference length) for a sample to count toward a window's zero/low/high frequency.",
+                    "help_text": "Below this, empty or thin windows are mostly Poisson sampling noise rather than real gaps.",
+                    "fa_icon": "fas fa-filter"
+                },
+                "trend_low_frac": {
+                    "type": "number",
+                    "default": 0.2,
+                    "description": "LOW depth = window depth below this fraction of the sample's mean depth on that reference.",
+                    "fa_icon": "fas fa-arrow-down"
+                },
+                "trend_high_frac": {
+                    "type": "number",
+                    "default": 3.0,
+                    "description": "HIGH depth = window depth above this multiple of the sample's mean depth on that reference.",
+                    "fa_icon": "fas fa-arrow-up"
+                },
+                "trend_low_abs": {
+                    "type": ["number", "null"],
+                    "description": "Absolute LOW depth cutoff (x); overrides trend_low_frac.",
+                    "fa_icon": "fas fa-arrow-down"
+                },
+                "trend_high_abs": {
+                    "type": ["number", "null"],
+                    "description": "Absolute HIGH depth cutoff (x); overrides trend_high_frac.",
+                    "fa_icon": "fas fa-arrow-up"
+                },
+                "trend_min_freq": {
+                    "type": "number",
+                    "default": 0.5,
+                    "description": "Fraction of informative samples a window state must recur in to be part of a recurrent region.",
+                    "fa_icon": "fas fa-percent"
+                },
+                "trend_min_region_windows": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "Minimum consecutive windows for a recurrent region.",
+                    "fa_icon": "fas fa-arrows-left-right"
+                },
+                "trend_plots": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Write PNG heatmap + frequency plots for the top N references (0 = none).",
+                    "fa_icon": "fas fa-image"
+                },
+                "trend_matrix": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Also write the long per-sample x window matrix TSV (can be large).",
+                    "fa_icon": "fas fa-table"
+                }
+            }
         }
     },
     "allOf": [
@@ -1763,6 +1850,9 @@
         },
         {
             "$ref": "#/definitions/data_export"
+        },
+        {
+            "$ref": "#/definitions/alignment_trends"
         }
     ]
 }
