@@ -212,9 +212,10 @@ def create_fastq_channel(LinkedHashMap row, List resolved = null) {
 
 
     meta.id         = row.sample
-    meta.platform = row.platform ? row.platform : 'ILLUMINA'
-    // capitalize the platform
-    meta.platform = meta.platform.toUpperCase()
+    // Map aliases (ONT, Nanopore, PB, …) to ILLUMINA/OXFORD/PACBIO; blank → ILLUMINA.
+    // check_samplesheet.py already normalises samplesheet rows, so this mainly
+    // covers --fastq_1/--bam runs and platforms reported by ENA/NCBI for SRA rows.
+    meta.platform = WorkflowTaxtriage.requirePlatform(row.platform, "sample '${row.sample}'") ?: 'ILLUMINA'
 
     // ── Pre-aligned (BAM/CRAM) input ────────────────────────────────────────
     // A populated `bam` column means the sample is already aligned: every

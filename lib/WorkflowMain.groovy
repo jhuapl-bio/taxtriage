@@ -58,6 +58,10 @@ class WorkflowMain {
         // so flags like `--annotate` validate and behave correctly.
         NfcoreSchema.coerceParamsToSchemaTypes(workflow, params, log)
 
+        // Map platform aliases (ONT, Nanopore, PB, …) to ILLUMINA/OXFORD/PACBIO
+        // before the schema enum check, and fail clearly on anything unrecognised.
+        WorkflowTaxtriage.normalizePlatformParams(params)
+
         // Validate workflow parameters via the JSON schema
         if (params.validate_params) {
             NfcoreSchema.validateParameters(workflow, params, log)
