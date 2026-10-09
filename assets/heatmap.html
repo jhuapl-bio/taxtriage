@@ -3156,95 +3156,112 @@
               </button>
             </div>
             <div id="at-view-live">
-            <div class="chart-wrap">
-              <div class="chart-title">Alignment Trends — recurrent zero, low and high depth regions</div>
-              <div class="at-intro">
-                Each sample's depth along the reference is cut into windows and divided by that sample's own mean depth,
-                so deep and shallow libraries compare. A window is <b>zero</b> when no read touches it, <b>low</b> below
-                the low cutoff and <b>high</b> above the high cutoff. A sample only counts toward a window when it
-                <i>expects</i> enough reads there (its reads × window ÷ reference length) — otherwise an empty window is just
-                sampling noise. Windows whose state recurs in at least the recurrence fraction of counted samples become
-                regions: recurrent gaps point at parts of the reference the samples do not carry (deletions, divergent or
-                novel loci, assembly artefacts); recurrent pile-ups point at repeats, rRNA operons, mobile elements or
-                plasmid copy number. Uses the visible samples and, optionally, only detections passing the active filters.
-                The pipeline writes the same tables to <code>alignment_trends/</code> (turn off with <code>--alignment_trends false</code>).
-              </div>
-              <div id="at-controls" class="at-controls">
-                <label>Reference:</label>
-                <select id="at-ref-sel" style="min-width: 240px; max-width: 420px"></select>
-                <input id="at-ref-search" type="text" placeholder="Filter references" style="min-width: 150px" />
-                <label title="LOW = window depth below this multiple of the sample's mean depth">Low &lt;</label>
-                <input id="at-low" type="number" value="0.2" min="0" step="0.05" style="width: 58px" /><span class="at-unit">× mean</span>
-                <label title="HIGH = window depth above this multiple of the sample's mean depth">High &gt;</label>
-                <input id="at-high" type="number" value="3" min="1" step="0.5" style="width: 58px" /><span class="at-unit">× mean</span>
-                <label title="A sample counts toward a window only when it expects at least this many reads there">Min reads / window</label>
-                <input id="at-minrpw" type="number" value="1" min="0" step="1" style="width: 58px" />
-                <label title="Fraction of counted samples a window state must recur in to form a region">Recurrence ≥</label>
-                <input id="at-recur" type="number" value="50" min="1" max="100" step="5" style="width: 58px" /><span class="at-unit">%</span>
-                <label title="Counted samples needed before trends are computed">Min samples</label>
-                <input id="at-minsamples" type="number" value="2" min="1" step="1" style="width: 50px" />
-                <label title="Minimum reads a sample needs on the reference to count">Min reads</label>
-                <input id="at-minreads" type="number" value="3" min="0" step="1" style="width: 62px" />
-                <label title="Merge windows into coarser ones before analysis">Window ×</label>
-                <select id="at-coarsen">
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="4" selected>4</option>
-                  <option value="8">8</option>
-                  <option value="16">16</option>
-                </select>
-                <label>Sort:</label>
-                <select id="at-sort">
-                  <option value="order" selected>Sample order</option>
-                  <option value="name">Name</option>
-                  <option value="depth">Mean depth</option>
-                  <option value="zero">% zero windows</option>
-                </select>
-                <label style="display: flex; align-items: center; gap: 4px" title="Only use sample × reference pairs whose detection passes the active filters and TASS cutoff">
-                  <input id="at-use-filters" type="checkbox" checked /> Respect filters
-                </label>
-              </div>
-              <div id="at-empty" class="at-note" style="display: none"></div>
-              <div id="at-body">
-                <div id="at-kpis" class="summary-kpi-row"></div>
-                <div class="at-subtitle">
-                  Depth along the reference, per sample
-                  <span id="at-zoom-note" class="at-note"></span>
-                  <a href="#" id="at-reset-zoom" style="display: none">Reset zoom</a>
+              <div class="chart-wrap">
+                <div class="chart-title">Alignment Trends — recurrent zero, low and high depth regions</div>
+                <div class="at-intro">
+                  Each sample's depth along the reference is cut into windows and divided by that sample's own mean
+                  depth, so deep and shallow libraries compare. A window is <b>zero</b> when no read touches it,
+                  <b>low</b> below the low cutoff and <b>high</b> above the high cutoff. A sample only counts toward a
+                  window when it <i>expects</i> enough reads there (its reads × window ÷ reference length) — otherwise
+                  an empty window is just sampling noise. Windows whose state recurs in at least the recurrence fraction
+                  of counted samples become regions: recurrent gaps point at parts of the reference the samples do not
+                  carry (deletions, divergent or novel loci, assembly artefacts); recurrent pile-ups point at repeats,
+                  rRNA operons, mobile elements or plasmid copy number. Uses the visible samples and, optionally, only
+                  detections passing the active filters. The pipeline writes the same tables to
+                  <code>alignment_trends/</code> (turn off with <code>--alignment_trends false</code>).
                 </div>
-                <div id="at-heat" class="at-plot"></div>
-                <div id="at-heat-legend" class="at-legend"></div>
-                <div class="at-subtitle">
-                  Fraction of counted samples in each state
-                  <span class="at-legend">
-                    <span class="at-line" style="background: #1e88e5"></span> low or zero
-                    <span class="at-line at-dash"></span> zero
-                    <span class="at-line" style="background: #e53935"></span> high · shaded = recurrent region · grey = too few counted samples · dashed grey =
-                    recurrence cutoff
-                  </span>
-                </div>
-                <div id="at-freq" class="at-plot"></div>
-                <div class="at-subtitle">
-                  Recurrent regions
-                  <select id="at-region-type" style="margin-left: 8px">
-                    <option value="">All types</option>
-                    <option value="zero">Zero</option>
-                    <option value="low">Low or zero</option>
-                    <option value="high">High</option>
+                <div id="at-controls" class="at-controls">
+                  <label>Reference:</label>
+                  <select id="at-ref-sel" style="min-width: 240px; max-width: 420px"></select>
+                  <input id="at-ref-search" type="text" placeholder="Filter references" style="min-width: 150px" />
+                  <label title="LOW = window depth below this multiple of the sample's mean depth">Low &lt;</label>
+                  <input id="at-low" type="number" value="0.2" min="0" step="0.05" style="width: 58px" /><span
+                    class="at-unit"
+                    >× mean</span
+                  >
+                  <label title="HIGH = window depth above this multiple of the sample's mean depth">High &gt;</label>
+                  <input id="at-high" type="number" value="3" min="1" step="0.5" style="width: 58px" /><span
+                    class="at-unit"
+                    >× mean</span
+                  >
+                  <label title="A sample counts toward a window only when it expects at least this many reads there"
+                    >Min reads / window</label
+                  >
+                  <input id="at-minrpw" type="number" value="1" min="0" step="1" style="width: 58px" />
+                  <label title="Fraction of counted samples a window state must recur in to form a region"
+                    >Recurrence ≥</label
+                  >
+                  <input id="at-recur" type="number" value="50" min="1" max="100" step="5" style="width: 58px" /><span
+                    class="at-unit"
+                    >%</span
+                  >
+                  <label title="Counted samples needed before trends are computed">Min samples</label>
+                  <input id="at-minsamples" type="number" value="2" min="1" step="1" style="width: 50px" />
+                  <label title="Minimum reads a sample needs on the reference to count">Min reads</label>
+                  <input id="at-minreads" type="number" value="3" min="0" step="1" style="width: 62px" />
+                  <label title="Merge windows into coarser ones before analysis">Window ×</label>
+                  <select id="at-coarsen">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="4" selected>4</option>
+                    <option value="8">8</option>
+                    <option value="16">16</option>
                   </select>
-                  <a href="#" id="at-dl-regions" class="at-dl"><i class="fas fa-download"></i> regions.tsv</a>
-                  <a href="#" id="at-dl-windows" class="at-dl"><i class="fas fa-download"></i> windows.tsv</a>
+                  <label>Sort:</label>
+                  <select id="at-sort">
+                    <option value="order" selected>Sample order</option>
+                    <option value="name">Name</option>
+                    <option value="depth">Mean depth</option>
+                    <option value="zero">% zero windows</option>
+                  </select>
+                  <label
+                    style="display: flex; align-items: center; gap: 4px"
+                    title="Only use sample × reference pairs whose detection passes the active filters and TASS cutoff"
+                  >
+                    <input id="at-use-filters" type="checkbox" checked /> Respect filters
+                  </label>
                 </div>
-                <div id="at-regions" class="at-table-wrap"></div>
-                <div class="at-subtitle">Samples on this reference</div>
-                <div id="at-samples" class="at-table-wrap"></div>
-                <div class="at-subtitle">
-                  All references (click to open)
-                  <a href="#" id="at-dl-overview" class="at-dl"><i class="fas fa-download"></i> summary.tsv</a>
+                <div id="at-empty" class="at-note" style="display: none"></div>
+                <div id="at-body">
+                  <div id="at-kpis" class="summary-kpi-row"></div>
+                  <div class="at-subtitle">
+                    Depth along the reference, per sample
+                    <span id="at-zoom-note" class="at-note"></span>
+                    <a href="#" id="at-reset-zoom" style="display: none">Reset zoom</a>
+                  </div>
+                  <div id="at-heat" class="at-plot"></div>
+                  <div id="at-heat-legend" class="at-legend"></div>
+                  <div class="at-subtitle">
+                    Fraction of counted samples in each state
+                    <span class="at-legend">
+                      <span class="at-line" style="background: #1e88e5"></span> low or zero
+                      <span class="at-line at-dash"></span> zero
+                      <span class="at-line" style="background: #e53935"></span> high · shaded = recurrent region · grey
+                      = too few counted samples · dashed grey = recurrence cutoff
+                    </span>
+                  </div>
+                  <div id="at-freq" class="at-plot"></div>
+                  <div class="at-subtitle">
+                    Recurrent regions
+                    <select id="at-region-type" style="margin-left: 8px">
+                      <option value="">All types</option>
+                      <option value="zero">Zero</option>
+                      <option value="low">Low or zero</option>
+                      <option value="high">High</option>
+                    </select>
+                    <a href="#" id="at-dl-regions" class="at-dl"><i class="fas fa-download"></i> regions.tsv</a>
+                    <a href="#" id="at-dl-windows" class="at-dl"><i class="fas fa-download"></i> windows.tsv</a>
+                  </div>
+                  <div id="at-regions" class="at-table-wrap"></div>
+                  <div class="at-subtitle">Samples on this reference</div>
+                  <div id="at-samples" class="at-table-wrap"></div>
+                  <div class="at-subtitle">
+                    All references (click to open)
+                    <a href="#" id="at-dl-overview" class="at-dl"><i class="fas fa-download"></i> summary.tsv</a>
+                  </div>
+                  <div id="at-overview" class="at-table-wrap"></div>
                 </div>
-                <div id="at-overview" class="at-table-wrap"></div>
               </div>
-            </div>
             </div>
             <!-- Pipeline results: all.alignment_trends.json embedded by make_report.py -->
             <div id="at-view-pipeline" style="display: none">

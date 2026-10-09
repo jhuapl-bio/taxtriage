@@ -9,17 +9,17 @@ elements, plasmid copy number or loci that attract contaminating reads.
 
 It is available in two places that give the same numbers for the same settings:
 
-| Where | How | Output |
-| --- | --- | --- |
-| Interactive report | **Trends → Alignment Trends** sub-tab | *Live analysis* (adjustable) and *Pipeline results* (as the run computed them) |
-| Pipeline | on by default (`--alignment_trends false` turns it off) | `<outdir>/alignment_trends/` tables, JSON, XLSX, PNGs, and the report's *Pipeline results* view |
-| Standalone | `bin/alignment_trends.py -i *.paths.json -o prefix` | same as the pipeline |
+| Where              | How                                                     | Output                                                                                          |
+| ------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Interactive report | **Trends → Alignment Trends** sub-tab                   | _Live analysis_ (adjustable) and _Pipeline results_ (as the run computed them)                  |
+| Pipeline           | on by default (`--alignment_trends false` turns it off) | `<outdir>/alignment_trends/` tables, JSON, XLSX, PNGs, and the report's _Pipeline results_ view |
+| Standalone         | `bin/alignment_trends.py -i *.paths.json -o prefix`     | same as the pipeline                                                                            |
 
 ## How it works
 
 1. **Depth profile.** For every reference (strain key) `match_paths.py` writes a
    `depth_profile` into the per-sample JSON: windowed mean depth and breadth for
-   *every* accession of the reference, including ones with no reads, each in its
+   _every_ accession of the reference, including ones with no reads, each in its
    own coordinates. The window is the smallest `100 × 2^k` bp that gives at most
    `--depth_profile_windows` (default 400) windows over the reference, so all
    samples of a reference share a grid. The format is documented in
@@ -54,10 +54,10 @@ opens it in the live view with the pipeline's settings applied and filters off.
 depth profiles, so every cutoff can be changed. It opens with more permissive
 defaults than the pipeline so shallow samples still show up — **Window × 4**,
 **min reads 3**, **min reads / window 1** (pipeline: window × 1, 10 reads, 20 reads
-per window); the other cutoffs match. Opening a reference from *Pipeline
-results* switches the controls to the pipeline's settings.
+per window); the other cutoffs match. Opening a reference from _Pipeline
+results_ switches the controls to the pipeline's settings.
 
-- **Reference** picker, ordered by how many samples count; the *All references*
+- **Reference** picker, ordered by how many samples count; the _All references_
   table at the bottom summarises every reference and opens one on click.
 - **Heatmap** — one row per sample, log2(depth ÷ sample mean); black = zero,
   faded = the sample does not count there, `*` = below the expected-reads cutoff.
@@ -69,19 +69,19 @@ results* switches the controls to the pipeline's settings.
 
 ## Pipeline parameters
 
-| Parameter | Default | Meaning |
-| --- | --- | --- |
-| `--depth_profile_windows` | 400 | windows per reference in the JSON; 0 disables profiles (and the tab) |
-| `--alignment_trends` | true | run the cross-sample analysis; `false` turns it off |
-| `--trend_min_samples` | 2 | counted samples needed per reference / window |
-| `--trend_min_reads` | 10 | reads a sample needs on a reference to count |
-| `--trend_min_reads_per_window` | 20 | expected reads per window for a sample to count there |
-| `--trend_low_frac` / `--trend_high_frac` | 0.2 / 3.0 | relative low / high cutoffs |
-| `--trend_low_abs` / `--trend_high_abs` | – | absolute cutoffs (override the relative ones) |
-| `--trend_min_freq` | 0.5 | recurrence fraction for a region |
-| `--trend_min_region_windows` | 1 | minimum windows per region |
-| `--trend_plots` | 10 | PNGs for the top N references |
-| `--trend_matrix` | false | also write the per-sample × window matrix |
+| Parameter                                | Default   | Meaning                                                              |
+| ---------------------------------------- | --------- | -------------------------------------------------------------------- |
+| `--depth_profile_windows`                | 400       | windows per reference in the JSON; 0 disables profiles (and the tab) |
+| `--alignment_trends`                     | true      | run the cross-sample analysis; `false` turns it off                  |
+| `--trend_min_samples`                    | 2         | counted samples needed per reference / window                        |
+| `--trend_min_reads`                      | 10        | reads a sample needs on a reference to count                         |
+| `--trend_min_reads_per_window`           | 20        | expected reads per window for a sample to count there                |
+| `--trend_low_frac` / `--trend_high_frac` | 0.2 / 3.0 | relative low / high cutoffs                                          |
+| `--trend_low_abs` / `--trend_high_abs`   | –         | absolute cutoffs (override the relative ones)                        |
+| `--trend_min_freq`                       | 0.5       | recurrence fraction for a region                                     |
+| `--trend_min_region_windows`             | 1         | minimum windows per region                                           |
+| `--trend_plots`                          | 10        | PNGs for the top N references                                        |
+| `--trend_matrix`                         | false     | also write the per-sample × window matrix                            |
 
 The analysis uses the real (non-control, non-simulated) samples.
 
@@ -99,15 +99,15 @@ them as "no reads in any sample".
 
 ## Outputs (`<outdir>/alignment_trends/`)
 
-| File | Contents |
-| --- | --- |
-| `all.alignment_trends.summary.tsv` | one row per reference: samples counted, window, % of the reference in recurrent zero / low / high regions |
-| `all.alignment_trends.regions.tsv` | recurrent regions: type, contig, start, end, mean / max frequency, affected samples, `whole_contig` |
-| `all.alignment_trends.windows.tsv` | per window: counted samples, zero / low / high counts and frequencies, normalised depth summary |
+| File                               | Contents                                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `all.alignment_trends.summary.tsv` | one row per reference: samples counted, window, % of the reference in recurrent zero / low / high regions   |
+| `all.alignment_trends.regions.tsv` | recurrent regions: type, contig, start, end, mean / max frequency, affected samples, `whole_contig`         |
+| `all.alignment_trends.windows.tsv` | per window: counted samples, zero / low / high counts and frequencies, normalised depth summary             |
 | `all.alignment_trends.samples.tsv` | per sample × reference: reads, mean depth, breadth, expected reads per window, counted, % windows per class |
-| `all.alignment_trends.json` | all of the above (minus the matrix) |
-| `all.alignment_trends.xlsx` | summary / regions / samples / windows sheets (when openpyxl is available) |
-| `all.alignment_trends.plots/` | heatmap + frequency PNG per top reference (when matplotlib is available) |
+| `all.alignment_trends.json`        | all of the above (minus the matrix)                                                                         |
+| `all.alignment_trends.xlsx`        | summary / regions / samples / windows sheets (when openpyxl is available)                                   |
+| `all.alignment_trends.plots/`      | heatmap + frequency PNG per top reference (when matplotlib is available)                                    |
 
 ## Running it on existing results
 

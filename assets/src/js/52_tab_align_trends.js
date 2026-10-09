@@ -38,7 +38,11 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   const fmtBp = (v) =>
-    v >= 1e6 ? (v / 1e6).toFixed(v >= 1e7 ? 1 : 2) + " Mb" : v >= 1e3 ? (v / 1e3).toFixed(v >= 1e4 ? 0 : 1) + " kb" : v + " bp";
+    v >= 1e6
+      ? (v / 1e6).toFixed(v >= 1e7 ? 1 : 2) + " Mb"
+      : v >= 1e3
+      ? (v / 1e3).toFixed(v >= 1e4 ? 0 : 1) + " kb"
+      : v + " bp";
   const fmtInt = (v) => Number(v || 0).toLocaleString();
   const $ = (id) => document.getElementById(id);
 
@@ -157,7 +161,13 @@
 
   /* ── analysis (mirror of bin/alignment_trends.py) ───────────────────── */
   function _analyse(ref, o) {
-    const sig = _optSig(o) + "|" + ref.entries.map((e) => e.sample).sort().join(",");
+    const sig =
+      _optSig(o) +
+      "|" +
+      ref.entries
+        .map((e) => e.sample)
+        .sort()
+        .join(",");
     const ck = ref.key + "|" + sig;
     if (AT.cache.has(ck)) return AT.cache.get(ck);
     const dec = ref.entries.map((cd) => ({ cd, d: _decode(cd.depth_profile) }));
@@ -379,12 +389,20 @@
       AT.zoom = null;
       drawAlignTrends();
     };
-    ["at-low", "at-high", "at-minrpw", "at-recur", "at-minreads", "at-minsamples", "at-coarsen", "at-use-filters", "at-sort"].forEach(
-      (id) => {
-        const el = $(id);
-        if (el) el.addEventListener("change", id === "at-sort" ? () => drawAlignTrends() : rerender);
-      },
-    );
+    [
+      "at-low",
+      "at-high",
+      "at-minrpw",
+      "at-recur",
+      "at-minreads",
+      "at-minsamples",
+      "at-coarsen",
+      "at-use-filters",
+      "at-sort",
+    ].forEach((id) => {
+      const el = $(id);
+      if (el) el.addEventListener("change", id === "at-sort" ? () => drawAlignTrends() : rerender);
+    });
     const sel = $("at-ref-sel");
     if (sel)
       sel.addEventListener("change", () => {
@@ -481,7 +499,9 @@
         nReg: res ? res.nReg : { zero: 0, low: 0, high: 0 },
       });
     });
-    overview.sort((a, b) => b.analysed - a.analysed || b.nInf - a.nInf || b.nSamples - a.nSamples || a.name.localeCompare(b.name));
+    overview.sort(
+      (a, b) => b.analysed - a.analysed || b.nInf - a.nInf || b.nSamples - a.nSamples || a.name.localeCompare(b.name),
+    );
     _lastOverview = overview;
     _fillRefSelect(refs, overview);
     _drawOverview(overview, o);
@@ -507,19 +527,40 @@
       card(
         "Informative samples",
         `${res.nInf} / ${res.tracks.length}`,
-        res.analysed ? `need ≥ ${o.minSamples}` : `<span style="color:#c62828">below ${o.minSamples} — no trends</span>`,
+        res.analysed
+          ? `need ≥ ${o.minSamples}`
+          : `<span style="color:#c62828">below ${o.minSamples} — no trends</span>`,
         "#1565c0",
       ) +
       card(
         "Reference",
         fmtBp(res.totalLen),
         `${fmtInt(res.nContigsFull)} contig(s), ${fmtInt(res.nwin)} × ${fmtBp(res.W)} windows` +
-          (res.neverBp ? `<br>${fmtInt(res.neverContigs)} contig(s) · ${fmtBp(res.neverBp)} with no reads in any sample (not drawn)` : ""),
+          (res.neverBp
+            ? `<br>${fmtInt(res.neverContigs)} contig(s) · ${fmtBp(
+                res.neverBp,
+              )} with no reads in any sample (not drawn)`
+            : ""),
         "#455a64",
       ) +
-      card("Recurrent zero", res.pct.zero.toFixed(1) + "%", `${res.nReg.zero} region(s) · ${fmtBp(Math.round((res.pct.zero * res.totalLen) / 100))}`, "#212121") +
-      card("Recurrent low / zero", res.pct.low.toFixed(1) + "%", `${res.nReg.low} region(s) · < ${o.lowFrac}× mean`, "#1e88e5") +
-      card("Recurrent high", res.pct.high.toFixed(1) + "%", `${res.nReg.high} region(s) · > ${o.highFrac}× mean`, "#e53935");
+      card(
+        "Recurrent zero",
+        res.pct.zero.toFixed(1) + "%",
+        `${res.nReg.zero} region(s) · ${fmtBp(Math.round((res.pct.zero * res.totalLen) / 100))}`,
+        "#212121",
+      ) +
+      card(
+        "Recurrent low / zero",
+        res.pct.low.toFixed(1) + "%",
+        `${res.nReg.low} region(s) · < ${o.lowFrac}× mean`,
+        "#1e88e5",
+      ) +
+      card(
+        "Recurrent high",
+        res.pct.high.toFixed(1) + "%",
+        `${res.nReg.high} region(s) · > ${o.highFrac}× mean`,
+        "#e53935",
+      );
   }
 
   // Display columns over the zoom domain: each column aggregates `step` windows.
@@ -542,7 +583,8 @@
     else if (o.sort === "zero") t.sort((x, y) => y.pct[1] - x.pct[1]);
     else if (o.sort === "name") t.sort((x, y) => x.sample.localeCompare(y.sample));
     else {
-      const ord = typeof _orderedSamples === "function" ? _orderedSamples(t.map((x) => x.sample)) : t.map((x) => x.sample);
+      const ord =
+        typeof _orderedSamples === "function" ? _orderedSamples(t.map((x) => x.sample)) : t.map((x) => x.sample);
       const idx = new Map(ord.map((s, i) => [s, i]));
       t.sort((x, y) => idx.get(x.sample) - idx.get(y.sample));
     }
@@ -578,7 +620,9 @@
         .text(label)
         .append("title")
         .text(
-          `${t.sample}\nmean depth ${t.mean.toFixed(2)}x · breadth ${t.breadth.toFixed(1)}% · ${fmtInt(t.reads)} reads\n` +
+          `${t.sample}\nmean depth ${t.mean.toFixed(2)}x · breadth ${t.breadth.toFixed(1)}% · ${fmtInt(
+            t.reads,
+          )} reads\n` +
             `expected reads / window ${t.expRpw.toFixed(1)}${t.informative ? "" : " — below cutoff, not counted"}`,
         );
       cols.forEach(([s, e], ci) => {
@@ -625,8 +669,13 @@
       const d = L ? dsum / L : 0;
       const cls = e - s === 1 ? ["normal", "zero", "low", "high"][t.cls[s]] : "";
       showTip(
-        `<b>${esc(t.sample)}</b><br>${esc(a.contig)}:${fmtInt(a.start)}–${a.contig === b.contig ? fmtInt(b.end) : esc(b.contig) + ":" + fmtInt(b.end)}` +
-          `<br>depth ${d.toFixed(2)}x (${t.mean ? (d / t.mean).toFixed(2) : "–"}× sample mean)<br>breadth ${(L ? bsum / L : 0).toFixed(0)}%` +
+        `<b>${esc(t.sample)}</b><br>${esc(a.contig)}:${fmtInt(a.start)}–${
+          a.contig === b.contig ? fmtInt(b.end) : esc(b.contig) + ":" + fmtInt(b.end)
+        }` +
+          `<br>depth ${d.toFixed(2)}x (${t.mean ? (d / t.mean).toFixed(2) : "–"}× sample mean)<br>breadth ${(L
+            ? bsum / L
+            : 0
+          ).toFixed(0)}%` +
           (cls ? `<br>class <b>${cls}</b>` : `<br>${e - s} windows aggregated`) +
           (t.ok[s] ? "" : `<br><i>not counted (too few expected reads)</i>`),
         ev,
@@ -636,7 +685,9 @@
     const lg = $("at-heat-legend");
     if (lg)
       lg.innerHTML =
-        `<span class="at-swatch" style="background:linear-gradient(90deg,${color(-3)},${color(0)},${color(3)})"></span> log2(depth / sample mean), −3 … +3` +
+        `<span class="at-swatch" style="background:linear-gradient(90deg,${color(-3)},${color(0)},${color(
+          3,
+        )})"></span> log2(depth / sample mean), −3 … +3` +
         ` &nbsp; <span class="at-swatch" style="background:#212121;width:14px"></span> zero` +
         ` &nbsp; <span class="at-swatch" style="background:#b0bec5;opacity:.5;width:14px"></span> faded = not counted` +
         ` &nbsp; * = sample below the expected-reads cutoff`;
@@ -652,7 +703,16 @@
     };
     inView.forEach((c) => {
       const x = colOf(c.off) * cw;
-      g.append("line").attr("x1", x).attr("x2", x).attr("y1", -4).attr("y2", h).attr("stroke", "#78909c").attr("stroke-dasharray", "2,2").attr("stroke-width", 0.7).append("title").text(c.acc);
+      g.append("line")
+        .attr("x1", x)
+        .attr("x2", x)
+        .attr("y1", -4)
+        .attr("y2", h)
+        .attr("stroke", "#78909c")
+        .attr("stroke-dasharray", "2,2")
+        .attr("stroke-width", 0.7)
+        .append("title")
+        .text(c.acc);
     });
   }
 
@@ -670,7 +730,13 @@
     const g = svg.append("g").attr("transform", `translate(${HEAT_ML},10)`);
     const y = d3.scaleLinear().domain([0, 1]).range([ih, 0]);
     g.append("g").call(d3.axisLeft(y).ticks(4).tickFormat(d3.format(".0%")));
-    svg.append("text").attr("x", HEAT_ML - 40).attr("y", 10 + ih / 2).attr("text-anchor", "end").attr("fill", "#546e7a").text("of samples");
+    svg
+      .append("text")
+      .attr("x", HEAT_ML - 40)
+      .attr("y", 10 + ih / 2)
+      .attr("text-anchor", "end")
+      .attr("fill", "#546e7a")
+      .text("of samples");
     // recurrent region bands
     const { a, b } = _cols(res);
     const colOf = (wi) => {
@@ -682,14 +748,31 @@
       .forEach((r) => {
         const x0 = colOf(Math.max(a, r.w0)) * cw;
         const x1 = (colOf(Math.min(b, r.w1) - 1) + 1) * cw;
-        g.append("rect").attr("x", x0).attr("y", 0).attr("width", Math.max(1, x1 - x0)).attr("height", ih).attr("fill", r.type === "high" ? "#ffcdd2" : "#bbdefb").attr("opacity", 0.55);
+        g.append("rect")
+          .attr("x", x0)
+          .attr("y", 0)
+          .attr("width", Math.max(1, x1 - x0))
+          .attr("height", ih)
+          .attr("fill", r.type === "high" ? "#ffcdd2" : "#bbdefb")
+          .attr("opacity", 0.55);
       });
     // grey = no window in the column has enough counted samples
     cols.forEach(([s, e], ci) => {
       for (let i = s; i < e; i++) if (!isNaN(res.fl[i])) return;
-      g.append("rect").attr("x", ci * cw).attr("y", 0).attr("width", Math.max(0.6, cw + 0.15)).attr("height", ih).attr("fill", "#eceff1");
+      g.append("rect")
+        .attr("x", ci * cw)
+        .attr("y", 0)
+        .attr("width", Math.max(0.6, cw + 0.15))
+        .attr("height", ih)
+        .attr("fill", "#eceff1");
     });
-    g.append("line").attr("x1", 0).attr("x2", iw).attr("y1", y(o.minFreq)).attr("y2", y(o.minFreq)).attr("stroke", "#9e9e9e").attr("stroke-dasharray", "4,3");
+    g.append("line")
+      .attr("x1", 0)
+      .attr("x2", iw)
+      .attr("y1", y(o.minFreq))
+      .attr("y2", y(o.minFreq))
+      .attr("stroke", "#9e9e9e")
+      .attr("stroke-dasharray", "4,3");
     // series: max over each display column (a recurrent window must not vanish when zoomed out)
     const series = (arr) =>
       cols.map(([s, e], ci) => {
@@ -707,14 +790,38 @@
       [res.fz, "#212121", 1, "4,2", "zero"],
       [res.fh, "#e53935", 1.4, null, "high"],
     ].forEach(([arr, c, sw, da, lbl]) => {
-      g.append("path").datum(series(arr)).attr("fill", "none").attr("stroke", c).attr("stroke-width", sw).attr("stroke-dasharray", da).attr("d", line).append("title").text(lbl);
+      g.append("path")
+        .datum(series(arr))
+        .attr("fill", "none")
+        .attr("stroke", c)
+        .attr("stroke-width", sw)
+        .attr("stroke-dasharray", da)
+        .attr("d", line)
+        .append("title")
+        .text(lbl);
     });
     // x axis in bp of the concatenated reference
-    const sx = d3.scaleLinear().domain([res.wStart[a] || 0, b >= res.nwin ? res.totalLen : res.wStart[b]]).range([0, iw]);
-    g.append("g").attr("transform", `translate(0,${ih})`).call(d3.axisBottom(sx).ticks(8).tickFormat((v) => fmtBp(Math.round(v))));
+    const sx = d3
+      .scaleLinear()
+      .domain([res.wStart[a] || 0, b >= res.nwin ? res.totalLen : res.wStart[b]])
+      .range([0, iw]);
+    g.append("g")
+      .attr("transform", `translate(0,${ih})`)
+      .call(
+        d3
+          .axisBottom(sx)
+          .ticks(8)
+          .tickFormat((v) => fmtBp(Math.round(v))),
+      );
     _contigDividers(g, res, cols, cw, ih);
     if (!res.analysed) {
-      g.append("text").attr("x", iw / 2).attr("y", ih / 2).attr("text-anchor", "middle").attr("fill", "#c62828").attr("font-size", 12).text(`Needs ≥ ${o.minSamples} informative samples — lower "min reads / window" or add samples`);
+      g.append("text")
+        .attr("x", iw / 2)
+        .attr("y", ih / 2)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#c62828")
+        .attr("font-size", 12)
+        .text(`Needs ≥ ${o.minSamples} informative samples — lower "min reads / window" or add samples`);
     }
     // brush to zoom
     const brush = d3
@@ -767,15 +874,27 @@
         ? shown
             .map(
               (r, i) =>
-                `<tr data-i="${res.regions.indexOf(r)}"><td><span class="at-pill" style="background:${tcol[r.type]}">${r.type}</span>${r.wholeContig ? ' <span class="at-tag" title="Spans the whole contig">whole contig</span>' : ""}</td>` +
-                `<td>${esc(r.contig)}</td><td>${fmtInt(r.start)}</td><td>${fmtInt(r.end)}</td><td>${fmtBp(r.length)}</td>` +
-                `<td>${(100 * r.meanFreq).toFixed(0)}%</td><td>${(100 * r.maxFreq).toFixed(0)}%</td><td>${r.nSamples}</td>` +
-                `<td>${isNaN(r.meanNorm) ? "–" : r.meanNorm.toFixed(2)}</td><td class="at-aff" title="${esc(r.affected.join(", "))}">${esc(r.affected.join(", "))}</td></tr>`,
+                `<tr data-i="${res.regions.indexOf(r)}"><td><span class="at-pill" style="background:${tcol[r.type]}">${
+                  r.type
+                }</span>${
+                  r.wholeContig ? ' <span class="at-tag" title="Spans the whole contig">whole contig</span>' : ""
+                }</td>` +
+                `<td>${esc(r.contig)}</td><td>${fmtInt(r.start)}</td><td>${fmtInt(r.end)}</td><td>${fmtBp(
+                  r.length,
+                )}</td>` +
+                `<td>${(100 * r.meanFreq).toFixed(0)}%</td><td>${(100 * r.maxFreq).toFixed(0)}%</td><td>${
+                  r.nSamples
+                }</td>` +
+                `<td>${isNaN(r.meanNorm) ? "–" : r.meanNorm.toFixed(2)}</td><td class="at-aff" title="${esc(
+                  r.affected.join(", "),
+                )}">${esc(r.affected.join(", "))}</td></tr>`,
             )
             .join("")
         : `<tr><td colspan="10" style="color:#78909c">No recurrent regions at these settings.</td></tr>`) +
       `</tbody></table>` +
-      (rows.length > shown.length ? `<div class="at-note">Showing the 500 largest of ${fmtInt(rows.length)} regions — download for all.</div>` : "");
+      (rows.length > shown.length
+        ? `<div class="at-note">Showing the 500 largest of ${fmtInt(rows.length)} regions — download for all.</div>`
+        : "");
     host.querySelectorAll("tbody tr[data-i]").forEach((tr) =>
       tr.addEventListener("click", () => {
         const r = res.regions[+tr.dataset.i];
@@ -804,8 +923,12 @@
       t
         .map(
           (x) =>
-            `<tr><td>${esc(x.sample)}</td><td>${fmtInt(x.reads)}</td><td>${x.mean.toFixed(2)}x</td><td>${x.breadth.toFixed(1)}%</td>` +
-            `<td>${x.expRpw.toFixed(1)}</td><td>${x.informative ? "yes" : '<span style="color:#90a4ae">no</span>'}</td>` +
+            `<tr><td>${esc(x.sample)}</td><td>${fmtInt(x.reads)}</td><td>${x.mean.toFixed(
+              2,
+            )}x</td><td>${x.breadth.toFixed(1)}%</td>` +
+            `<td>${x.expRpw.toFixed(1)}</td><td>${
+              x.informative ? "yes" : '<span style="color:#90a4ae">no</span>'
+            }</td>` +
             `<td>${x.pct[1].toFixed(1)}</td><td>${x.pct[2].toFixed(1)}</td><td>${x.pct[3].toFixed(1)}</td></tr>`,
         )
         .join("") +
@@ -821,10 +944,18 @@
       overview
         .map(
           (r) =>
-            `<tr data-k="${esc(r.key)}" class="${r.key === AT.selected ? "at-sel" : ""}${r.analysed ? "" : " at-dim"}"><td>${esc(r.name)}</td><td>${r.nInf} / ${r.nSamples}</td>` +
-            `<td>${fmtBp(r.totalLen)}${r.nContigs > 1 ? ` · ${fmtInt(r.nContigs)} contigs` : ""}</td><td>${fmtBp(r.W)}</td>` +
+            `<tr data-k="${esc(r.key)}" class="${r.key === AT.selected ? "at-sel" : ""}${
+              r.analysed ? "" : " at-dim"
+            }"><td>${esc(r.name)}</td><td>${r.nInf} / ${r.nSamples}</td>` +
+            `<td>${fmtBp(r.totalLen)}${r.nContigs > 1 ? ` · ${fmtInt(r.nContigs)} contigs` : ""}</td><td>${fmtBp(
+              r.W,
+            )}</td>` +
             (r.analysed
-              ? `<td>${r.pct.zero.toFixed(1)}% <span class="at-n">(${r.nReg.zero})</span></td><td>${r.pct.low.toFixed(1)}% <span class="at-n">(${r.nReg.low})</span></td><td>${r.pct.high.toFixed(1)}% <span class="at-n">(${r.nReg.high})</span></td>`
+              ? `<td>${r.pct.zero.toFixed(1)}% <span class="at-n">(${r.nReg.zero})</span></td><td>${r.pct.low.toFixed(
+                  1,
+                )}% <span class="at-n">(${r.nReg.low})</span></td><td>${r.pct.high.toFixed(1)}% <span class="at-n">(${
+                  r.nReg.high
+                })</span></td>`
               : `<td colspan="3" style="color:#90a4ae">needs ≥ ${o.minSamples} counted samples</td>`) +
             `</tr>`,
         )
@@ -844,8 +975,12 @@
   /* ── downloads (same columns as bin/alignment_trends.py) ──────────────── */
   function _download(which) {
     const res = _lastRes;
-    const tsv = (cols, rows) => [cols.join("\t"), ...rows.map((r) => cols.map((c) => (r[c] == null ? "" : r[c])).join("\t"))].join("\n");
-    const slug = (s) => String(s).replace(/[^A-Za-z0-9_.-]+/g, "_").slice(0, 60);
+    const tsv = (cols, rows) =>
+      [cols.join("\t"), ...rows.map((r) => cols.map((c) => (r[c] == null ? "" : r[c])).join("\t"))].join("\n");
+    const slug = (s) =>
+      String(s)
+        .replace(/[^A-Za-z0-9_.-]+/g, "_")
+        .slice(0, 60);
     if (which === "overview") {
       const rows = _lastOverview.map((r) => ({
         key: r.key,
@@ -862,7 +997,11 @@
         high_pct: r.analysed ? r.pct.high.toFixed(3) : "",
         n_high_regions: r.analysed ? r.nReg.high : "",
       }));
-      _downloadText(tsv(Object.keys(rows[0] || { key: 1 }), rows), "alignment_trends.summary.tsv", "text/tab-separated-values");
+      _downloadText(
+        tsv(Object.keys(rows[0] || { key: 1 }), rows),
+        "alignment_trends.summary.tsv",
+        "text/tab-separated-values",
+      );
       return;
     }
     if (!res) return;
@@ -883,7 +1022,11 @@
         whole_contig: r.wholeContig,
         samples_affected: r.affected.join(","),
       }));
-      _downloadText(tsv(Object.keys(rows[0] || { type: 1 }), rows), `alignment_trends.${slug(res.ref.name)}.regions.tsv`, "text/tab-separated-values");
+      _downloadText(
+        tsv(Object.keys(rows[0] || { type: 1 }), rows),
+        `alignment_trends.${slug(res.ref.name)}.regions.tsv`,
+        "text/tab-separated-values",
+      );
     } else {
       const rows = [];
       for (let i = 0; i < res.nwin; i++) {
@@ -901,7 +1044,11 @@
         res.tracks.forEach((t) => (row[`depth:${t.sample}`] = t.dep[i].toFixed(3)));
         rows.push(row);
       }
-      _downloadText(tsv(Object.keys(rows[0] || { contig: 1 }), rows), `alignment_trends.${slug(res.ref.name)}.windows.tsv`, "text/tab-separated-values");
+      _downloadText(
+        tsv(Object.keys(rows[0] || { contig: 1 }), rows),
+        `alignment_trends.${slug(res.ref.name)}.windows.tsv`,
+        "text/tab-separated-values",
+      );
     }
   }
 
@@ -918,9 +1065,9 @@
     if (tog) tog.style.display = data ? "" : "none";
     if (!data || ATP.wired) return;
     ATP.wired = true;
-    document.querySelectorAll("#at-view-toggle .at-view-btn").forEach((b) =>
-      b.addEventListener("click", () => _atpSetView(b.dataset.atview)),
-    );
+    document
+      .querySelectorAll("#at-view-toggle .at-view-btn")
+      .forEach((b) => b.addEventListener("click", () => _atpSetView(b.dataset.atview)));
     ["atp-region-type", "atp-region-ref"].forEach((id) => {
       const el = $(id);
       if (el) el.addEventListener("change", () => (_atpRegions(), _atpSamples()));
@@ -969,14 +1116,18 @@
     if (meta) {
       const cut = (abs, frac, sym) => (abs != null ? `${sym} ${abs}x (absolute)` : `${sym} ${frac}× sample mean`);
       meta.innerHTML =
-        `Computed by <code>bin/alignment_trends.py</code> during the run over <b>${fmtInt(data.n_samples)}</b> real sample(s) ` +
+        `Computed by <code>bin/alignment_trends.py</code> during the run over <b>${fmtInt(
+          data.n_samples,
+        )}</b> real sample(s) ` +
         `(controls and simulated datasets excluded; hidden samples and report filters do <i>not</i> apply here). ` +
         `Settings: low ${cut(p.low_abs, p.low_frac, "<")}, high ${cut(p.high_abs, p.high_frac, ">")}, ` +
         `≥ ${p.min_reads_per_window} expected reads / window, ≥ ${p.min_reads} reads, ≥ ${p.min_samples} counted samples, ` +
         `recurrence ≥ ${Math.round(100 * (p.min_freq || 0))}%` +
         (p.min_region_windows > 1 ? `, ≥ ${p.min_region_windows} windows per region` : "") +
         `. Source: <code>${esc(data.source || "all.alignment_trends.json")}</code>.` +
-        (data.n_regions > regs.length ? ` <b>${fmtInt(regs.length)}</b> of ${fmtInt(data.n_regions)} regions embedded — the TSV on disk has all.` : "");
+        (data.n_regions > regs.length
+          ? ` <b>${fmtInt(regs.length)}</b> of ${fmtInt(data.n_regions)} regions embedded — the TSV on disk has all.`
+          : "");
     }
     const k = $("atp-kpis");
     if (k) {
@@ -1001,7 +1152,9 @@
     const host = $("atp-refs");
     if (!data || !host) return;
     const q = (($("atp-ref-search") || {}).value || "").trim().toLowerCase();
-    const rows = (data.references || []).filter((r) => !q || String(r.organism).toLowerCase().includes(q) || String(r.key).includes(q));
+    const rows = (data.references || []).filter(
+      (r) => !q || String(r.organism).toLowerCase().includes(q) || String(r.key).includes(q),
+    );
     const pc = (v, n) => `${(+v || 0).toFixed(1)}% <span class="at-n">(${fmtInt(n)})</span>`;
     host.innerHTML =
       `<table class="at-table at-clickable"><thead><tr><th>Reference</th><th>Samples (counted / total)</th><th>Size</th><th>Window</th>` +
@@ -1011,14 +1164,23 @@
             .map(
               (r) =>
                 `<tr data-k="${esc(r.key)}"><td>${esc(r.organism)}</td><td>${r.n_informative} / ${r.n_samples}</td>` +
-                `<td>${fmtBp(r.total_len)}${r.n_contigs > 1 ? ` · ${fmtInt(r.n_contigs)} contigs` : ""}</td><td>${fmtBp(r.window)}</td>` +
-                `<td>${pc(r.zero_pct, r.n_zero_regions)}</td><td>${pc(r.low_pct, r.n_low_regions)}</td><td>${pc(r.high_pct, r.n_high_regions)}</td>` +
-                `<td class="at-aff" title="${esc((r.informative_samples || []).join(", "))}">${esc((r.informative_samples || []).join(", "))}</td></tr>`,
+                `<td>${fmtBp(r.total_len)}${r.n_contigs > 1 ? ` · ${fmtInt(r.n_contigs)} contigs` : ""}</td><td>${fmtBp(
+                  r.window,
+                )}</td>` +
+                `<td>${pc(r.zero_pct, r.n_zero_regions)}</td><td>${pc(r.low_pct, r.n_low_regions)}</td><td>${pc(
+                  r.high_pct,
+                  r.n_high_regions,
+                )}</td>` +
+                `<td class="at-aff" title="${esc((r.informative_samples || []).join(", "))}">${esc(
+                  (r.informative_samples || []).join(", "),
+                )}</td></tr>`,
             )
             .join("")
         : `<tr><td colspan="8" style="color:#78909c">No reference had enough counted samples in the pipeline run.</td></tr>`) +
       `</tbody></table>`;
-    host.querySelectorAll("tbody tr[data-k]").forEach((tr) => tr.addEventListener("click", () => _atpOpenLive(tr.dataset.k)));
+    host
+      .querySelectorAll("tbody tr[data-k]")
+      .forEach((tr) => tr.addEventListener("click", () => _atpOpenLive(tr.dataset.k)));
   }
 
   function _atpFilteredRegions() {
@@ -1042,20 +1204,36 @@
         ? shown
             .map(
               (r) =>
-                `<tr data-k="${esc(r.key)}" data-c="${esc(r.contig)}" data-s="${r.start}" data-e="${r.end}"><td>${esc(r.organism)}</td>` +
-                `<td><span class="at-pill" style="background:${tcol[r.type] || "#607d8b"}">${esc(r.type)}</span>${r.whole_contig ? ' <span class="at-tag">whole contig</span>' : ""}</td>` +
-                `<td>${esc(r.contig)}</td><td>${fmtInt(r.start)}</td><td>${fmtInt(r.end)}</td><td>${fmtBp(r.length)}</td>` +
-                `<td>${(100 * r.mean_freq).toFixed(0)}%</td><td>${(100 * r.max_freq).toFixed(0)}%</td><td>${r.n_samples}</td>` +
+                `<tr data-k="${esc(r.key)}" data-c="${esc(r.contig)}" data-s="${r.start}" data-e="${r.end}"><td>${esc(
+                  r.organism,
+                )}</td>` +
+                `<td><span class="at-pill" style="background:${tcol[r.type] || "#607d8b"}">${esc(r.type)}</span>${
+                  r.whole_contig ? ' <span class="at-tag">whole contig</span>' : ""
+                }</td>` +
+                `<td>${esc(r.contig)}</td><td>${fmtInt(r.start)}</td><td>${fmtInt(r.end)}</td><td>${fmtBp(
+                  r.length,
+                )}</td>` +
+                `<td>${(100 * r.mean_freq).toFixed(0)}%</td><td>${(100 * r.max_freq).toFixed(0)}%</td><td>${
+                  r.n_samples
+                }</td>` +
                 `<td>${r.mean_norm_depth == null ? "–" : (+r.mean_norm_depth).toFixed(2)}</td>` +
-                `<td class="at-aff" title="${esc(r.samples_affected)}">${esc(String(r.samples_affected || "").replace(/,/g, ", "))}</td></tr>`,
+                `<td class="at-aff" title="${esc(r.samples_affected)}">${esc(
+                  String(r.samples_affected || "").replace(/,/g, ", "),
+                )}</td></tr>`,
             )
             .join("")
         : `<tr><td colspan="11" style="color:#78909c">No recurrent regions for this selection.</td></tr>`) +
       `</tbody></table>` +
-      (rows.length > shown.length ? `<div class="at-note">Showing the 1,000 largest of ${fmtInt(rows.length)} — download for all.</div>` : "");
-    host.querySelectorAll("tbody tr[data-k]").forEach((tr) =>
-      tr.addEventListener("click", () => _atpOpenLive(tr.dataset.k, { contig: tr.dataset.c, start: +tr.dataset.s, end: +tr.dataset.e })),
-    );
+      (rows.length > shown.length
+        ? `<div class="at-note">Showing the 1,000 largest of ${fmtInt(rows.length)} — download for all.</div>`
+        : "");
+    host
+      .querySelectorAll("tbody tr[data-k]")
+      .forEach((tr) =>
+        tr.addEventListener("click", () =>
+          _atpOpenLive(tr.dataset.k, { contig: tr.dataset.c, start: +tr.dataset.s, end: +tr.dataset.e }),
+        ),
+      );
   }
   function _atpSamples() {
     const data = _atpData();
@@ -1071,9 +1249,15 @@
         .slice(0, 2000)
         .map(
           (r) =>
-            `<tr><td>${esc(r.organism)}</td><td>${esc(r.sample)}</td><td>${fmtInt(r.numreads)}</td><td>${(+r.mean_depth || 0).toFixed(2)}x</td>` +
-            `<td>${(+r.breadth_pct || 0).toFixed(1)}%</td><td>${r.exp_reads_per_window == null ? "–" : (+r.exp_reads_per_window).toFixed(1)}</td>` +
-            `<td>${r.informative ? "yes" : '<span style="color:#90a4ae">no</span>'}</td><td>${(+r.pct_zero || 0).toFixed(1)}</td>` +
+            `<tr><td>${esc(r.organism)}</td><td>${esc(r.sample)}</td><td>${fmtInt(r.numreads)}</td><td>${(
+              +r.mean_depth || 0
+            ).toFixed(2)}x</td>` +
+            `<td>${(+r.breadth_pct || 0).toFixed(1)}%</td><td>${
+              r.exp_reads_per_window == null ? "–" : (+r.exp_reads_per_window).toFixed(1)
+            }</td>` +
+            `<td>${r.informative ? "yes" : '<span style="color:#90a4ae">no</span>'}</td><td>${(
+              +r.pct_zero || 0
+            ).toFixed(1)}</td>` +
             `<td>${(+r.pct_low || 0).toFixed(1)}</td><td>${(+r.pct_high || 0).toFixed(1)}</td></tr>`,
         )
         .join("") +
@@ -1102,7 +1286,8 @@
     const res = _lastRes;
     if (!res || String(res.ref.key) !== String(key)) {
       const el = $("at-zoom-note");
-      if (el) el.innerHTML = '<span style="color:#c62828">That reference is not among the report’s visible samples.</span>';
+      if (el)
+        el.innerHTML = '<span style="color:#c62828">That reference is not among the report’s visible samples.</span>';
       return;
     }
     if (region) {
@@ -1126,7 +1311,9 @@
     const rows = which === "regions" ? _atpFilteredRegions() : data.samples || [];
     if (!rows.length) return;
     const cols = Object.keys(rows[0]);
-    const txt = [cols.join("\t"), ...rows.map((r) => cols.map((c) => (r[c] == null ? "" : r[c])).join("\t"))].join("\n");
+    const txt = [cols.join("\t"), ...rows.map((r) => cols.map((c) => (r[c] == null ? "" : r[c])).join("\t"))].join(
+      "\n",
+    );
     _downloadText(txt, `all.alignment_trends.${which}.tsv`, "text/tab-separated-values");
   }
 
@@ -1164,9 +1351,9 @@
   const _TIPS = {
     Reference: () =>
       "The reference (strain-level assembly) the reads were aligned to. Multi-contig assemblies are analysed contig by contig and drawn end to end.",
-    "Samples (counted / total)": (t) => `Counted samples / samples with a depth profile for this reference. ${_COUNTED(t)}`,
-    Size: () =>
-      "Total length of every contig / accession in the reference, including contigs no sample covered.",
+    "Samples (counted / total)": (t) =>
+      `Counted samples / samples with a depth profile for this reference. ${_COUNTED(t)}`,
+    Size: () => "Total length of every contig / accession in the reference, including contigs no sample covered.",
     Window: () =>
       "Window (bin) size. Each sample's depth and breadth are averaged over windows of this many bp. Chosen as the smallest 100 × 2^k bp " +
       "that gives at most --depth_profile_windows (default 400) windows over the reference, so every sample lines up on the same grid. " +
@@ -1186,13 +1373,15 @@
       `A region is consecutive windows of one contig where that state recurs in ≥ ${t.freq}% of counted samples. ` +
       '"whole contig" = the region spans the entire contig.',
     Contig: () => "Contig / accession the region lies on.",
-    Start: () => "Region start on the contig (bp, 0-based). Regions are window-aligned, so edges are accurate to one window.",
+    Start: () =>
+      "Region start on the contig (bp, 0-based). Regions are window-aligned, so edges are accurate to one window.",
     End: () => "Region end on the contig (bp, exclusive).",
     Length: () => "Region length (bp).",
     "Mean freq": () =>
       "Average, over the region's windows, of the fraction of counted samples in this state. 100% = every counted sample, in every window.",
     "Max freq": () => "Highest fraction of counted samples in this state in any single window of the region.",
-    Samples: () => "Counted samples in the region's windows (the most in any one window). Short contigs and contig ends can count fewer.",
+    Samples: () =>
+      "Counted samples in the region's windows (the most in any one window). Short contigs and contig ends can count fewer.",
     "Mean depth / sample mean": () =>
       "Average normalised depth across the region: window depth ÷ that sample's mean depth on the reference, averaged over counted samples. 1 = typical, 0 = empty, 3 = triple.",
     "Depth / mean": () =>
@@ -1200,7 +1389,8 @@
     "Affected samples": () => "Counted samples that are in this state in at least one window of the region.",
     Sample: () => "Sample (library). Hidden samples are left out of the live view.",
     Reads: () => "Reads aligned to this reference in the sample.",
-    "Mean depth": () => "Mean depth over the whole reference (all contigs), the baseline that window depths are divided by.",
+    "Mean depth": () =>
+      "Mean depth over the whole reference (all contigs), the baseline that window depths are divided by.",
     Breadth: () => "Percent of the reference covered by at least one read.",
     "Exp. reads / window": (t) =>
       `Reads this sample is expected to place in one window if they were spread evenly (reads × window ÷ reference length). Must be ≥ ${t.rpw} for the sample to count.`,
@@ -1210,8 +1400,12 @@
     "% low": (t) => `Share of this sample's windows with reads but depth below ${t.low}.`,
     "% high": (t) => `Share of this sample's windows with depth above ${t.high}.`,
     // KPI cards
-    "Informative samples": (t) => `Samples that count toward this reference's frequencies, out of all with a depth profile. ${_COUNTED(t)} Trends need ≥ ${t.minS}.`,
-    "Recurrent low / zero": (t) => `Share of the reference in recurrent low-or-zero regions: ≥ ${t.freq}% of counted samples below ${t.low} or empty.`,
+    "Informative samples": (t) =>
+      `Samples that count toward this reference's frequencies, out of all with a depth profile. ${_COUNTED(
+        t,
+      )} Trends need ≥ ${t.minS}.`,
+    "Recurrent low / zero": (t) =>
+      `Share of the reference in recurrent low-or-zero regions: ≥ ${t.freq}% of counted samples below ${t.low} or empty.`,
     "References compared": (t) => `References with at least ${t.minS} counted samples in the pipeline run.`,
     "Zero regions": (t) => `Recurrent regions where ≥ ${t.freq}% of counted samples have no reads.`,
     "Low / zero regions": (t) => `Recurrent regions where ≥ ${t.freq}% of counted samples are below ${t.low} or empty.`,
@@ -1226,15 +1420,18 @@
   const _CTRL_TIPS = {
     "at-ref-sel": () =>
       "Reference to show. Listed with counted / total samples, references with enough counted samples first. The table at the bottom lists them all.",
-    "at-low": (t) => `LOW cutoff: a window is low when its depth is below this multiple of the sample's own mean depth on the reference (now ${t.low}).`,
-    "at-high": (t) => `HIGH cutoff: a window is high when its depth is above this multiple of the sample's mean depth (now ${t.high}).`,
+    "at-low": (t) =>
+      `LOW cutoff: a window is low when its depth is below this multiple of the sample's own mean depth on the reference (now ${t.low}).`,
+    "at-high": (t) =>
+      `HIGH cutoff: a window is high when its depth is above this multiple of the sample's mean depth (now ${t.high}).`,
     "at-minrpw": () =>
       "Minimum expected reads per window (reads × window ÷ reference length) for a sample to count — per window, so short contigs and contig ends need the same evidence.",
     "at-recur": () =>
       "Recurrence ≥: the fraction of counted samples that must share a state (zero / low / high) in a window for it to join a recurrent region.",
     "at-minsamples": () => "Counted samples needed before a reference — and each window — is analysed.",
     "at-minreads": () => "Minimum reads on the reference for a sample to count at all.",
-    "at-coarsen": () => "Merge 2, 4, 8 or 16 neighbouring windows before analysis: smoother, and lets shallow samples count.",
+    "at-coarsen": () =>
+      "Merge 2, 4, 8 or 16 neighbouring windows before analysis: smoother, and lets shallow samples count.",
     "at-sort": () => "Row order in the heatmap and sample table. Counted samples always come first.",
     "at-use-filters": () =>
       "Only use sample × reference pairs whose detection passes the report's active filters and TASS cutoff. Off = every visible sample with a depth profile (closest to the pipeline run).",
