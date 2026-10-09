@@ -164,7 +164,7 @@
                 },
                 "platform": {
                     "type": "string",
-                    "description": "Sequencing platform.  If left blank it retrieves the platform from the samplesheet",
+                    "description": "Sequencing platform.  If left blank it retrieves the platform from the samplesheet. Aliases such as ONT/Nanopore (OXFORD), PB/HiFi (PACBIO) and MiSeq/NovaSeq (ILLUMINA) are accepted case-insensitively.",
                     "fa_icon": "fas fa-file-signature",
                     "enum": ["ILLUMINA", "OXFORD", "PACBIO"]
                 },

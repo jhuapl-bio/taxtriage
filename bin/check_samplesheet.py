@@ -56,6 +56,68 @@ def is_accession(value):
     return bool(_ACCESSION_RE.match(value))
 
 
+# ── Sequencing platform ─────────────────────────────────────────────────────
+# Downstream steps only understand the canonical values ILLUMINA, OXFORD and
+# PACBIO (e.g. `meta.platform == 'OXFORD'` filters in workflows/taxtriage.nf).
+# Any other value used to pass through silently, match none of those filters,
+# and drop every sample, leaving MultiQC to fail with no useful message.
+# Common aliases are mapped to the canonical value here; anything else is a
+# hard error. Keys are compared after upper-casing and stripping everything
+# that is not a letter or digit, so "Oxford Nanopore", "oxford-nanopore" and
+# "OXFORD_NANOPORE" all match "OXFORDNANOPORE".
+# Keep in sync with PLATFORM_ALIASES in lib/WorkflowTaxtriage.groovy.
+CANONICAL_PLATFORMS = ("ILLUMINA", "OXFORD", "PACBIO")
+PLATFORM_ALIASES = {
+    # Illumina
+    "ILLUMINA": "ILLUMINA",
+    "ILMN": "ILLUMINA",
+    "MISEQ": "ILLUMINA",
+    "NEXTSEQ": "ILLUMINA",
+    "NOVASEQ": "ILLUMINA",
+    "HISEQ": "ILLUMINA",
+    "ISEQ": "ILLUMINA",
+    # Oxford Nanopore
+    "OXFORD": "OXFORD",
+    "ONT": "OXFORD",
+    "NANOPORE": "OXFORD",
+    "OXFORDNANOPORE": "OXFORD",
+    "OXFORDNANOPORETECHNOLOGIES": "OXFORD",
+    "MINION": "OXFORD",
+    "GRIDION": "OXFORD",
+    "PROMETHION": "OXFORD",
+    "FLONGLE": "OXFORD",
+    # PacBio
+    "PACBIO": "PACBIO",
+    "PB": "PACBIO",
+    "PACBIOSMRT": "PACBIO",
+    "PACIFICBIOSCIENCES": "PACBIO",
+    "HIFI": "PACBIO",
+    "SEQUEL": "PACBIO",
+    "REVIO": "PACBIO",
+}
+
+
+def normalize_platform(value):
+    """Map a platform name or alias to ILLUMINA / OXFORD / PACBIO.
+
+    Returns "" for a blank value (the pipeline then defaults to ILLUMINA) and
+    None when the value is not a recognised platform.
+    """
+    if value is None or not str(value).strip():
+        return ""
+    key = re.sub(r"[^A-Z0-9]", "", str(value).upper())
+    return PLATFORM_ALIASES.get(key)
+
+
+def platform_help():
+    """Human-readable list of accepted platform values, for error messages."""
+    lines = []
+    for canonical in CANONICAL_PLATFORMS:
+        aliases = sorted(k for k, v in PLATFORM_ALIASES.items() if v == canonical and k != canonical)
+        lines.append(f"  {canonical:<9} (also accepted: {', '.join(aliases)})")
+    return "\n".join(lines)
+
+
 class RowChecker:
     """
     Define a service that can validate and transform each given row.
@@ -442,12 +504,41 @@ def check_samplesheet(file_in, file_out, file_meta=None):
             sys.exit(1)
         # Validate each row.
         checker = RowChecker()
+        platform_errors = []
         for i, row in enumerate(reader):
+            # Platform is checked across ALL rows first so a sheet with several
+            # bad values reports every one of them in a single error.
+            if "platform" in row:
+                raw_platform = row.get("platform")
+                canonical = normalize_platform(raw_platform)
+                if canonical is None:
+                    platform_errors.append(
+                        f"  line {i + 2}: sample '{(row.get('sample') or '').strip()}' "
+                        f"has platform '{(raw_platform or '').strip()}'"
+                    )
+                else:
+                    if canonical and canonical != (raw_platform or "").strip():
+                        logger.info(
+                            "Line %d: platform '%s' interpreted as '%s'.",
+                            i + 2, (raw_platform or "").strip(), canonical,
+                        )
+                    row["platform"] = canonical
             try:
                 checker.validate_and_transform(row)
             except AssertionError as error:
                 logger.critical(f"{str(error)} On line {i + 2}.")
                 sys.exit(1)
+        if platform_errors:
+            logger.critical(
+                "Invalid sequencing platform in the samplesheet "
+                f"({len(platform_errors)} row(s)):\n"
+                + "\n".join(platform_errors)
+                + "\nThe 'platform' column must be one of the following "
+                "(case-insensitive; spaces, '-' and '_' are ignored):\n"
+                + platform_help()
+                + "\nLeave the column blank to default to ILLUMINA."
+            )
+            sys.exit(1)
         checker.validate_unique_samples()
     header = list(reader.fieldnames)
     if "fastq_1" not in header:

@@ -33,6 +33,75 @@ class WorkflowTaxtriage {
     }
 
     //
+    // ── Sequencing platform aliases ──────────────────────────────────────────
+    //
+    // Downstream filters only understand ILLUMINA / OXFORD / PACBIO. Common
+    // aliases (ONT, Nanopore, MinION, PB, HiFi, MiSeq, …) are mapped onto those.
+    // Keys are compared after upper-casing and dropping every non-alphanumeric
+    // character, so "Oxford Nanopore", "oxford-nanopore" and "OXFORD_NANOPORE"
+    // all match. Keep in sync with PLATFORM_ALIASES in bin/check_samplesheet.py.
+    //
+    public static final List<String> CANONICAL_PLATFORMS = ['ILLUMINA', 'OXFORD', 'PACBIO']
+    public static final Map<String, String> PLATFORM_ALIASES = [
+        // Illumina
+        ILLUMINA: 'ILLUMINA', ILMN: 'ILLUMINA', MISEQ: 'ILLUMINA', NEXTSEQ: 'ILLUMINA',
+        NOVASEQ: 'ILLUMINA', HISEQ: 'ILLUMINA', ISEQ: 'ILLUMINA',
+        // Oxford Nanopore
+        OXFORD: 'OXFORD', ONT: 'OXFORD', NANOPORE: 'OXFORD', OXFORDNANOPORE: 'OXFORD',
+        OXFORDNANOPORETECHNOLOGIES: 'OXFORD', MINION: 'OXFORD', GRIDION: 'OXFORD',
+        PROMETHION: 'OXFORD', FLONGLE: 'OXFORD',
+        // PacBio
+        PACBIO: 'PACBIO', PB: 'PACBIO', PACBIOSMRT: 'PACBIO', PACIFICBIOSCIENCES: 'PACBIO',
+        HIFI: 'PACBIO', SEQUEL: 'PACBIO', REVIO: 'PACBIO',
+    ]
+
+    // Canonical platform for `value`, '' when blank, or null when unrecognised.
+    public static String normalizePlatform(value) {
+        if (value == null || !value.toString().trim()) {
+            return ''
+        }
+        def key = value.toString().toUpperCase().replaceAll(/[^A-Z0-9]/, '')
+        return PLATFORM_ALIASES[key]
+    }
+
+    public static String platformHelp() {
+        return CANONICAL_PLATFORMS.collect { c ->
+            def aliases = PLATFORM_ALIASES.findAll { k, v -> v == c && k != c }.keySet().sort()
+            "  ${c.padRight(9)} (also accepted: ${aliases.join(', ')})"
+        }.join('\n')
+    }
+
+    // Canonical platform, or exit with an error naming where the bad value came from.
+    public static String requirePlatform(value, String source) {
+        def canonical = normalizePlatform(value)
+        if (canonical == null) {
+            Nextflow.error(
+                "Invalid sequencing platform '${value.toString().trim()}' (${source}).\n" +
+                "Platform must be one of the following (case-insensitive; spaces, '-' and '_' are ignored):\n" +
+                platformHelp() + "\nLeave it blank to default to ILLUMINA."
+            )
+        }
+        return canonical
+    }
+
+    //
+    // Rewrite --platform / --background_platform to their canonical value. Called
+    // before schema validation so an alias such as `--platform ONT` passes the
+    // schema enum, and a genuinely wrong value gets the clear error above instead
+    // of a generic enum failure.
+    //
+    public static void normalizePlatformParams(params) {
+        ['platform', 'background_platform'].each { key ->
+            if (params.containsKey(key) && params[key]) {
+                def canonical = requirePlatform(params[key], "--${key}")
+                if (canonical) {
+                    params.put(key, canonical)
+                }
+            }
+        }
+    }
+
+    //
     // Check and validate parameters
     //
     //
