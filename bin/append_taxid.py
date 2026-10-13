@@ -227,6 +227,8 @@ def apply_custom_map(mapped_df, custom_map_file):
         return mapped_df
 
     filled = overridden = 0
+    if "Custom_Name" not in mapped_df.columns:
+        mapped_df["Custom_Name"] = ""
     for idx in mapped_df.index:
         hit = cmap.get(str(mapped_df.at[idx, "Acc"]).strip())
         if not hit:
@@ -241,6 +243,13 @@ def apply_custom_map(mapped_df, custom_map_file):
         mapped_df.at[idx, "Mapped_Value"] = taxid
         if name:
             mapped_df.at[idx, "Organism_Name"] = name
+        # Custom_Name marks this row as user-authoritative for match_paths.py:
+        # the name replaces the taxdump / pathogen-sheet name for this taxid in
+        # the report, and lets made-up taxids (absent from names.dmp) be named.
+        mapped_df.at[idx, "Custom_Name"] = (
+            name or str(mapped_df.at[idx, "Organism_Name"] or "").strip()
+            or str(mapped_df.at[idx, "Acc"]).strip()
+        )
 
     print(f"Custom map: filled {filled}, overrode {overridden} accession(s) "
           f"({len(cmap)} entries in map).")
@@ -323,9 +332,14 @@ def main(argv=None):
             api_key=args.api_key,
             batch_size=args.ncbi_batch_size,
         )
+    # Custom_Name is appended LAST so positional readers (taxid at index 4)
+    # are unaffected; blank for rows not set by --custom_accession_map.
+    if "Custom_Name" not in mapped_df.columns:
+        mapped_df["Custom_Name"] = ""
+    mapped_df["Custom_Name"] = mapped_df["Custom_Name"].fillna("")
     # Write the output to the specified file
     if args.output:
-        mapped_df[['Acc', 'Assembly',  'Organism_Name', 'Description', 'Mapped_Value']].to_csv(args.output, sep='\t', index=False)
+        mapped_df[['Acc', 'Assembly',  'Organism_Name', 'Description', 'Mapped_Value', 'Custom_Name']].to_csv(args.output, sep='\t', index=False)
         print(f"Output written to {args.output}")
     else:
         print("Output sample, no output file specified:")

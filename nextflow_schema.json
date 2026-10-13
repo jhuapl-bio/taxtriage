@@ -924,7 +924,7 @@
                     "format": "file-path",
                     "default": null,
                     "description": "Accession -> taxid map (header with 'accession' and 'taxid', optional 'name'; tab or comma delimited).",
-                    "help_text": "Authoritative for listed accessions: overrides the assembly-summary/fuzzy-name match and replaces the NCBI E-utilities lookup. Used by reference prep (main pipeline and in-silico) and by spike-in references. Match on the FASTA record id (nuccore accession in the header), with or without version; for spike-in it may also be the sheet accession.",
+                    "help_text": "Authoritative for listed accessions: overrides the assembly-summary/fuzzy-name match and replaces the NCBI E-utilities lookup. Used by reference prep (main pipeline and in-silico) and by spike-in references. Match on the FASTA record id (nuccore accession in the header), with or without version; for spike-in it may also be the sheet accession. The name column (or the reference's organism name if blank) replaces the NCBI/pathogen-sheet name for that taxid in the report, and taxids absent from the taxdump are allowed (reported on their own with no lineage).",
                     "fa_icon": "fas fa-map-signs"
                 },
                 "no_read_removal": {

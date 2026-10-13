@@ -1902,6 +1902,11 @@ def main():
     if _pathogen_name_by_taxid:
         print(f"Pathogen-sheet preferred names loaded for {len(_pathogen_name_by_taxid)} taxid(s)")
 
+    # taxid -> name from --custom_accession_map (the matchfile's Custom_Name
+    # column, written by append_taxid.py). These are user-authoritative: they
+    # replace the taxdump / pathogen-sheet name for that taxid everywhere in the
+    # report, and they let made-up taxids that are absent from names.dmp be named.
+    _custom_name_by_taxid = {}
     if args.match and os.path.exists(matcher):
         print("Processing matchfile to enrich reference hits with taxid and description information…")
         accindex = args.accessioncol
@@ -1932,6 +1937,8 @@ def main():
                           "sequence_name", "refseq_name"}
             _ORG_HDRS  = {"organism", "org", "species", "scientific_name",
                           "organism_name"}
+            _CUSTOM_HDRS = {"custom_name"}
+            customindex = None
 
             _skip_header = False
             _ncols = None
@@ -1960,6 +1967,8 @@ def main():
                                 nameindex = _ci
                             elif _h in _ORG_HDRS:
                                 orgindex = _ci
+                            elif _h in _CUSTOM_HDRS:
+                                customindex = _ci
                         print(f"Matchfile header detected ({_ncols} columns): "
                               f"acc={accindex}, taxid={taxcol}, "
                               f"name={nameindex}, org={orgindex}")
@@ -1975,8 +1984,15 @@ def main():
                 taxid     = splitline[taxcol].strip() if len(splitline) > taxcol else None
                 name      = splitline[nameindex].strip() if len(splitline) > nameindex else None
                 organism = splitline[orgindex].strip() if len(splitline) > orgindex else None
+                custom_name = (
+                    splitline[customindex].strip()
+                    if customindex is not None and len(splitline) > customindex
+                    else None
+                )
                 if not accession:
                     continue
+                if custom_name and taxid:
+                    _custom_name_by_taxid[str(taxid)] = custom_name
 
                 accession = str(accession)
                 accession_unv = re.sub(r"\.\d+$", "", accession)
@@ -2012,7 +2028,25 @@ def main():
                         reference_hits[target_accession]["name"] = name
                     elif _taxdump_name:
                         reference_hits[target_accession]["name"] = _taxdump_name
+                    if custom_name:
+                        reference_hits[target_accession]["name"] = custom_name
         f.close()
+
+    # ── --custom_accession_map names win over taxdump + pathogen sheet ───
+    # Injecting them into both lookups means every later name resolution
+    # (name, toplevelname, subkeyname, organism, lineage leaf) uses them, and
+    # a made-up taxid no longer raises KeyError on taxdump_names[taxid].
+    if _custom_name_by_taxid:
+        for _ctid, _cname in _custom_name_by_taxid.items():
+            if taxdump_names is not None:
+                taxdump_names[_ctid] = _cname
+            _pathogen_name_by_taxid[_ctid] = _cname
+            early_taxid_to_desc[_ctid] = _cname
+            if taxdump and _ctid not in taxdump:
+                print(f"[custom_map] taxid {_ctid} ('{_cname}') is not in nodes.dmp; "
+                      f"it will be reported on its own with no lineage.")
+        print(f"[custom_map] custom names applied for {len(_custom_name_by_taxid)} taxid(s): "
+              + ", ".join(f"{k}={v}" for k, v in _custom_name_by_taxid.items()))
 
     # ── Resolve missing names from taxdump/names.dmp ─────────────────────
     # When the matchfile has only accession + taxid (no name/org columns),
@@ -2046,6 +2080,8 @@ def main():
         for _acc, _hit in reference_hits.items():
             _tid = str(_hit.get('taxid', '') or '')
             if not _tid:
+                continue
+            if _tid in _custom_name_by_taxid:
                 continue
             _pentry = pathogens.get(_tid)
             if _pentry and _pentry.get('name'):
