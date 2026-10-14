@@ -1712,6 +1712,177 @@
                 }
             }
         },
+        "region_masking": {
+            "title": "Region masking (FCS / targeted TASS)",
+            "type": "object",
+            "fa_icon": "fas fa-mask",
+            "description": "Restrict TASS scoring to part of each reference: mask NCBI FCS contaminant spans, or score only targeted sub-regions. See docs/masking.md.",
+            "properties": {
+                "fcs": {
+                    "type": "boolean",
+                    "description": "Mask NCBI FCS-GX contaminant spans in the reference genomes before computing TASS.",
+                    "help_text": "Uses `--fcs_details` when given, otherwise downloads NCBI's precomputed `fcs_details_{genbank,refseq}.txt.gz` and `fcs_summary_*.txt.gz` from ASSEMBLY_REPORTS into `--fcs_db`. Reads falling in contaminant spans are not scored and the spans leave the breadth / depth / Gini denominator. See docs/masking.md.",
+                    "fa_icon": "fas fa-shield-virus",
+                    "default": false
+                },
+                "fcs_details": {
+                    "type": ["string", "null"],
+                    "description": "Comma-separated local NCBI FCS details file(s) (fcs_details_genbank.txt, fcs_details_refseq.txt.gz, or a previous run's masking/fcs_subset.txt). Implies --fcs.",
+                    "fa_icon": "fas fa-file-alt",
+                    "default": null
+                },
+                "fcs_summary": {
+                    "type": ["string", "null"],
+                    "description": "Comma-separated NCBI fcs_summary_*.txt[.gz]. Produces the per-assembly FCS table and flags organisms whose assembly NCBI found contaminated.",
+                    "fa_icon": "fas fa-file-alt",
+                    "default": null
+                },
+                "fcs_gx_report": {
+                    "type": ["string", "null"],
+                    "description": "Comma-separated per-assembly FCS-GX reports (an assembly's *_fcs_report.txt, or the output of running FCS-GX yourself).",
+                    "fa_icon": "fas fa-file-alt",
+                    "default": null
+                },
+                "fcs_adaptor_report": {
+                    "type": ["string", "null"],
+                    "description": "Comma-separated FCS-adaptor reports (fcs_adaptor_report.txt); adaptor/vector ranges are masked.",
+                    "fa_icon": "fas fa-file-alt",
+                    "default": null
+                },
+                "fcs_actions": {
+                    "type": "string",
+                    "description": "FCS actions to mask (comma-separated). Add REVIEW and/or INFO to be stricter; 'all' masks every row.",
+                    "default": "EXCLUDE,TRIM,FIX",
+                    "fa_icon": "fas fa-list"
+                },
+                "fcs_divisions": {
+                    "type": ["string", "null"],
+                    "description": "Optional regex on the FCS contaminant division (e.g. 'prok|synt|anml:primates'); default masks every division.",
+                    "fa_icon": "fas fa-filter",
+                    "default": null
+                },
+                "fcs_min_len": {
+                    "type": ["integer", "null"],
+                    "description": "Ignore FCS spans shorter than this many bp.",
+                    "default": null,
+                    "fa_icon": "fas fa-ruler"
+                },
+                "fcs_db": {
+                    "type": ["string", "null"],
+                    "description": "storeDir for downloaded NCBI FCS reports (default <outdir>/fcs_db). Point at shared storage to download once.",
+                    "format": "directory-path",
+                    "fa_icon": "fas fa-database",
+                    "default": null
+                },
+                "fcs_url": {
+                    "type": "string",
+                    "description": "Base URL of NCBI's FCS reports.",
+                    "default": "https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS",
+                    "fa_icon": "fas fa-link",
+                    "hidden": true
+                },
+                "fcs_sets": {
+                    "type": "string",
+                    "description": "Which NCBI FCS report sets to download (genbank, refseq).",
+                    "default": "genbank,refseq",
+                    "fa_icon": "fas fa-list",
+                    "hidden": true
+                },
+                "mask_bed": {
+                    "type": ["string", "null"],
+                    "description": "Comma-separated BED file(s). Exclude mode: regions to ignore. Target mode: the only regions scored.",
+                    "help_text": "0-based half-open BED; .gz accepted. Column 1 must name the reference accession; version and RefSeq NZ_ prefix differences are reconciled automatically.",
+                    "fa_icon": "fas fa-file-alt",
+                    "default": null
+                },
+                "mask_mode": {
+                    "type": "string",
+                    "description": "exclude = score everything except the masked regions; target = score only the targeted regions (minus any FCS spans).",
+                    "enum": ["exclude", "target"],
+                    "default": "exclude",
+                    "fa_icon": "fas fa-crosshairs"
+                },
+                "mask_feature_table": {
+                    "type": ["string", "null"],
+                    "description": "Target mode: comma-separated NCBI *_feature_table.txt[.gz] to select target genes from (with --mask_feature_select).",
+                    "fa_icon": "fas fa-file-alt",
+                    "default": null
+                },
+                "mask_gff": {
+                    "type": ["string", "null"],
+                    "description": "Target mode: comma-separated GFF3[.gz] to select target genes from (with --mask_feature_select).",
+                    "fa_icon": "fas fa-file-alt",
+                    "default": null
+                },
+                "mask_feature_select": {
+                    "type": ["string", "null"],
+                    "description": "Target mode: case-insensitive regex on gene / locus_tag / product / Name / ID, e.g. '^(stx1a|stx2a|eae)$'.",
+                    "fa_icon": "fas fa-search",
+                    "default": null
+                },
+                "mask_feature_types": {
+                    "type": "string",
+                    "description": "Feature types considered when selecting targets.",
+                    "default": "CDS,gene",
+                    "fa_icon": "fas fa-list"
+                },
+                "mask_untargeted": {
+                    "type": "string",
+                    "description": "Target mode: references without any target are dropped from scoring (drop) or scored over their whole length (keep).",
+                    "enum": ["drop", "keep"],
+                    "default": "drop",
+                    "fa_icon": "fas fa-filter"
+                },
+                "mask_read_overlap": {
+                    "type": "number",
+                    "description": "A read is removed when at least this fraction of its aligned span lies in masked space (outside targets in target mode). 1.0 = only fully masked reads.",
+                    "default": 0.5,
+                    "minimum": 0.01,
+                    "maximum": 1,
+                    "fa_icon": "fas fa-percentage"
+                },
+                "mask_penalty_power": {
+                    "type": "number",
+                    "description": "TASS *= (1 - masked_read_fraction)^power. 0 = masked reads are simply ignored; >0 also penalises organisms whose reads pile into masked regions.",
+                    "default": 0,
+                    "minimum": 0,
+                    "fa_icon": "fas fa-balance-scale"
+                },
+                "mask_pad": {
+                    "type": "integer",
+                    "description": "Pad every mask / target interval by this many bp on each side.",
+                    "default": 0,
+                    "minimum": 0,
+                    "fa_icon": "fas fa-arrows-alt-h"
+                },
+                "mask_min_region": {
+                    "type": "integer",
+                    "description": "Ignore mask / target intervals shorter than this many bp.",
+                    "default": 0,
+                    "minimum": 0,
+                    "fa_icon": "fas fa-ruler"
+                },
+                "mask_report": {
+                    "type": "boolean",
+                    "description": "Write the masking report (<outdir>/masking/all.masking.html) when masking is on.",
+                    "default": true,
+                    "fa_icon": "fas fa-chart-area"
+                },
+                "mask_compare": {
+                    "type": "boolean",
+                    "description": "Also score every sample without the mask so the masking report shows TASS before/after (doubles scoring time).",
+                    "default": false,
+                    "fa_icon": "fas fa-exchange-alt"
+                },
+                "mask_report_top": {
+                    "type": "integer",
+                    "description": "Number of coverage tracks drawn in the masking report.",
+                    "default": 24,
+                    "minimum": 0,
+                    "fa_icon": "fas fa-list-ol"
+                }
+            }
+        },
         "alignment_trends": {
             "title": "Alignment trends",
             "type": "object",
@@ -1853,6 +2024,9 @@
         },
         {
             "$ref": "#/definitions/alignment_trends"
+        },
+        {
+            "$ref": "#/definitions/region_masking"
         }
     ]
 }

@@ -44,6 +44,9 @@ process ALIGNMENT_PER_SAMPLE {
     path(positive_control_jsons)
     path(insilico_control_jsons)
     path(meta_csv)
+    // Region mask from BUILD_MASK (mask.exclude.bed / mask.target.bed /
+    // fcs_assemblies.tsv) or a NO_FILE_mask placeholder. See docs/masking.md.
+    path(mask_files, stageAs: 'mask/*')
 
     output:
         path "versions.yml"           , emit: versions
@@ -69,7 +72,9 @@ process ALIGNMENT_PER_SAMPLE {
     // preserves the previous behaviour of always emitting the per-taxid report.
     def no_read_removal = params.no_read_removal ? " --no_read_removal " : " "
     def taxid_removal_stats = params.taxid_removal_stats ? " --taxid_removal_stats " : " "
-    def output = "${meta.id}.paths.json"
+    // ext.suffix lets the --mask_compare unmasked baseline publish alongside
+    // the masked run without a file-name clash (see conf/modules.config).
+    def output = "${meta.id}${task.ext.suffix ?: ''}.paths.json"
     def id = meta.id
     def minmapq_arg = minmapq ? " --minmapq ${minmapq} " :  ""
     // ── Ambiguous-read (multimapper) rescue ───────────────────────────────────
@@ -123,6 +128,29 @@ process ALIGNMENT_PER_SAMPLE {
     // channel-combination quoting issues.
     def meta_csv_arg = meta_csv.name != "NO_FILE_meta_csv" ? " --meta_csv ${meta_csv} " : " "
 
+    // ── Region masking (--mask_bed / --fcs / --mask_mode) ─────────────────────
+    // stageAs 'mask/*' makes .name the staged relative path -> compare basenames
+    def _mbase      = { f -> f.toString().tokenize('/')[-1] }
+    def _mfiles     = (mask_files instanceof List ? mask_files : [mask_files]).findAll { it && !_mbase.call(it).startsWith('NO_FILE') }
+    def _excl_bed   = _mfiles.find { _mbase.call(it) == 'mask.exclude.bed' }
+    def _tgt_bed    = _mfiles.find { _mbase.call(it) == 'mask.target.bed' }
+    def _fcs_asm    = _mfiles.find { _mbase.call(it) == 'fcs_assemblies.tsv' }
+    def _is_target  = (params.mask_mode ?: 'exclude') == 'target' && _tgt_bed
+    def mask_args   = ''
+    if (_is_target) {
+        mask_args = " --mask_bed ${_tgt_bed} --mask_mode target --mask_untargeted ${params.mask_untargeted ?: 'drop'} " +
+                    (_excl_bed ? " --mask_exclude_bed ${_excl_bed} " : '')
+    } else if (_excl_bed) {
+        mask_args = " --mask_bed ${_excl_bed} --mask_mode exclude "
+    }
+    if (mask_args) {
+        mask_args += (params.mask_read_overlap != null ? " --mask_read_overlap ${params.mask_read_overlap} " : '') +
+                     (params.mask_penalty_power ? " --mask_penalty_power ${params.mask_penalty_power} " : '') +
+                     (params.mask_min_region ? " --mask_min_region ${params.mask_min_region} " : '')
+    }
+    // the assembly-level FCS annotation is useful even when nothing is masked
+    mask_args += _fcs_asm ? " --fcs_assembly_table ${_fcs_asm} " : ''
+
     // Control sample arguments
     def ctrl_type = meta.control_type ? " --control_type ${meta.control_type} " : " "
     def neg_ctrls = negative_control_jsons.name != "NO_FILE_neg_ctrl" ? " --negative_controls ${negative_control_jsons} " : " "
@@ -157,7 +185,7 @@ process ALIGNMENT_PER_SAMPLE {
         $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $insilico_flag $parent_arg $reward_factor $dispersion_factor \\
         $mapq_breadth_power $mapq_gini_power $rescue_args \\
         $annotate_report_arg $pident $depth_profile \\
-        $meta_csv_arg
+        $meta_csv_arg $mask_args
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
     cp search_results/removal_stats_by_taxid.xlsx "${meta.id}_removal_stats_by_taxid.xlsx" || true

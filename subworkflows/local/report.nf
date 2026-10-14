@@ -30,6 +30,10 @@ include { ALIGNMENT_TRENDS } from '../../modules/local/alignment_trends'
 include { NOVELTY_COLLECT } from '../../modules/local/novelty_collect'
 include { MICROBERT_PREDICT } from '../../modules/local/microbert_predict'
 include { MICROBERT_PARSE } from '../../modules/local/microbert_parse'
+include { FCS_DOWNLOAD } from '../../modules/local/fcs_download'
+include { BUILD_MASK } from '../../modules/local/build_mask'
+include { MASK_REPORT } from '../../modules/local/mask_report'
+include { ALIGNMENT_PER_SAMPLE as ALIGNMENT_PER_SAMPLE_UNMASKED } from '../../modules/local/alignment_per_sample'
 
 workflow REPORT {
     take:
@@ -108,6 +112,57 @@ workflow REPORT {
                 return items[0..-2] + [mbert]
             }
 
+        // ── Region masking: NCBI FCS and/or BED / annotation targets ─────────
+        // One mask is built for the whole run (BUILD_MASK) from the references
+        // the samples aligned to, then handed to every ALIGNMENT_PER_SAMPLE call.
+        // Off unless --fcs, --mask_bed, --mask_feature_table/--mask_gff or
+        // --fcs_gx_report/--fcs_adaptor_report is given. See docs/masking.md.
+        def _csv_files = { v -> v ? v.toString().tokenize(',')*.trim().findAll { it }.collect { file(it, checkIfExists: true) } : [] }
+        def _mask_on = params.fcs || params.mask_bed || params.mask_feature_table || params.mask_gff ||
+                       params.fcs_gx_report || params.fcs_adaptor_report || params.fcs_details
+        ch_mask_files = Channel.value(file("$projectDir/assets/NO_FILE_mask"))
+        if (_mask_on) {
+            def _nf = { name -> [file("$projectDir/assets/${name}")] }
+            def _fcs_on = params.fcs || params.fcs_details
+            ch_fcs_details = Channel.value(_nf.call('NO_FILE_fcs_details'))
+            ch_fcs_summary = Channel.value(_csv_files.call(params.fcs_summary) ?: _nf.call('NO_FILE_fcs_summary'))
+            if (_fcs_on && params.fcs_details) {
+                ch_fcs_details = Channel.value(_csv_files.call(params.fcs_details))
+            } else if (_fcs_on) {
+                // no local copy: fetch NCBI's precomputed FCS-GX reports (cached in --fcs_db)
+                FCS_DOWNLOAD()
+                ch_fcs_details = FCS_DOWNLOAD.out.details.collect()
+                if (!params.fcs_summary) {
+                    ch_fcs_summary = FCS_DOWNLOAD.out.summary.collect()
+                }
+            }
+            ch_mask_bams = alignments.map { it[1] }.flatten()
+                .filter { f -> f.name ==~ /.*\.(bam|cram)$/ }
+                .collect().ifEmpty { _nf.call('NO_FILE_mask_bams') }
+            ch_mask_maps = alignments.map { it[3] }.flatten()
+                .filter { f -> !f.name.startsWith('NO_FILE') }
+                .unique { f -> f.toString() }
+                .collect().ifEmpty { _nf.call('NO_FILE_mask_maps') }
+            BUILD_MASK(
+                ch_mask_bams,
+                ch_mask_maps,
+                ch_fcs_details,
+                ch_fcs_summary,
+                Channel.value(_csv_files.call(params.fcs_gx_report) ?: _nf.call('NO_FILE_fcs_gx')),
+                Channel.value(_csv_files.call(params.fcs_adaptor_report) ?: _nf.call('NO_FILE_fcs_adaptor')),
+                Channel.value(_csv_files.call(params.mask_bed) ?: _nf.call('NO_FILE_mask_bed')),
+                Channel.value((_csv_files.call(params.mask_feature_table) + _csv_files.call(params.mask_gff)) ?: _nf.call('NO_FILE_mask_features')),
+            )
+            ch_mask_files = BUILD_MASK.out.beds.flatten()
+                .mix(BUILD_MASK.out.assemblies)
+                .collect()
+                .ifEmpty { file("$projectDir/assets/NO_FILE_mask") }
+            ch_mask_report_files = BUILD_MASK.out.beds.flatten()
+                .mix(BUILD_MASK.out.assemblies, BUILD_MASK.out.summary.flatten(), BUILD_MASK.out.json.flatten())
+                .collect()
+                .ifEmpty { file("$projectDir/assets/NO_FILE_mask") }
+        }
+
         // Perform the difference operation
         missing_samples = all_samples - accepted_list
         missing_samples = missing_samples.flatten().toSortedList()
@@ -133,6 +188,7 @@ workflow REPORT {
                 ch_no_pos_ctrl,
                 ch_no_insilico_ctrl,
                 ch_meta_csv,
+                ch_mask_files,
             )
 
             // ── Step 1b: Run insilico samples (no controls for them) ────────────
@@ -147,6 +203,7 @@ workflow REPORT {
                 ch_no_pos_ctrl,
                 ch_no_insilico_ctrl,
                 ch_meta_csv,
+                ch_mask_files,
             )
 
             // ── Step 2: Collect control JSON outputs into a value channel ──────
@@ -247,7 +304,38 @@ workflow REPORT {
                 noncontrol_pos_json,
                 noncontrol_insilico_json,
                 ch_meta_csv,
+                ch_mask_files,
             )
+
+            // ── Masking report (+ optional unmasked baseline) ──────────────────
+            // --mask_compare re-scores the real samples WITHOUT the mask so the
+            // report can show how every TASS moved. The baseline JSONs publish to
+            // <outdir>/masking/unmasked/ and never reach the main reports.
+            if (_mask_on && params.mask_report != false) {
+                ch_mask_baseline = Channel.value(file("$projectDir/assets/NO_FILE_mask_baseline"))
+                if (params.mask_compare) {
+                    ALIGNMENT_PER_SAMPLE_UNMASKED(
+                        noncontrol_aln_input,
+                        assemblyfile,
+                        params.minmapq,
+                        ch_taxdump_dir,
+                        noncontrol_neg_json,
+                        noncontrol_pos_json,
+                        noncontrol_insilico_json,
+                        ch_meta_csv,
+                        Channel.value(file("$projectDir/assets/NO_FILE_mask")),
+                    )
+                    ch_mask_baseline = ALIGNMENT_PER_SAMPLE_UNMASKED.out.txt
+                        .map { meta, json -> json }
+                        .collect()
+                        .ifEmpty { file("$projectDir/assets/NO_FILE_mask_baseline") }
+                }
+                MASK_REPORT(
+                    ALIGNMENT_PER_SAMPLE.out.txt.map { meta, json -> json }.collect(),
+                    ch_mask_baseline,
+                    ch_mask_report_files,
+                )
+            }
 
             // ── Step 4: Merge outputs from control, insilico, and non-control runs ─
             all_alignment_outputs = ALIGNMENT_PER_SAMPLE_CONTROLS.out.txt

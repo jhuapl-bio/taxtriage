@@ -595,12 +595,28 @@
         // Top-N set — build filtered bins/breaks/names restricted to visible contigs
         const topContigSet = new Set((cd.contigs || []).slice(0, limitTo).map((c) => c.name));
 
+        // Region mask overlay (match_paths --mask_bed): per-bin % of bases that
+        // were masked (exclude mode) or lay outside the targets (target mode).
+        // Decoded lazily and cached on the histogram object.
+        if (bh.mask_b64 && !bh._maskBins) {
+          try {
+            const mraw = atob(bh.mask_b64);
+            bh._maskBins = Array.from({ length: mraw.length }, (_, i) => mraw.charCodeAt(i));
+          } catch (e) {
+            bh._maskBins = null;
+          }
+        }
+        const maskBins = Array.isArray(bh._maskBins) && bh._maskBins.length === nBins ? bh._maskBins : null;
+        const maskMode = bh.mask_mode || "exclude";
+
         // Remap breadth histogram to only the top-N contigs so grey sections disappear
         let filteredBins = bins,
           filteredBreaks = breaks,
-          filteredContigNames = contigNames;
+          filteredContigNames = contigNames,
+          filteredMask = maskBins;
         if (topContigSet.size > 0 && contigNames.length > 0) {
           const remappedBins = [];
+          const remappedMask = [];
           const remappedBreaks = [];
           const remappedNames = [];
           contigNames.forEach((cName, ci) => {
@@ -609,12 +625,16 @@
             const bEnd = ci + 1 < breaks.length ? breaks[ci + 1] : nBins;
             remappedBreaks.push(remappedBins.length);
             remappedNames.push(cName);
-            for (let b = bStart; b < bEnd; b++) remappedBins.push(bins[b]);
+            for (let b = bStart; b < bEnd; b++) {
+              remappedBins.push(bins[b]);
+              if (maskBins) remappedMask.push(maskBins[b]);
+            }
           });
           if (remappedBins.length > 0) {
             filteredBins = remappedBins;
             filteredBreaks = remappedBreaks;
             filteredContigNames = remappedNames;
+            filteredMask = maskBins ? remappedMask : null;
           }
         }
         const fNBins = filteredBins.length;
@@ -712,6 +732,47 @@
           .style("pointer-events", "none");
 
         const barsG = g.append("g").attr("clip-path", `url(#${clipId})`);
+
+        // ── Mask layer (behind the coverage bars) ──────────────────────────
+        // exclude: grey = masked bases (not scored). target: amber = targeted
+        // bases (the only ones scored). Equal neighbouring bins merge into one
+        // rect so long masked spans draw as a solid band.
+        if (filteredMask) {
+          const layer = filteredMask.map((m) => {
+            const v = maskMode === "target" ? 100 - m : m;
+            return Math.round(v / 5) * 5;
+          });
+          const runs = [];
+          for (let i = 0; i < layer.length; ) {
+            let j = i;
+            while (j + 1 < layer.length && layer[j + 1] === layer[i]) j++;
+            if (layer[i] > 0) runs.push({ i0: i, i1: j + 1, v: layer[i] });
+            i = j + 1;
+          }
+          barsG
+            .selectAll("rect.bh-mask")
+            .data(runs)
+            .enter()
+            .append("rect")
+            .attr("class", "bh-mask")
+            .attr("x", (d) => xSc(d.i0))
+            .attr("y", 0)
+            .attr("width", (d) => Math.max(1, xSc(d.i1) - xSc(d.i0)))
+            .attr("height", iH)
+            .attr("fill", maskMode === "target" ? "#f2b84b" : "#9a9aa1")
+            .attr("opacity", (d) => 0.12 + 0.38 * (d.v / 100))
+            .attr("shape-rendering", "crispEdges")
+            .style("pointer-events", "none");
+          svg
+            .append("text")
+            .attr("x", mL + iW)
+            .attr("y", 14)
+            .attr("text-anchor", "end")
+            .attr("font-size", 9)
+            .attr("fill", maskMode === "target" ? "#a8741a" : "#77777e")
+            .text(maskMode === "target" ? "\u25A0 targeted (only scored region)" : "\u25A0 masked (not scored)");
+        }
+
         barsG
           .selectAll("rect.bh-bar")
           .data(binsData)
@@ -745,7 +806,14 @@
               `<b>${cName || `Bin ${i + 1}`}</b><br>` +
                 `<span style="color:#aaa;font-size:0.9em">Click to filter</span><br>` +
                 `Pos: ${fmtLen(posStart)} \u2013 ${fmtLen(posEnd)}<br>` +
-                `Covered: <b>${v.toFixed(1)}%</b>`,
+                `Covered: <b>${v.toFixed(1)}%</b>` +
+                (filteredMask && filteredMask[i] > 0
+                  ? maskMode === "target"
+                    ? `<br>Targeted: <b>${(100 - filteredMask[i]).toFixed(0)}%</b> of bin`
+                    : `<br>Masked: <b>${filteredMask[i].toFixed(0)}%</b> of bin (not scored)`
+                  : maskMode === "target" && filteredMask
+                    ? `<br>Targeted: <b>100%</b> of bin`
+                    : ""),
               ev,
             );
             d3.select(this).attr("stroke", "#333").attr("stroke-width", 0.8);
