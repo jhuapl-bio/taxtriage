@@ -774,8 +774,26 @@ admin:
     }
   }
 
+  // ── Banner run name ───────────────────────────────────────────────────────
+  // Surface the Nextflow run name in the top banner so it is visible without
+  // opening Run info. Hidden when run info is absent or the name is redacted.
+  function showBannerRunName() {
+    const chip = document.getElementById("banner-run");
+    const nameEl = document.getElementById("banner-run-name");
+    if (!chip || !nameEl) return;
+    const rn = RUN && RUN.workflow && RUN.workflow.runName;
+    if (!rn || rn === "(redacted)") {
+      chip.hidden = true;
+      return;
+    }
+    nameEl.textContent = String(rn);
+    chip.title = "Nextflow run name: " + rn;
+    chip.hidden = false;
+  }
+
   // ── Wiring ────────────────────────────────────────────────────────────────
   function wire() {
+    showBannerRunName();
     const btn = document.getElementById("admin-btn");
     if (btn) {
       if (!ENABLED) btn.remove();

@@ -297,6 +297,7 @@ function _protHitFilter() {
     if (sampleHidden[raw]) return false;
     const key = typeof specimenKey === "function" ? specimenKey(raw) : String(raw);
     if (!visibleSamples.has(key)) return false;
+    if (!PROT_SHOW_HOST && protHitIsHost(r)) return false;
     if (!_protRowInCategories(r, catFilter)) return false;
     if (!tassSet) return true;
     const sp = String(r["Species"] || r["species"] || "")
@@ -337,6 +338,7 @@ function _protHitPassesUiFilters(r, opts) {
   const o = opts || {};
   const prop = _protRowProp(r);
   if (prop && PROT_HIDDEN_PROPS.has(prop)) return false;
+  if (!PROT_SHOW_HOST && protHitIsHost(r)) return false;
   if (!_protRowInCategories(r, o.catFilter === undefined ? _protCategoryFilter() : o.catFilter)) return false;
   const minPid = o.minPid === undefined ? _protMinPid() : o.minPid;
   if (minPid > 0) {
@@ -353,11 +355,17 @@ function _protMinPid() {
      that memoize their own rollups know when to recompute. */
 function _protUiFilterKey() {
   const cats = _protCategoryFilter();
-  return [[...PROT_HIDDEN_PROPS].sort().join(","), cats ? [...cats].sort().join(",") : "*", _protMinPid()].join("|");
+  return [
+    [...PROT_HIDDEN_PROPS].sort().join(","),
+    cats ? [...cats].sort().join(",") : "*",
+    _protMinPid(),
+    PROT_SHOW_HOST ? "host" : "nohost",
+  ].join("|");
 }
 
-/* On first draw, hide every property that is not a Virulence Factor or an AMR
-     determinant (Drug Target, Transporter, unclassified). Runs once per dataset so
+/* On first draw, hide every property whose category is not in
+     PROT_DEFAULT_VISIBLE_CATEGORIES (currently: none — every category starts
+     visible; host hits are handled by PROT_SHOW_HOST). Runs once per dataset so
      that redraws never clobber the user's own legend clicks; _resetProtHiddenDefaults()
      re-arms it when a new dataset is uploaded. */
 // property -> one representative hit row, so the legend tooltip can re-derive the
@@ -606,7 +614,7 @@ function drawProtGenus() {
     .text("⟳ Reset zoom")
     .on("click", () => zoomRect.call(zoom.transform, d3.zoomIdentity));
 
-  // One-click escape from the VF/AMR-only default. Without this the only way to
+  // One-click toggle between every category and VF/AMR only. Without this the only way to
   // get Drug Target / Transporter back is to find and click each legend square.
   const _anyHidden = props.some((p) => PROT_HIDDEN_PROPS.has(p));
   svg
@@ -621,7 +629,7 @@ function drawProtGenus() {
     .on("mouseover", (ev) =>
       showTip(
         _anyHidden
-          ? "Show every annotation category<br><small>Drug Target, Transporter and unclassified hits are hidden by default</small>"
+          ? "Show every annotation category<br><small>VF, AMR, Drug Target, Transporter and unclassified</small>"
           : "Show only Virulence Factor and AMR categories",
         ev,
       ),
@@ -633,7 +641,7 @@ function drawProtGenus() {
       if (_anyHidden) PROT_HIDDEN_PROPS.clear();
       else
         props.forEach((p) => {
-          if (!protPropVisibleByDefault(p, _protPropRow[p])) PROT_HIDDEN_PROPS.add(p);
+          if (!protPropIsVfAmr(p, _protPropRow[p])) PROT_HIDDEN_PROPS.add(p);
         });
       drawProtGenus();
       drawProtProperty();
@@ -661,12 +669,7 @@ function drawProtGenus() {
       })
       .on("mouseover", (ev) => {
         const action = PROT_HIDDEN_PROPS.has(p) ? "Enable" : "Disable";
-        const cat = protPropCategory(p, (_protPropRow && _protPropRow[p]) || null);
-        const why =
-          PROT_HIDDEN_PROPS.has(p) && !PROT_DEFAULT_VISIBLE_CATEGORIES.has(cat)
-            ? "<br><small>Hidden by default — only Virulence Factor and AMR categories are shown on load.</small>"
-            : "";
-        showTip(`${action} ${p}<br><small>Click to ${action.toLowerCase()} in chart and table</small>${why}`, ev);
+        showTip(`${action} ${p}<br><small>Click to ${action.toLowerCase()} in chart and table</small>`, ev);
       })
       .on("mousemove", moveTip)
       .on("mouseout", hideTip);
@@ -1204,6 +1207,7 @@ function _dedupRows(rows) {
          PROT_HIDDEN_PROPS set the chart legend uses, so clicking a chip here
          hides that category in the table AND both charts (and vice versa). */
   function _renderProtCatLegend() {
+    _renderProtHostToggle();
     const host = document.getElementById("prot-cat-legend");
     if (!host) return;
     host.innerHTML = "";
@@ -1260,11 +1264,29 @@ function _dedupRows(rows) {
       if (anyOff) PROT_HIDDEN_PROPS.clear();
       else
         props.forEach((p) => {
-          if (!protPropVisibleByDefault(p, rowFor.get(p))) PROT_HIDDEN_PROPS.add(p);
+          if (!protPropIsVfAmr(p, rowFor.get(p))) PROT_HIDDEN_PROPS.add(p);
         });
       _syncProtCategoryViews();
     };
     host.appendChild(reset);
+  }
+
+  /* ── "Show Homo sapiens hits" toggle ──────────────────────────────────
+       Host hits start hidden (PROT_SHOW_HOST = false). The checkbox shows how
+       many rows it governs and is hidden entirely when there are none. */
+  function _renderProtHostToggle() {
+    const wrap = document.getElementById("prot-host-toggle");
+    const cb = document.getElementById("prot-show-host");
+    if (!wrap || !cb) return;
+    const n = _protAllRows.reduce((acc, r) => acc + (protHitIsHost(r) ? 1 : 0), 0);
+    wrap.style.display = n ? "" : "none";
+    cb.checked = PROT_SHOW_HOST;
+    const ct = document.getElementById("prot-host-count");
+    if (ct) ct.textContent = `(${n.toLocaleString()})`;
+    cb.onchange = () => {
+      PROT_SHOW_HOST = cb.checked;
+      _syncProtCategoryViews();
+    };
   }
 
   /* Single place that repaints everything keyed off PROT_HIDDEN_PROPS, so the
@@ -1349,6 +1371,7 @@ function _dedupRows(rows) {
     function _protRowPasses(r, ignoreHidden) {
       const rowProp = r["Property"] || r["Class"] || r["_source"] || "";
       if (!ignoreHidden && rowProp && PROT_HIDDEN_PROPS.has(rowProp)) return false;
+      if (!ignoreHidden && !PROT_SHOW_HOST && protHitIsHost(r)) return false;
       if (!_protRowInCategories(r, _catFilter)) return false;
       // Organism prefilter (set by a jump from another tab)
       if (_matchFilter && !_protHitMatchesEntry(r, _matchFilter)) return false;
@@ -1415,7 +1438,7 @@ function _dedupRows(rows) {
        permanently advertise the thousands of rows it hides by design. */
     const _narrowed = !!(q || kwTerms || _matchFilter || pidThresh > 0 || tassMode !== "all" || window._protBarFilter);
     let hiddenMatches = [];
-    if (PROT_HIDDEN_PROPS.size && (!rows.length || _narrowed)) {
+    if ((PROT_HIDDEN_PROPS.size || !PROT_SHOW_HOST) && (!rows.length || _narrowed)) {
       hiddenMatches = _protAllRows.filter((r) => !_protRowPasses(r, false) && _protRowPasses(r, true));
     }
     _renderProtHiddenNotice(hiddenMatches);
@@ -1446,23 +1469,30 @@ function _dedupRows(rows) {
       host.innerHTML = "";
       return;
     }
+    // Why each row is hidden: a hidden category, the host (Homo sapiens)
+    // toggle, or both. "Show them" lifts exactly those filters.
     const props = [];
+    let nHost = 0;
     hiddenRows.forEach((r) => {
       const p = _protRowProp(r);
-      if (p && props.indexOf(p) === -1) props.push(p);
+      if (p && PROT_HIDDEN_PROPS.has(p) && props.indexOf(p) === -1) props.push(p);
+      if (!PROT_SHOW_HOST && protHitIsHost(r)) nHost++;
     });
+    const reasons = props.slice();
+    if (nHost) reasons.push("Homo sapiens host hits");
     const n = hiddenRows.length;
     host.style.display = "inline-flex";
     host.innerHTML =
       `<span><b>${n.toLocaleString()}</b> matching hit${n === 1 ? "" : "s"} ` +
-      `${n === 1 ? "is" : "are"} hidden by the category filter ` +
+      `${n === 1 ? "is" : "are"} hidden by the category / host filter ` +
       `(<span class="prot-hidden-props"></span>)</span>` +
-      `<button type="button" title="Un-hide these categories in the table and both charts" ` +
+      `<button type="button" title="Un-hide these in the table and both charts" ` +
       `style="border:1px solid #f0c36d;background:#fff;color:#b45309;border-radius:4px;` +
       `padding:1px 8px;cursor:pointer;font-size:.95em;white-space:nowrap">Show them</button>`;
-    host.querySelector(".prot-hidden-props").textContent = props.join(", ");
+    host.querySelector(".prot-hidden-props").textContent = reasons.join(", ");
     host.querySelector("button").onclick = () => {
       props.forEach((p) => PROT_HIDDEN_PROPS.delete(p));
+      if (nHost) PROT_SHOW_HOST = true;
       _syncProtCategoryViews();
     };
   }

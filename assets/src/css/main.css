@@ -81,6 +81,32 @@ body {
   font-weight: 400;
   opacity: 0.85;
 }
+#banner .banner-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  max-width: 28ch;
+  padding: 0.2em 0.7em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  font-size: 0.75em;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+}
+#banner .banner-run[hidden] {
+  display: none;
+}
+#banner .banner-run #banner-run-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#banner .banner-run i {
+  opacity: 0.85;
+}
 #banner .banner-logo {
   width: 1.3em;
   height: 1.3em;
@@ -1692,6 +1718,29 @@ tr:hover .watch-star:not(.on) {
   background: #ffe8cc;
   color: #d9480f;
   border-color: #ffd8a8;
+}
+.vfamr-chip.vfamr-tr {
+  background: #e0f2f1;
+  color: #00695c;
+  border-color: #b2dfdb;
+}
+.vfamr-chip.vfamr-dt {
+  background: #f3e5f5;
+  color: #7b1fa2;
+  border-color: #e1bee7;
+}
+.vfamr-chip.vfamr-oth {
+  background: #eceff1;
+  color: #546e7a;
+  border-color: #cfd8dc;
+}
+.vfamr-cell .vfamr-chip + .vfamr-chip {
+  margin-left: 2px;
+}
+#summary-annot-filter.active-filter {
+  border-color: #1565c0 !important;
+  background: #e3f2fd;
+  font-weight: 600;
 }
 .vfamr-cell .vfamr-lvl {
   font-size: 0.58rem;
