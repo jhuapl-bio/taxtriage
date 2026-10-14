@@ -479,6 +479,32 @@ body {
   font-weight: 400;
   opacity: 0.85;
 }
+#banner .banner-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  max-width: 28ch;
+  padding: 0.2em 0.7em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  font-size: 0.75em;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+}
+#banner .banner-run[hidden] {
+  display: none;
+}
+#banner .banner-run #banner-run-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#banner .banner-run i {
+  opacity: 0.85;
+}
 #banner .banner-logo {
   width: 1.3em;
   height: 1.3em;
@@ -2090,6 +2116,29 @@ tr:hover .watch-star:not(.on) {
   background: #ffe8cc;
   color: #d9480f;
   border-color: #ffd8a8;
+}
+.vfamr-chip.vfamr-tr {
+  background: #e0f2f1;
+  color: #00695c;
+  border-color: #b2dfdb;
+}
+.vfamr-chip.vfamr-dt {
+  background: #f3e5f5;
+  color: #7b1fa2;
+  border-color: #e1bee7;
+}
+.vfamr-chip.vfamr-oth {
+  background: #eceff1;
+  color: #546e7a;
+  border-color: #cfd8dc;
+}
+.vfamr-cell .vfamr-chip + .vfamr-chip {
+  margin-left: 2px;
+}
+#summary-annot-filter.active-filter {
+  border-color: #1565c0 !important;
+  background: #e3f2fd;
+  font-weight: 600;
 }
 .vfamr-cell .vfamr-lvl {
   font-size: 0.58rem;
@@ -8725,6 +8774,10 @@ body.report-pdf-printing #tt-admin-overlay {
         <circle cx="52" cy="18" r="7" fill="#ffffff" />
       </svg>
       TaxTriage Multi-Run Analysis
+      <!-- Nextflow run name (BOOT.run_info.workflow.runName); filled by 51_admin_panel.js, hidden when absent/redacted -->
+      <span class="banner-run" id="banner-run" hidden
+        ><i class="fas fa-play-circle" aria-hidden="true"></i><span id="banner-run-name"></span
+      ></span>
       <span class="sub" id="banner-sub"></span>
       <button id="pipeline-info-btn" type="button" aria-label="Show pipeline run metadata">
         <i class="fas fa-circle-info"></i><span class="info-btn-label">Run info</span>
@@ -9062,6 +9115,27 @@ body.report-pdf-printing #tt-admin-overlay {
                 <span id="summary-row-count" style="flex: 1; min-width: 110px"></span>
                 <label style="display: flex; align-items: center; gap: 0.3em">
                   <input type="checkbox" id="summary-group-sample" checked /> Group by Sample
+                </label>
+                <!-- Annotation-hit row filter; shown only when annotation ran and the
+                     VF/AMR tab is available (see _syncSumAnnotFilterControl). -->
+                <label
+                  id="summary-annot-filter-wrap"
+                  style="display: none; align-items: center; gap: 0.3em; white-space: nowrap"
+                  title="Only show rows with an annotation hit of this kind in their own sample. Counts follow the VF/AMR tab's category, %id and Homo sapiens filters."
+                >
+                  Annotation hits:
+                  <select
+                    id="summary-annot-filter"
+                    style="padding: 0.1em 0.3em; border: 1px solid #ccc; border-radius: 4px"
+                  >
+                    <option value="" selected>All rows</option>
+                    <option value="any">Any annotation hit</option>
+                    <option value="vfamr">VF or AMR</option>
+                    <option value="vf">Virulence factor</option>
+                    <option value="amr">AMR</option>
+                    <option value="transporter">Transporter</option>
+                    <option value="drug_target">Drug target</option>
+                  </select>
                 </label>
                 <label style="display: flex; align-items: center; gap: 0.3em; white-space: nowrap">
                   Rows per page:
@@ -9686,6 +9760,15 @@ body.report-pdf-printing #tt-admin-overlay {
                    present in the data. Each chip toggles that category in both
                    the table and the charts above (shared PROT_HIDDEN_PROPS). -->
               <span id="prot-cat-legend" style="display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap"></span>
+              <!-- Host (Homo sapiens) hits start hidden; wired by _renderProtHostToggle(). -->
+              <label
+                id="prot-host-toggle"
+                style="display: none; margin-left: 0.6em; white-space: nowrap; cursor: pointer; color: #555"
+                title="Homo sapiens hits (DrugBank / TCDB matches to human proteins, usually residual host reads) are hidden by default. Applies to the table, both charts and the Summary tab."
+              >
+                <input type="checkbox" id="prot-show-host" style="vertical-align: middle" />
+                Show <i>Homo sapiens</i> hits <span id="prot-host-count" style="color: #999"></span>
+              </label>
               <span style="margin-left: 0.6em; font-weight: 600; color: #555">TASS:</span>
               <span style="display: flex; align-items: center; gap: 0.3em"
                 ><span
@@ -13371,8 +13454,10 @@ const PROT_HIDDEN_PROPS = new Set();
 //     values ("Adherence", "Toxin;Pore-forming", "efflux pump conferring
 //     antibiotic resistance", …)
 // Source is the more reliable signal, so try it first and fall back to keywords.
-// Only "vf" and "amr" are shown by default; Drug Target / Transporter / anything
-// unrecognised starts hidden but stays clickable in the chart legend.
+// Every category is shown by default (VF, AMR, Transporter, Drug Target and
+// anything unrecognised); each stays toggleable in the chart legend and the
+// "VF/AMR only" shortcut narrows back to PROT_VFAMR_CATEGORIES. Host hits
+// (Homo sapiens) are hidden separately — see protHitIsHost / PROT_SHOW_HOST.
 const PROT_SOURCE_CATEGORY = {
   vfdb: "vf",
   victors: "vf",
@@ -13387,7 +13472,9 @@ const PROT_SOURCE_CATEGORY = {
   tcdb: "transporter",
   drugbank: "drug_target",
 };
-const PROT_DEFAULT_VISIBLE_CATEGORIES = new Set(["vf", "amr"]);
+const PROT_DEFAULT_VISIBLE_CATEGORIES = new Set(["vf", "amr", "transporter", "drug_target", "other"]);
+// What the "VF/AMR only" shortcut buttons narrow the view to.
+const PROT_VFAMR_CATEGORIES = new Set(["vf", "amr"]);
 /** Classify one hit row (or a bare property string) into a coarse category. */
 function protPropCategory(prop, row) {
   const src = String((row && (row.Source || row.source)) || "")
@@ -13420,7 +13507,37 @@ function protPropCategory(prop, row) {
 function protPropVisibleByDefault(prop, row) {
   return PROT_DEFAULT_VISIBLE_CATEGORIES.has(protPropCategory(prop, row));
 }
-// Guard so the VF/AMR-only default is applied exactly once per dataset. Without
+/** True if this property belongs to the "VF/AMR only" shortcut set. */
+function protPropIsVfAmr(prop, row) {
+  return PROT_VFAMR_CATEGORIES.has(protPropCategory(prop, row));
+}
+
+// ── Host (Homo sapiens) hits ────────────────────────────────────────────────
+// DrugBank / TCDB annotate plenty of human proteins (residual host reads), and
+// they swamp the VF/AMR views once Drug Target / Transporter are shown. They
+// start hidden; the "Show Homo sapiens hits" toggle on the VF/AMR tab flips
+// PROT_SHOW_HOST, which every VF/AMR surface (tab table, both charts, Summary
+// chips and the Summary annotation filter) honours via _protHitPassesUiFilters.
+const PROT_HOST_SPECIES_TAXIDS = new Set(["9606"]);
+let PROT_SHOW_HOST = false;
+function protHitIsHost(r) {
+  if (!r) return false;
+  const t = r.taxids || r._taxids;
+  if (t && typeof t === "object") {
+    if (
+      PROT_HOST_SPECIES_TAXIDS.has(String(t.species_taxid || "")) ||
+      PROT_HOST_SPECIES_TAXIDS.has(String(t.taxon_id || ""))
+    )
+      return true;
+  }
+  if (PROT_HOST_SPECIES_TAXIDS.has(String(r["Species Taxid"] || "").trim())) return true;
+  const names = [r["Species"], r["species"], r["Reference Organism"], r["Organism"]];
+  for (const n of names) {
+    if (/^\s*homo sapiens\b/i.test(String(n || ""))) return true;
+  }
+  return false;
+}
+// Guard so the default category visibility is applied exactly once per dataset. Without
 // it every redraw would clobber the user's own legend clicks.
 let PROT_HIDDEN_DEFAULTS_APPLIED = false;
 function _resetProtHiddenDefaults() {
@@ -19775,6 +19892,7 @@ function _protHitFilter() {
     if (sampleHidden[raw]) return false;
     const key = typeof specimenKey === "function" ? specimenKey(raw) : String(raw);
     if (!visibleSamples.has(key)) return false;
+    if (!PROT_SHOW_HOST && protHitIsHost(r)) return false;
     if (!_protRowInCategories(r, catFilter)) return false;
     if (!tassSet) return true;
     const sp = String(r["Species"] || r["species"] || "")
@@ -19815,6 +19933,7 @@ function _protHitPassesUiFilters(r, opts) {
   const o = opts || {};
   const prop = _protRowProp(r);
   if (prop && PROT_HIDDEN_PROPS.has(prop)) return false;
+  if (!PROT_SHOW_HOST && protHitIsHost(r)) return false;
   if (!_protRowInCategories(r, o.catFilter === undefined ? _protCategoryFilter() : o.catFilter)) return false;
   const minPid = o.minPid === undefined ? _protMinPid() : o.minPid;
   if (minPid > 0) {
@@ -19831,11 +19950,17 @@ function _protMinPid() {
      that memoize their own rollups know when to recompute. */
 function _protUiFilterKey() {
   const cats = _protCategoryFilter();
-  return [[...PROT_HIDDEN_PROPS].sort().join(","), cats ? [...cats].sort().join(",") : "*", _protMinPid()].join("|");
+  return [
+    [...PROT_HIDDEN_PROPS].sort().join(","),
+    cats ? [...cats].sort().join(",") : "*",
+    _protMinPid(),
+    PROT_SHOW_HOST ? "host" : "nohost",
+  ].join("|");
 }
 
-/* On first draw, hide every property that is not a Virulence Factor or an AMR
-     determinant (Drug Target, Transporter, unclassified). Runs once per dataset so
+/* On first draw, hide every property whose category is not in
+     PROT_DEFAULT_VISIBLE_CATEGORIES (currently: none — every category starts
+     visible; host hits are handled by PROT_SHOW_HOST). Runs once per dataset so
      that redraws never clobber the user's own legend clicks; _resetProtHiddenDefaults()
      re-arms it when a new dataset is uploaded. */
 // property -> one representative hit row, so the legend tooltip can re-derive the
@@ -20084,7 +20209,7 @@ function drawProtGenus() {
     .text("⟳ Reset zoom")
     .on("click", () => zoomRect.call(zoom.transform, d3.zoomIdentity));
 
-  // One-click escape from the VF/AMR-only default. Without this the only way to
+  // One-click toggle between every category and VF/AMR only. Without this the only way to
   // get Drug Target / Transporter back is to find and click each legend square.
   const _anyHidden = props.some((p) => PROT_HIDDEN_PROPS.has(p));
   svg
@@ -20099,7 +20224,7 @@ function drawProtGenus() {
     .on("mouseover", (ev) =>
       showTip(
         _anyHidden
-          ? "Show every annotation category<br><small>Drug Target, Transporter and unclassified hits are hidden by default</small>"
+          ? "Show every annotation category<br><small>VF, AMR, Drug Target, Transporter and unclassified</small>"
           : "Show only Virulence Factor and AMR categories",
         ev,
       ),
@@ -20111,7 +20236,7 @@ function drawProtGenus() {
       if (_anyHidden) PROT_HIDDEN_PROPS.clear();
       else
         props.forEach((p) => {
-          if (!protPropVisibleByDefault(p, _protPropRow[p])) PROT_HIDDEN_PROPS.add(p);
+          if (!protPropIsVfAmr(p, _protPropRow[p])) PROT_HIDDEN_PROPS.add(p);
         });
       drawProtGenus();
       drawProtProperty();
@@ -20139,12 +20264,7 @@ function drawProtGenus() {
       })
       .on("mouseover", (ev) => {
         const action = PROT_HIDDEN_PROPS.has(p) ? "Enable" : "Disable";
-        const cat = protPropCategory(p, (_protPropRow && _protPropRow[p]) || null);
-        const why =
-          PROT_HIDDEN_PROPS.has(p) && !PROT_DEFAULT_VISIBLE_CATEGORIES.has(cat)
-            ? "<br><small>Hidden by default — only Virulence Factor and AMR categories are shown on load.</small>"
-            : "";
-        showTip(`${action} ${p}<br><small>Click to ${action.toLowerCase()} in chart and table</small>${why}`, ev);
+        showTip(`${action} ${p}<br><small>Click to ${action.toLowerCase()} in chart and table</small>`, ev);
       })
       .on("mousemove", moveTip)
       .on("mouseout", hideTip);
@@ -20682,6 +20802,7 @@ function _dedupRows(rows) {
          PROT_HIDDEN_PROPS set the chart legend uses, so clicking a chip here
          hides that category in the table AND both charts (and vice versa). */
   function _renderProtCatLegend() {
+    _renderProtHostToggle();
     const host = document.getElementById("prot-cat-legend");
     if (!host) return;
     host.innerHTML = "";
@@ -20738,11 +20859,29 @@ function _dedupRows(rows) {
       if (anyOff) PROT_HIDDEN_PROPS.clear();
       else
         props.forEach((p) => {
-          if (!protPropVisibleByDefault(p, rowFor.get(p))) PROT_HIDDEN_PROPS.add(p);
+          if (!protPropIsVfAmr(p, rowFor.get(p))) PROT_HIDDEN_PROPS.add(p);
         });
       _syncProtCategoryViews();
     };
     host.appendChild(reset);
+  }
+
+  /* ── "Show Homo sapiens hits" toggle ──────────────────────────────────
+       Host hits start hidden (PROT_SHOW_HOST = false). The checkbox shows how
+       many rows it governs and is hidden entirely when there are none. */
+  function _renderProtHostToggle() {
+    const wrap = document.getElementById("prot-host-toggle");
+    const cb = document.getElementById("prot-show-host");
+    if (!wrap || !cb) return;
+    const n = _protAllRows.reduce((acc, r) => acc + (protHitIsHost(r) ? 1 : 0), 0);
+    wrap.style.display = n ? "" : "none";
+    cb.checked = PROT_SHOW_HOST;
+    const ct = document.getElementById("prot-host-count");
+    if (ct) ct.textContent = `(${n.toLocaleString()})`;
+    cb.onchange = () => {
+      PROT_SHOW_HOST = cb.checked;
+      _syncProtCategoryViews();
+    };
   }
 
   /* Single place that repaints everything keyed off PROT_HIDDEN_PROPS, so the
@@ -20827,6 +20966,7 @@ function _dedupRows(rows) {
     function _protRowPasses(r, ignoreHidden) {
       const rowProp = r["Property"] || r["Class"] || r["_source"] || "";
       if (!ignoreHidden && rowProp && PROT_HIDDEN_PROPS.has(rowProp)) return false;
+      if (!ignoreHidden && !PROT_SHOW_HOST && protHitIsHost(r)) return false;
       if (!_protRowInCategories(r, _catFilter)) return false;
       // Organism prefilter (set by a jump from another tab)
       if (_matchFilter && !_protHitMatchesEntry(r, _matchFilter)) return false;
@@ -20893,7 +21033,7 @@ function _dedupRows(rows) {
        permanently advertise the thousands of rows it hides by design. */
     const _narrowed = !!(q || kwTerms || _matchFilter || pidThresh > 0 || tassMode !== "all" || window._protBarFilter);
     let hiddenMatches = [];
-    if (PROT_HIDDEN_PROPS.size && (!rows.length || _narrowed)) {
+    if ((PROT_HIDDEN_PROPS.size || !PROT_SHOW_HOST) && (!rows.length || _narrowed)) {
       hiddenMatches = _protAllRows.filter((r) => !_protRowPasses(r, false) && _protRowPasses(r, true));
     }
     _renderProtHiddenNotice(hiddenMatches);
@@ -20924,23 +21064,30 @@ function _dedupRows(rows) {
       host.innerHTML = "";
       return;
     }
+    // Why each row is hidden: a hidden category, the host (Homo sapiens)
+    // toggle, or both. "Show them" lifts exactly those filters.
     const props = [];
+    let nHost = 0;
     hiddenRows.forEach((r) => {
       const p = _protRowProp(r);
-      if (p && props.indexOf(p) === -1) props.push(p);
+      if (p && PROT_HIDDEN_PROPS.has(p) && props.indexOf(p) === -1) props.push(p);
+      if (!PROT_SHOW_HOST && protHitIsHost(r)) nHost++;
     });
+    const reasons = props.slice();
+    if (nHost) reasons.push("Homo sapiens host hits");
     const n = hiddenRows.length;
     host.style.display = "inline-flex";
     host.innerHTML =
       `<span><b>${n.toLocaleString()}</b> matching hit${n === 1 ? "" : "s"} ` +
-      `${n === 1 ? "is" : "are"} hidden by the category filter ` +
+      `${n === 1 ? "is" : "are"} hidden by the category / host filter ` +
       `(<span class="prot-hidden-props"></span>)</span>` +
-      `<button type="button" title="Un-hide these categories in the table and both charts" ` +
+      `<button type="button" title="Un-hide these in the table and both charts" ` +
       `style="border:1px solid #f0c36d;background:#fff;color:#b45309;border-radius:4px;` +
       `padding:1px 8px;cursor:pointer;font-size:.95em;white-space:nowrap">Show them</button>`;
-    host.querySelector(".prot-hidden-props").textContent = props.join(", ");
+    host.querySelector(".prot-hidden-props").textContent = reasons.join(", ");
     host.querySelector("button").onclick = () => {
       props.forEach((p) => PROT_HIDDEN_PROPS.delete(p));
+      if (nHost) PROT_SHOW_HOST = true;
       _syncProtCategoryViews();
     };
   }
@@ -25967,6 +26114,10 @@ function _renderSummaryTable(fd) {
   // Append empty-sample indicator rows for samples with no detections at all.
   const _emptyOnlySum = _emptyOnlySampleRows(fd);
   if (_emptyOnlySum.length) fd = fd.concat(_emptyOnlySum);
+  // "Annotation hits" filter: keep only detection rows carrying a hit in the
+  // chosen category. VF/AMR indicator rows stay (they ARE annotation hits);
+  // novelty / empty-sample indicator rows go.
+  fd = _applySumAnnotFilter(fd);
   // Show rollup hint only when rescued rows are actually present
   const _sumRollupHint = document.getElementById("sum-rollup-hint");
   if (_sumRollupHint) {
@@ -26519,11 +26670,22 @@ function _vfamrIndex() {
   // can filter on exactly the key the Summary chip resolved on instead of
   // guessing a second time from the organism name.
   const _ensure = (map, key, kind) => {
-    if (!map.has(key)) map.set(key, { vf: new Map(), amr: new Map(), samples: new Set(), key, kind });
+    if (!map.has(key)) map.set(key, { vf: new Map(), amr: new Map(), cats: {}, samples: new Set(), key, kind });
     return map.get(key);
   };
+  // Transporter (TCDB) hits often carry no Gene/Product, so fall back to the
+  // accession and then the description — otherwise they were never counted.
   const _lbl = (r) =>
-    r["Gene"] || r["Gene Name"] || r.gene_name || r["Product"] || r.product || r["Name"] || r["Antibiotics"] || "";
+    r["Gene"] ||
+    r["Gene Name"] ||
+    r.gene_name ||
+    r["Product"] ||
+    r.product ||
+    r["Name"] ||
+    r["Antibiotics"] ||
+    r["Source ID"] ||
+    r["Description"] ||
+    "";
   const _pass = typeof _protHitPassesUiFilters === "function" ? _protHitPassesUiFilters : () => true;
   const _add = (rows, kind) => {
     (rows || []).forEach((r) => {
@@ -26536,11 +26698,17 @@ function _vfamrIndex() {
         .toLowerCase();
       const lbl = _lbl(r);
       const smp = r["Specimen ID"] || r.Sample || r.sample || null;
+      // Annotation category (vf / amr / transporter / drug_target / other):
+      // drives the per-category chips and the Summary "annotation hit" filter.
+      const cat = _vfamrRowCategory(r, kind);
       const stamp = (e) => {
         const m = kind === "amr" ? e.amr : e.vf;
         if (lbl) {
           if (!m.has(lbl)) m.set(lbl, new Set());
           if (smp) m.get(lbl).add(smp);
+          const cm = e.cats[cat] || (e.cats[cat] = new Map());
+          if (!cm.has(lbl)) cm.set(lbl, new Set());
+          if (smp) cm.get(lbl).add(smp);
         }
         if (smp) e.samples.add(smp);
       };
@@ -26557,6 +26725,22 @@ function _vfamrIndex() {
   _add(PROT.amr_genes, "amr");
   _VFAMR_INDEX = { byGenus, bySpecies, byTaxid, byGenusTaxid, _key };
   return _VFAMR_INDEX;
+}
+
+// Annotation category for one hit row. AMR-sheet rows are always "amr";
+// per-gene rows are classified by Source / Property (see protPropCategory).
+const _VFAMR_CATS = ["vf", "amr", "transporter", "drug_target", "other"];
+const _VFAMR_CAT_META = {
+  vf: { short: "VF", label: "Virulence Factors", cls: "vfamr-vf", color: "#e53935" },
+  amr: { short: "AMR", label: "AMR Genes", cls: "vfamr-amr", color: "#fb8c00" },
+  transporter: { short: "TR", label: "Transporters", cls: "vfamr-tr", color: "#26a69a" },
+  drug_target: { short: "DT", label: "Drug Targets", cls: "vfamr-dt", color: "#ab47bc" },
+  other: { short: "Other", label: "Other / unclassified", cls: "vfamr-oth", color: "#90a4ae" },
+};
+function _vfamrRowCategory(r, kind) {
+  if (kind === "amr") return "amr";
+  const c = typeof protPropCategory === "function" ? protPropCategory(_protRowProp(r), r) : "vf";
+  return _VFAMR_CAT_META[c] ? c : "other";
 }
 
 // Resolve the best VF/AMR annotation entry for a detection row: prefer a
@@ -26616,6 +26800,14 @@ function _vfamrForRow(r) {
   };
   const vfMap = _filterBySample(info.vf);
   const amrMap = _filterBySample(info.amr);
+  // Per-category gene maps / counts, sample-scoped like vf/amr above.
+  const catMaps = {};
+  const cats = {};
+  _VFAMR_CATS.forEach((c) => {
+    const m = _filterBySample(info.cats && info.cats[c]);
+    catMaps[c] = m;
+    cats[c] = m.size;
+  });
   // Sample-scoped VF+AMR totals for the species and genus entries, used to
   // compute the species-specificity percentage shown atop the tooltip.
   const _total = (i) => (i ? _filterBySample(i.vf).size + _filterBySample(i.amr).size : 0);
@@ -26632,6 +26824,8 @@ function _vfamrForRow(r) {
     amr: amrMap.size,
     vfMap,
     amrMap,
+    cats,
+    catMaps,
     speciesTotal,
     genusTotal,
   };
@@ -26642,8 +26836,11 @@ function _vfamrCellHTML(r) {
   const v = _vfamrForRow(r);
   if (!v || (!v.vf && !v.amr)) return '<span style="color:#ccc">—</span>';
   const parts = [];
-  if (v.vf) parts.push(`<span class="vfamr-chip vfamr-vf">${v.vf} VF</span>`);
-  if (v.amr) parts.push(`<span class="vfamr-chip vfamr-amr">${v.amr} AMR</span>`);
+  _VFAMR_CATS.forEach((c) => {
+    const n = v.cats && v.cats[c];
+    if (n) parts.push(`<span class="vfamr-chip ${_VFAMR_CAT_META[c].cls}">${n} ${_VFAMR_CAT_META[c].short}</span>`);
+  });
+  if (!parts.length) return '<span style="color:#ccc">—</span>';
   const lvl = v.level === "species" ? "sp" : "gen";
   // Carry the organism as well as the genus: jumping to the VF/AMR tab filters
   // on the species when we know it, so a click on one row cannot drag in every
@@ -26744,7 +26941,7 @@ function _vfamrTip(r) {
   };
   const lvlStyle = v.level === "species" ? "background:#f3e5f5;color:#6a1b9a" : "background:#e8f5e9;color:#2e7d32";
   let t =
-    `<b>${r["Detected Organism"] || r["Genus"] || ""} — VF / AMR hits</b> ` +
+    `<b>${r["Detected Organism"] || r["Genus"] || ""} — annotation hits</b> ` +
     `<span style="${lvlStyle};padding:0 4px;border-radius:3px;font-size:0.78em">${v.level}-level</span>`;
   // Species-specificity line: what fraction of this genus's VF/AMR hits
   // (in this sample) are assigned at the species level. At genus level
@@ -26760,8 +26957,14 @@ function _vfamrTip(r) {
   } else if (v.level === "genus") {
     t += `<div style="margin-top:3px;font-size:0.86em;color:#ffb74d">No species-level hits found</div>`;
   }
-  t += _section("Virulence Factors", v.vfMap || v.info.vf, "#e53935");
-  t += _section("AMR Genes", v.amrMap || v.info.amr, "#fb8c00");
+  if (v.catMaps) {
+    _VFAMR_CATS.forEach((c) => {
+      t += _section(_VFAMR_CAT_META[c].label, v.catMaps[c], _VFAMR_CAT_META[c].color);
+    });
+  } else {
+    t += _section("Virulence Factors", v.vfMap || v.info.vf, "#e53935");
+    t += _section("AMR Genes", v.amrMap || v.info.amr, "#fb8c00");
+  }
   if (!v.vf && !v.amr) return "";
   t += `<div style="margin-top:6px;color:#90caf9;font-size:0.82em">Click to open in the VF / AMR tab →</div>`;
   return t;
@@ -28088,6 +28291,50 @@ function _subThresholdBadgeHTML(r) {
   return html;
 }
 
+/* ── Summary "Annotation hits" filter ─────────────────────────────────────
+     Hides detection rows that have no VF/AMR (or Transporter / Drug Target)
+     hit in their own sample. Only offered when annotation ran (HAS_PROT) and
+     the VF/AMR tab is actually available — not hidden/disabled by the report
+     config or the Admin dialog — since the counts come from that tab's data
+     and honour its category / %id / host filters. */
+function _sumAnnotFilterAvailable() {
+  if (!HAS_PROT) return false;
+  const btn = document.getElementById("prot-tab-btn");
+  if (!btn) return false;
+  if (typeof TTAdmin !== "undefined" && TTAdmin && typeof TTAdmin.usable === "function") return !!TTAdmin.usable(btn);
+  return !btn.classList.contains("hidden") && !btn.classList.contains("tab-disabled");
+}
+function _sumAnnotRowPasses(r, mode) {
+  const v = _vfamrForRow(r);
+  if (!v || !v.cats) return false;
+  const c = v.cats;
+  if (mode === "any") return _VFAMR_CATS.some((k) => c[k] > 0);
+  if (mode === "vfamr") return c.vf > 0 || c.amr > 0;
+  return (c[mode] || 0) > 0;
+}
+function _syncSumAnnotFilterControl() {
+  const wrap = document.getElementById("summary-annot-filter-wrap");
+  const sel = document.getElementById("summary-annot-filter");
+  if (!wrap || !sel) return false;
+  const ok = _sumAnnotFilterAvailable();
+  wrap.style.display = ok ? "flex" : "none";
+  sel.disabled = !ok;
+  if (!ok) sel.value = "";
+  return ok;
+}
+function _applySumAnnotFilter(fd) {
+  const ok = _syncSumAnnotFilterControl();
+  const sel = document.getElementById("summary-annot-filter");
+  const mode = ok && sel ? sel.value : "";
+  if (sel) sel.classList.toggle("active-filter", !!mode);
+  if (!mode) return fd;
+  return fd.filter((r) => {
+    if (r.__vfamrOnly || r.__vfamrExtra) return true;
+    if (r.__noveltyOnly || r.__noveltyExtra || r.__emptyOnly) return false;
+    return _sumAnnotRowPasses(r, mode);
+  });
+}
+
 // Wire summary detection-table controls (pager + group + page-size).
 (function _initSummaryTableControls() {
   function _go(n) {
@@ -28111,6 +28358,12 @@ function _subThresholdBadgeHTML(r) {
   const ps = document.getElementById("summary-page-size");
   if (ps)
     ps.addEventListener("change", () => {
+      _sumPage = 0;
+      _renderSummaryTable(filteredData());
+    });
+  const annot = document.getElementById("summary-annot-filter");
+  if (annot)
+    annot.addEventListener("change", () => {
       _sumPage = 0;
       _renderSummaryTable(filteredData());
     });
@@ -59343,8 +59596,26 @@ admin:
     }
   }
 
+  // ── Banner run name ───────────────────────────────────────────────────────
+  // Surface the Nextflow run name in the top banner so it is visible without
+  // opening Run info. Hidden when run info is absent or the name is redacted.
+  function showBannerRunName() {
+    const chip = document.getElementById("banner-run");
+    const nameEl = document.getElementById("banner-run-name");
+    if (!chip || !nameEl) return;
+    const rn = RUN && RUN.workflow && RUN.workflow.runName;
+    if (!rn || rn === "(redacted)") {
+      chip.hidden = true;
+      return;
+    }
+    nameEl.textContent = String(rn);
+    chip.title = "Nextflow run name: " + rn;
+    chip.hidden = false;
+  }
+
   // ── Wiring ────────────────────────────────────────────────────────────────
   function wire() {
+    showBannerRunName();
     const btn = document.getElementById("admin-btn");
     if (btn) {
       if (!ENABLED) btn.remove();
