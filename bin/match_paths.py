@@ -1199,7 +1199,9 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 sum_mapq_filtered = 0,   # MAPQ sum for reads that pass the filter
                 count_mapq_filtered = 0, # count of reads that pass the filter
                 total_reads = 0,
-                read_positions = [],
+                # Aggregate interval endpoints as reads arrive.  Keeping two
+                # tuples per alignment can exhaust memory on deep samples.
+                depth_events = defaultdict(int),
                 total_length = 0,
                 unique_read_ids = set(),
                 accession = ref,
@@ -1275,8 +1277,11 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                     reference_stats[ref]["sum_baseq"] += sum(read.query_qualities)
                     reference_stats[ref]["count_baseq"] += len(read.query_qualities)
 
-                # Record read positions for coverage calculation
-                reference_stats[ref]["read_positions"].append((read.reference_start, read.reference_end))
+                # Endpoint counts give the same sweep-line coverage as sorting
+                # every individual read endpoint, with one entry per position.
+                _events = reference_stats[ref]["depth_events"]
+                _events[read.reference_start] += 1
+                _events[read.reference_end] -= 1
         # Calculate statistics for each reference
         for ref, _ in reference_lengths.items():
             stats = reference_stats.get(ref, None)
@@ -1310,19 +1315,13 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
 
 
 
-                # Compute coverage regions
-                events = []
-                for start, end in stats.get("read_positions", 0):
-                    events.append( (start, 1) )   # Read start
-                    events.append( (end, -1) )    # Read end
-
-                # Sort events by position
-                events.sort()
+                # Sweep distinct endpoints; simultaneous starts and ends have
+                # no intervening bases, so their net delta is sufficient.
                 coverage_regions = []
                 current_depth = 0
                 last_pos = 0
 
-                for pos, delta in events:
+                for pos, delta in sorted(stats["depth_events"].items()):
                     if pos > last_pos and current_depth > 0:
                         coverage_regions.append( (last_pos, pos, current_depth) )
                     current_depth += delta
@@ -1370,7 +1369,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 del reference_stats[ref]["count_highmapq"]
                 del reference_stats[ref]["count_rescued"]
                 del reference_stats[ref]["sum_rescued_phred"]
-                del reference_stats[ref]["read_positions"]
+                del reference_stats[ref]["depth_events"]
                 del reference_stats[ref]["unique_read_ids"]
                 del reference_stats[ref]["total_reads"]
                 del reference_stats[ref]["total_length"]
