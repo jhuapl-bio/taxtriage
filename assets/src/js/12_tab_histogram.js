@@ -812,8 +812,8 @@
                     ? `<br>Targeted: <b>${(100 - filteredMask[i]).toFixed(0)}%</b> of bin`
                     : `<br>Masked: <b>${filteredMask[i].toFixed(0)}%</b> of bin (not scored)`
                   : maskMode === "target" && filteredMask
-                    ? `<br>Targeted: <b>100%</b> of bin`
-                    : ""),
+                  ? `<br>Targeted: <b>100%</b> of bin`
+                  : ""),
               ev,
             );
             d3.select(this).attr("stroke", "#333").attr("stroke-width", 0.8);

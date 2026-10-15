@@ -1740,24 +1740,32 @@ def _build_read_sharing_clusters(
         One entry per unique pair; shared_read_count is the number of reads
         that align to both.  Useful for writing shared_windows_report.csv.
     """
-    bam = pysam.AlignmentFile(bam_path, "rb")
-
-    # collect every reference each read aligns to (primary + secondary)
-    read_to_refs: Dict[str, set] = defaultdict(set)
-    for r in bam:
-        if r.is_unmapped or not r.reference_name:
-            continue
-        ref = r.reference_name
-        if aligned_refs is not None and ref not in aligned_refs:
-            continue
-        read_to_refs[r.query_name].add(ref)
-    bam.close()
+    # Most reads have only one reference.  Store its name directly and allocate
+    # a set only when a second distinct reference is actually observed.
+    first_ref: Dict[str, str] = {}
+    shared_refs: Dict[str, set] = {}
+    with pysam.AlignmentFile(bam_path, "rb") as bam:
+        for r in bam:
+            if r.is_unmapped or not r.reference_name:
+                continue
+            ref = r.reference_name
+            if aligned_refs is not None and ref not in aligned_refs:
+                continue
+            rid = r.query_name
+            previous = first_ref.get(rid)
+            if previous is None:
+                first_ref[rid] = ref
+            elif previous != ref:
+                refs = shared_refs.get(rid)
+                if refs is None:
+                    refs = {previous, ref}
+                    shared_refs[rid] = refs
+                else:
+                    refs.add(ref)
 
     # count how many reads each (ref_a, ref_b) pair shares
     pair_counts: Dict[Tuple[str, str], int] = defaultdict(int)
-    for refs in read_to_refs.values():
-        if len(refs) < 2:
-            continue  # singly-mapped read — no conflict
+    for refs in shared_refs.values():
         ref_list = sorted(refs)
         for i, ra in enumerate(ref_list):
             for rb in ref_list[i + 1:]:

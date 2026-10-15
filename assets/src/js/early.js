@@ -62,8 +62,10 @@ const PROT_HIDDEN_PROPS = new Set();
 //     values ("Adherence", "Toxin;Pore-forming", "efflux pump conferring
 //     antibiotic resistance", …)
 // Source is the more reliable signal, so try it first and fall back to keywords.
-// Only "vf" and "amr" are shown by default; Drug Target / Transporter / anything
-// unrecognised starts hidden but stays clickable in the chart legend.
+// Every category is shown by default (VF, AMR, Transporter, Drug Target and
+// anything unrecognised); each stays toggleable in the chart legend and the
+// "VF/AMR only" shortcut narrows back to PROT_VFAMR_CATEGORIES. Host hits
+// (Homo sapiens) are hidden separately — see protHitIsHost / PROT_SHOW_HOST.
 const PROT_SOURCE_CATEGORY = {
   vfdb: "vf",
   victors: "vf",
@@ -78,7 +80,9 @@ const PROT_SOURCE_CATEGORY = {
   tcdb: "transporter",
   drugbank: "drug_target",
 };
-const PROT_DEFAULT_VISIBLE_CATEGORIES = new Set(["vf", "amr"]);
+const PROT_DEFAULT_VISIBLE_CATEGORIES = new Set(["vf", "amr", "transporter", "drug_target", "other"]);
+// What the "VF/AMR only" shortcut buttons narrow the view to.
+const PROT_VFAMR_CATEGORIES = new Set(["vf", "amr"]);
 /** Classify one hit row (or a bare property string) into a coarse category. */
 function protPropCategory(prop, row) {
   const src = String((row && (row.Source || row.source)) || "")
@@ -111,7 +115,37 @@ function protPropCategory(prop, row) {
 function protPropVisibleByDefault(prop, row) {
   return PROT_DEFAULT_VISIBLE_CATEGORIES.has(protPropCategory(prop, row));
 }
-// Guard so the VF/AMR-only default is applied exactly once per dataset. Without
+/** True if this property belongs to the "VF/AMR only" shortcut set. */
+function protPropIsVfAmr(prop, row) {
+  return PROT_VFAMR_CATEGORIES.has(protPropCategory(prop, row));
+}
+
+// ── Host (Homo sapiens) hits ────────────────────────────────────────────────
+// DrugBank / TCDB annotate plenty of human proteins (residual host reads), and
+// they swamp the VF/AMR views once Drug Target / Transporter are shown. They
+// start hidden; the "Show Homo sapiens hits" toggle on the VF/AMR tab flips
+// PROT_SHOW_HOST, which every VF/AMR surface (tab table, both charts, Summary
+// chips and the Summary annotation filter) honours via _protHitPassesUiFilters.
+const PROT_HOST_SPECIES_TAXIDS = new Set(["9606"]);
+let PROT_SHOW_HOST = false;
+function protHitIsHost(r) {
+  if (!r) return false;
+  const t = r.taxids || r._taxids;
+  if (t && typeof t === "object") {
+    if (
+      PROT_HOST_SPECIES_TAXIDS.has(String(t.species_taxid || "")) ||
+      PROT_HOST_SPECIES_TAXIDS.has(String(t.taxon_id || ""))
+    )
+      return true;
+  }
+  if (PROT_HOST_SPECIES_TAXIDS.has(String(r["Species Taxid"] || "").trim())) return true;
+  const names = [r["Species"], r["species"], r["Reference Organism"], r["Organism"]];
+  for (const n of names) {
+    if (/^\s*homo sapiens\b/i.test(String(n || ""))) return true;
+  }
+  return false;
+}
+// Guard so the default category visibility is applied exactly once per dataset. Without
 // it every redraw would clobber the user's own legend clicks.
 let PROT_HIDDEN_DEFAULTS_APPLIED = false;
 function _resetProtHiddenDefaults() {

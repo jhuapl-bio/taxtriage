@@ -970,6 +970,10 @@ function _renderSummaryTable(fd) {
   // Append empty-sample indicator rows for samples with no detections at all.
   const _emptyOnlySum = _emptyOnlySampleRows(fd);
   if (_emptyOnlySum.length) fd = fd.concat(_emptyOnlySum);
+  // "Annotation hits" filter: keep only detection rows carrying a hit in the
+  // chosen category. VF/AMR indicator rows stay (they ARE annotation hits);
+  // novelty / empty-sample indicator rows go.
+  fd = _applySumAnnotFilter(fd);
   // Show rollup hint only when rescued rows are actually present
   const _sumRollupHint = document.getElementById("sum-rollup-hint");
   if (_sumRollupHint) {
@@ -1522,11 +1526,22 @@ function _vfamrIndex() {
   // can filter on exactly the key the Summary chip resolved on instead of
   // guessing a second time from the organism name.
   const _ensure = (map, key, kind) => {
-    if (!map.has(key)) map.set(key, { vf: new Map(), amr: new Map(), samples: new Set(), key, kind });
+    if (!map.has(key)) map.set(key, { vf: new Map(), amr: new Map(), cats: {}, samples: new Set(), key, kind });
     return map.get(key);
   };
+  // Transporter (TCDB) hits often carry no Gene/Product, so fall back to the
+  // accession and then the description — otherwise they were never counted.
   const _lbl = (r) =>
-    r["Gene"] || r["Gene Name"] || r.gene_name || r["Product"] || r.product || r["Name"] || r["Antibiotics"] || "";
+    r["Gene"] ||
+    r["Gene Name"] ||
+    r.gene_name ||
+    r["Product"] ||
+    r.product ||
+    r["Name"] ||
+    r["Antibiotics"] ||
+    r["Source ID"] ||
+    r["Description"] ||
+    "";
   const _pass = typeof _protHitPassesUiFilters === "function" ? _protHitPassesUiFilters : () => true;
   const _add = (rows, kind) => {
     (rows || []).forEach((r) => {
@@ -1539,11 +1554,17 @@ function _vfamrIndex() {
         .toLowerCase();
       const lbl = _lbl(r);
       const smp = r["Specimen ID"] || r.Sample || r.sample || null;
+      // Annotation category (vf / amr / transporter / drug_target / other):
+      // drives the per-category chips and the Summary "annotation hit" filter.
+      const cat = _vfamrRowCategory(r, kind);
       const stamp = (e) => {
         const m = kind === "amr" ? e.amr : e.vf;
         if (lbl) {
           if (!m.has(lbl)) m.set(lbl, new Set());
           if (smp) m.get(lbl).add(smp);
+          const cm = e.cats[cat] || (e.cats[cat] = new Map());
+          if (!cm.has(lbl)) cm.set(lbl, new Set());
+          if (smp) cm.get(lbl).add(smp);
         }
         if (smp) e.samples.add(smp);
       };
@@ -1560,6 +1581,22 @@ function _vfamrIndex() {
   _add(PROT.amr_genes, "amr");
   _VFAMR_INDEX = { byGenus, bySpecies, byTaxid, byGenusTaxid, _key };
   return _VFAMR_INDEX;
+}
+
+// Annotation category for one hit row. AMR-sheet rows are always "amr";
+// per-gene rows are classified by Source / Property (see protPropCategory).
+const _VFAMR_CATS = ["vf", "amr", "transporter", "drug_target", "other"];
+const _VFAMR_CAT_META = {
+  vf: { short: "VF", label: "Virulence Factors", cls: "vfamr-vf", color: "#e53935" },
+  amr: { short: "AMR", label: "AMR Genes", cls: "vfamr-amr", color: "#fb8c00" },
+  transporter: { short: "TR", label: "Transporters", cls: "vfamr-tr", color: "#26a69a" },
+  drug_target: { short: "DT", label: "Drug Targets", cls: "vfamr-dt", color: "#ab47bc" },
+  other: { short: "Other", label: "Other / unclassified", cls: "vfamr-oth", color: "#90a4ae" },
+};
+function _vfamrRowCategory(r, kind) {
+  if (kind === "amr") return "amr";
+  const c = typeof protPropCategory === "function" ? protPropCategory(_protRowProp(r), r) : "vf";
+  return _VFAMR_CAT_META[c] ? c : "other";
 }
 
 // Resolve the best VF/AMR annotation entry for a detection row: prefer a
@@ -1619,6 +1656,14 @@ function _vfamrForRow(r) {
   };
   const vfMap = _filterBySample(info.vf);
   const amrMap = _filterBySample(info.amr);
+  // Per-category gene maps / counts, sample-scoped like vf/amr above.
+  const catMaps = {};
+  const cats = {};
+  _VFAMR_CATS.forEach((c) => {
+    const m = _filterBySample(info.cats && info.cats[c]);
+    catMaps[c] = m;
+    cats[c] = m.size;
+  });
   // Sample-scoped VF+AMR totals for the species and genus entries, used to
   // compute the species-specificity percentage shown atop the tooltip.
   const _total = (i) => (i ? _filterBySample(i.vf).size + _filterBySample(i.amr).size : 0);
@@ -1635,6 +1680,8 @@ function _vfamrForRow(r) {
     amr: amrMap.size,
     vfMap,
     amrMap,
+    cats,
+    catMaps,
     speciesTotal,
     genusTotal,
   };
@@ -1645,8 +1692,11 @@ function _vfamrCellHTML(r) {
   const v = _vfamrForRow(r);
   if (!v || (!v.vf && !v.amr)) return '<span style="color:#ccc">—</span>';
   const parts = [];
-  if (v.vf) parts.push(`<span class="vfamr-chip vfamr-vf">${v.vf} VF</span>`);
-  if (v.amr) parts.push(`<span class="vfamr-chip vfamr-amr">${v.amr} AMR</span>`);
+  _VFAMR_CATS.forEach((c) => {
+    const n = v.cats && v.cats[c];
+    if (n) parts.push(`<span class="vfamr-chip ${_VFAMR_CAT_META[c].cls}">${n} ${_VFAMR_CAT_META[c].short}</span>`);
+  });
+  if (!parts.length) return '<span style="color:#ccc">—</span>';
   const lvl = v.level === "species" ? "sp" : "gen";
   // Carry the organism as well as the genus: jumping to the VF/AMR tab filters
   // on the species when we know it, so a click on one row cannot drag in every
@@ -1747,7 +1797,7 @@ function _vfamrTip(r) {
   };
   const lvlStyle = v.level === "species" ? "background:#f3e5f5;color:#6a1b9a" : "background:#e8f5e9;color:#2e7d32";
   let t =
-    `<b>${r["Detected Organism"] || r["Genus"] || ""} — VF / AMR hits</b> ` +
+    `<b>${r["Detected Organism"] || r["Genus"] || ""} — annotation hits</b> ` +
     `<span style="${lvlStyle};padding:0 4px;border-radius:3px;font-size:0.78em">${v.level}-level</span>`;
   // Species-specificity line: what fraction of this genus's VF/AMR hits
   // (in this sample) are assigned at the species level. At genus level
@@ -1763,8 +1813,14 @@ function _vfamrTip(r) {
   } else if (v.level === "genus") {
     t += `<div style="margin-top:3px;font-size:0.86em;color:#ffb74d">No species-level hits found</div>`;
   }
-  t += _section("Virulence Factors", v.vfMap || v.info.vf, "#e53935");
-  t += _section("AMR Genes", v.amrMap || v.info.amr, "#fb8c00");
+  if (v.catMaps) {
+    _VFAMR_CATS.forEach((c) => {
+      t += _section(_VFAMR_CAT_META[c].label, v.catMaps[c], _VFAMR_CAT_META[c].color);
+    });
+  } else {
+    t += _section("Virulence Factors", v.vfMap || v.info.vf, "#e53935");
+    t += _section("AMR Genes", v.amrMap || v.info.amr, "#fb8c00");
+  }
   if (!v.vf && !v.amr) return "";
   t += `<div style="margin-top:6px;color:#90caf9;font-size:0.82em">Click to open in the VF / AMR tab →</div>`;
   return t;
@@ -3091,6 +3147,50 @@ function _subThresholdBadgeHTML(r) {
   return html;
 }
 
+/* ── Summary "Annotation hits" filter ─────────────────────────────────────
+     Hides detection rows that have no VF/AMR (or Transporter / Drug Target)
+     hit in their own sample. Only offered when annotation ran (HAS_PROT) and
+     the VF/AMR tab is actually available — not hidden/disabled by the report
+     config or the Admin dialog — since the counts come from that tab's data
+     and honour its category / %id / host filters. */
+function _sumAnnotFilterAvailable() {
+  if (!HAS_PROT) return false;
+  const btn = document.getElementById("prot-tab-btn");
+  if (!btn) return false;
+  if (typeof TTAdmin !== "undefined" && TTAdmin && typeof TTAdmin.usable === "function") return !!TTAdmin.usable(btn);
+  return !btn.classList.contains("hidden") && !btn.classList.contains("tab-disabled");
+}
+function _sumAnnotRowPasses(r, mode) {
+  const v = _vfamrForRow(r);
+  if (!v || !v.cats) return false;
+  const c = v.cats;
+  if (mode === "any") return _VFAMR_CATS.some((k) => c[k] > 0);
+  if (mode === "vfamr") return c.vf > 0 || c.amr > 0;
+  return (c[mode] || 0) > 0;
+}
+function _syncSumAnnotFilterControl() {
+  const wrap = document.getElementById("summary-annot-filter-wrap");
+  const sel = document.getElementById("summary-annot-filter");
+  if (!wrap || !sel) return false;
+  const ok = _sumAnnotFilterAvailable();
+  wrap.style.display = ok ? "flex" : "none";
+  sel.disabled = !ok;
+  if (!ok) sel.value = "";
+  return ok;
+}
+function _applySumAnnotFilter(fd) {
+  const ok = _syncSumAnnotFilterControl();
+  const sel = document.getElementById("summary-annot-filter");
+  const mode = ok && sel ? sel.value : "";
+  if (sel) sel.classList.toggle("active-filter", !!mode);
+  if (!mode) return fd;
+  return fd.filter((r) => {
+    if (r.__vfamrOnly || r.__vfamrExtra) return true;
+    if (r.__noveltyOnly || r.__noveltyExtra || r.__emptyOnly) return false;
+    return _sumAnnotRowPasses(r, mode);
+  });
+}
+
 // Wire summary detection-table controls (pager + group + page-size).
 (function _initSummaryTableControls() {
   function _go(n) {
@@ -3114,6 +3214,12 @@ function _subThresholdBadgeHTML(r) {
   const ps = document.getElementById("summary-page-size");
   if (ps)
     ps.addEventListener("change", () => {
+      _sumPage = 0;
+      _renderSummaryTable(filteredData());
+    });
+  const annot = document.getElementById("summary-annot-filter");
+  if (annot)
+    annot.addEventListener("change", () => {
       _sumPage = 0;
       _renderSummaryTable(filteredData());
     });

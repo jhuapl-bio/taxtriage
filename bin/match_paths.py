@@ -1183,22 +1183,35 @@ def _make_group_read_filter(args):
     return _passes
 
 
-def _sweep_coverage(positions):
-    """Sweep-line (start, end) read spans into non-overlapping (start, end, depth) runs."""
-    events = []
-    for start, end in positions:
-        events.append((start, 1))
-        events.append((end, -1))
-    events.sort()
+def _add_span_events(events, start, end):
+    """Record a read span as +1/-1 endpoint counts in an events dict."""
+    events[start] += 1
+    events[end] -= 1
+
+
+def _sweep_events(events):
+    """Sweep a {pos: net_delta} endpoint dict into (start, end, depth) runs.
+
+    Simultaneous starts and ends have no intervening bases, so the net delta
+    per position is sufficient.
+    """
     regions = []
     current_depth = 0
     last_pos = 0
-    for pos, delta in events:
+    for pos, delta in sorted(events.items()):
         if pos > last_pos and current_depth > 0:
             regions.append((last_pos, pos, current_depth))
         current_depth += delta
         last_pos = pos
     return regions
+
+
+def _sweep_coverage(positions):
+    """Sweep-line (start, end) read spans into non-overlapping (start, end, depth) runs."""
+    events = defaultdict(int)
+    for start, end in positions:
+        _add_span_events(events, start, end)
+    return _sweep_events(events)
 
 
 def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_lengths={}, args={}, mask=None):
@@ -1263,7 +1276,9 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 sum_mapq_filtered = 0,   # MAPQ sum for reads that pass the filter
                 count_mapq_filtered = 0, # count of reads that pass the filter
                 total_reads = 0,
-                read_positions = [],
+                # Aggregate interval endpoints as reads arrive.  Keeping two
+                # tuples per alignment can exhaust memory on deep samples.
+                depth_events = defaultdict(int),
                 total_length = 0,
                 unique_read_ids = set(),
                 accession = ref,
@@ -1277,7 +1292,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 _ms["masked_bp"] = _rm.masked_bp if _rm is not None else 0
                 _ms["mask_reads_total"] = 0
                 _ms["mask_reads_masked"] = 0
-                _ms["read_positions_orig"] = []
+                # original-coordinate endpoints, kept only for plotting
+                _ms["depth_events_orig"] = defaultdict(int)
         # Open BAM file
         total_reads = 0
         # check if the alignment was paired end or single end
@@ -1364,14 +1380,19 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                     reference_stats[ref]["sum_baseq"] += sum(read.query_qualities)
                     reference_stats[ref]["count_baseq"] += len(read.query_qualities)
 
-                # Record read positions for coverage calculation
+                # Endpoint counts give the same sweep-line coverage as sorting
+                # every individual read endpoint, with one entry per position.
+                _events = reference_stats[ref]["depth_events"]
                 if _mask_pieces is not None:
                     # compressed coords drive scoring; original coords are kept
                     # only for plotting (breadth histogram mask overlay)
-                    reference_stats[ref]["read_positions"].extend(_mask_pieces[1])
-                    reference_stats[ref]["read_positions_orig"].extend(_mask_pieces[0])
+                    for _s, _e in _mask_pieces[1]:
+                        _add_span_events(_events, _s, _e)
+                    _orig_events = reference_stats[ref]["depth_events_orig"]
+                    for _s, _e in _mask_pieces[0]:
+                        _add_span_events(_orig_events, _s, _e)
                 else:
-                    reference_stats[ref]["read_positions"].append((read.reference_start, read.reference_end))
+                    _add_span_events(_events, read.reference_start, read.reference_end)
         # Calculate statistics for each reference
         for ref, _ in reference_lengths.items():
             stats = reference_stats.get(ref, None)
@@ -1405,8 +1426,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
 
 
 
-                # Compute coverage regions
-                coverage_regions = _sweep_coverage(stats.get("read_positions", []))
+                # Compute coverage regions from aggregated endpoint counts
+                coverage_regions = _sweep_events(stats["depth_events"])
 
                 # Scoring length: the kept (unmasked) bp when a mask applies,
                 # otherwise the full reference length.
@@ -1421,13 +1442,13 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 coverage_breadth = covered_length / _score_len if _score_len > 0 else 0
 
                 if mask is not None:
-                    _orig_pos = stats.get("read_positions_orig")
-                    if _orig_pos:
-                        reference_stats[ref]["covered_regions_orig"] = _sweep_coverage(_orig_pos)
+                    _orig_ev = stats.get("depth_events_orig")
+                    if _orig_ev:
+                        reference_stats[ref]["covered_regions_orig"] = _sweep_events(_orig_ev)
                     _mt = stats.get("mask_reads_total", 0)
                     reference_stats[ref]["mask_read_fraction"] = (
                         stats.get("mask_reads_masked", 0) / _mt if _mt > 0 else 0.0)
-                    reference_stats[ref].pop("read_positions_orig", None)
+                    reference_stats[ref].pop("depth_events_orig", None)
 
                 # Assign computed statistics
                 reference_stats[ref]["avg_read_length"] = avg_read_length
@@ -1463,7 +1484,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 del reference_stats[ref]["count_highmapq"]
                 del reference_stats[ref]["count_rescued"]
                 del reference_stats[ref]["sum_rescued_phred"]
-                del reference_stats[ref]["read_positions"]
+                del reference_stats[ref]["depth_events"]
                 del reference_stats[ref]["unique_read_ids"]
                 del reference_stats[ref]["total_reads"]
                 del reference_stats[ref]["total_length"]

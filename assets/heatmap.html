@@ -53,6 +53,10 @@
         <circle cx="52" cy="18" r="7" fill="#ffffff" />
       </svg>
       TaxTriage Multi-Run Analysis
+      <!-- Nextflow run name (BOOT.run_info.workflow.runName); filled by 51_admin_panel.js, hidden when absent/redacted -->
+      <span class="banner-run" id="banner-run" hidden
+        ><i class="fas fa-play-circle" aria-hidden="true"></i><span id="banner-run-name"></span
+      ></span>
       <span class="sub" id="banner-sub"></span>
       <button id="pipeline-info-btn" type="button" aria-label="Show pipeline run metadata">
         <i class="fas fa-circle-info"></i><span class="info-btn-label">Run info</span>
@@ -390,6 +394,27 @@
                 <span id="summary-row-count" style="flex: 1; min-width: 110px"></span>
                 <label style="display: flex; align-items: center; gap: 0.3em">
                   <input type="checkbox" id="summary-group-sample" checked /> Group by Sample
+                </label>
+                <!-- Annotation-hit row filter; shown only when annotation ran and the
+                     VF/AMR tab is available (see _syncSumAnnotFilterControl). -->
+                <label
+                  id="summary-annot-filter-wrap"
+                  style="display: none; align-items: center; gap: 0.3em; white-space: nowrap"
+                  title="Only show rows with an annotation hit of this kind in their own sample. Counts follow the VF/AMR tab's category, %id and Homo sapiens filters."
+                >
+                  Annotation hits:
+                  <select
+                    id="summary-annot-filter"
+                    style="padding: 0.1em 0.3em; border: 1px solid #ccc; border-radius: 4px"
+                  >
+                    <option value="" selected>All rows</option>
+                    <option value="any">Any annotation hit</option>
+                    <option value="vfamr">VF or AMR</option>
+                    <option value="vf">Virulence factor</option>
+                    <option value="amr">AMR</option>
+                    <option value="transporter">Transporter</option>
+                    <option value="drug_target">Drug target</option>
+                  </select>
                 </label>
                 <label style="display: flex; align-items: center; gap: 0.3em; white-space: nowrap">
                   Rows per page:
@@ -1014,6 +1039,15 @@
                    present in the data. Each chip toggles that category in both
                    the table and the charts above (shared PROT_HIDDEN_PROPS). -->
               <span id="prot-cat-legend" style="display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap"></span>
+              <!-- Host (Homo sapiens) hits start hidden; wired by _renderProtHostToggle(). -->
+              <label
+                id="prot-host-toggle"
+                style="display: none; margin-left: 0.6em; white-space: nowrap; cursor: pointer; color: #555"
+                title="Homo sapiens hits (DrugBank / TCDB matches to human proteins, usually residual host reads) are hidden by default. Applies to the table, both charts and the Summary tab."
+              >
+                <input type="checkbox" id="prot-show-host" style="vertical-align: middle" />
+                Show <i>Homo sapiens</i> hits <span id="prot-host-count" style="color: #999"></span>
+              </label>
               <span style="margin-left: 0.6em; font-weight: 600; color: #555">TASS:</span>
               <span style="display: flex; align-items: center; gap: 0.3em"
                 ><span
