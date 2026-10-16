@@ -52,6 +52,8 @@ process ALIGNMENT_PER_SAMPLE {
         path "versions.yml"           , emit: versions
         tuple val(meta), path("*.json")    , optional:false, emit: txt
         tuple val(meta), path("*_removal_stats_by_taxid.xlsx")    , optional:true, emit: removal_by_taxid
+        // --mask_write_bam: the input BAM with masked alignments removed (+ .bai)
+        tuple val(meta), path("*.masked.bam*")    , optional:true, emit: masked_bam
     when:
     task.ext.when == null || task.ext.when
 
@@ -94,6 +96,10 @@ process ALIGNMENT_PER_SAMPLE {
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
     // def assemblyi = assembly ? " -j ${assembly} " : " "
     def read_count = meta.read_count && meta.read_count > 0 ? " --readcount ${meta.read_count} " : " "
+    // Input read file size, as supplied (reporting only: metadata.input_data)
+    def _isz = WorkflowTaxtriage.inputSize(meta)
+    def _inames   = _isz[1].size() <= 50 ? _isz[1].join(',').replace("'", "") : "${_isz[1].size()} files"
+    def input_size = _isz[0] ? " --input_bytes ${_isz[0]} --input_files '${_inames}' " : " "
     def cpu_count = task.cpus ? " -X ${task.cpus} "  : ""
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
     def mapping_arg  = mapping.name  != "NO_FILE"         ? "-m $mapping"  : " "
@@ -146,7 +152,8 @@ process ALIGNMENT_PER_SAMPLE {
     if (mask_args) {
         mask_args += (params.mask_read_overlap != null ? " --mask_read_overlap ${params.mask_read_overlap} " : '') +
                      (params.mask_penalty_power ? " --mask_penalty_power ${params.mask_penalty_power} " : '') +
-                     (params.mask_min_region ? " --mask_min_region ${params.mask_min_region} " : '')
+                     (params.mask_min_region ? " --mask_min_region ${params.mask_min_region} " : '') +
+                     (params.mask_write_bam ? " --mask_write_bam ${meta.id}.masked.bam " : '')
     }
     // the assembly-level FCS annotation is useful even when nothing is masked
     mask_args += _fcs_asm ? " --fcs_assembly_table ${_fcs_asm} " : ''
@@ -170,7 +177,7 @@ process ALIGNMENT_PER_SAMPLE {
         -i $bamfiles \\
         -o $output $bedgraph_arg \\
         -s $id \\
-        $type $read_count \\
+        $type $read_count $input_size \\
         --output_dir $output_dir $fastas_arg $cpu_count \\
         --scaled 8000 \\
         $alpha \\

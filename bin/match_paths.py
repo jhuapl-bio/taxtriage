@@ -358,6 +358,19 @@ def parse_args(argv=None):
         help="HMP distribution of abundances of organisms on a per-sample basis. Optional but useful for some sample types that are highly diverse in content",
     )
     parser.add_argument(
+        "--input_bytes",
+        default=None,
+        type=int,
+        metavar="BYTES",
+        help="Size on disk of the sample's input read file(s), as supplied (recorded in metadata.input_data).",
+    )
+    parser.add_argument(
+        "--input_files",
+        default=None,
+        metavar="NAMES",
+        help="Comma-separated names of the sample's input read file(s) (recorded in metadata.input_data).",
+    )
+    parser.add_argument(
         "--readcount",
         default=None,
         metavar="READCOUNT",
@@ -648,6 +661,12 @@ def parse_args(argv=None):
                              "Every organism whose reference assembly NCBI flagged as contaminated gets an "
                              "'fcs_assembly' annotation in the JSON / report (no score change). Needs -m with "
                              "a GCF_/GCA_ assembly column.")
+    parser.add_argument("--mask_write_bam", default=None, metavar="OUT.bam",
+                        help="Also write a physically masked copy of the input BAM: every alignment that "
+                             "--mask_read_overlap would remove is dropped (primary, secondary and "
+                             "supplementary alike); kept alignments that partly overlap the mask carry a "
+                             "ZM:i tag with the number of masked reference bases. Indexed (.bai). Only "
+                             "written when a mask is active.")
     parser.add_argument("--mask_regions_json_max", type=int, default=2000,
                         help="Max masked/target intervals per accession written to the JSON for plotting.")
     parser.add_argument("--min_threshold", type=float, default=0.2, help="Min Jaccard similarity to report.")
@@ -1497,6 +1516,62 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
     print(f"Processed {total_reads} reads from {len(reference_lengths)} references in {time.time()-start_time} seconds.")
     bam_file.close()
     return reference_stats, aligned_reads, total_reads
+def write_masked_bam(in_bam, out_bam, mask):
+    """Stream in_bam -> out_bam, dropping alignments the region mask removes.
+
+    Uses the same test as scoring (mask.read_is_masked on the aligned span), so
+    the file is what TaxTriage scored: open it in IGV next to the original to
+    see exactly which reads were excluded. Unmapped reads and references the
+    mask does not touch pass through unchanged. Returns (kept, dropped).
+    """
+    kept = dropped = 0
+    with pysam.AlignmentFile(in_bam, "rb") as src:
+        hdr = src.header.to_dict()
+        pg = hdr.setdefault("PG", [])
+        pg.append({"ID": "taxtriage-mask", "PN": "match_paths.py",
+                   "CL": f"mask mode={mask.mode} read_overlap={mask.read_overlap} "
+                         f"bed={','.join(os.path.basename(p) for p in mask.bed_paths + mask.exclude_paths)}"})
+        lengths = dict(zip(src.references, src.lengths))
+        with pysam.AlignmentFile(out_bam, "wb", header=hdr) as dst:
+            for read in src.fetch(until_eof=True):
+                if not read.is_unmapped and read.reference_name is not None:
+                    rm = mask.build(read.reference_name, lengths.get(read.reference_name, 0))
+                    if rm is not None:
+                        rs, re_ = read.reference_start, read.reference_end
+                        _, _, kb = rm.clip(rs, re_)
+                        if mask.read_is_masked(re_ - rs, kb):
+                            dropped += 1
+                            continue
+                        if kb < re_ - rs:
+                            read.set_tag("ZM", int((re_ - rs) - kb), value_type="i")
+                kept += 1
+                dst.write(read)
+    try:
+        pysam.index(out_bam)
+    except Exception as _e:  # unsorted input: leave unindexed rather than fail the run
+        print(f"[mask] WARNING: could not index {out_bam}: {_e}")
+    return kept, dropped
+
+
+def describe_reference_db(bam_path, fasta_paths=None):
+    """Size of the alignment reference: sequence count and total bp from the
+    BAM header (exactly what the reads were aligned against), plus the on-disk
+    size of the reference FASTA(s) when given. Never raises."""
+    out = {"sequences": None, "bp": None, "files": None, "bytes": None}
+    try:
+        with pysam.AlignmentFile(bam_path, check_sq=False) as bam:
+            lengths = bam.lengths
+        out["sequences"] = len(lengths)
+        out["bp"] = int(sum(lengths))
+    except Exception as e:  # pragma: no cover - informational only
+        print(f"WARNING: could not read reference sizes from {bam_path}: {e}", file=sys.stderr)
+    files = [f for f in (fasta_paths or []) if f and os.path.exists(f)]
+    if files:
+        out["files"] = [os.path.basename(f) for f in files]
+        out["bytes"] = int(sum(os.path.getsize(f) for f in files))
+    return out
+
+
 def main():
     args = parse_args()
     inputfile = args.input
@@ -1727,6 +1802,13 @@ def main():
     comparison_df =  pd.DataFrame()
     alignments_to_remove = defaultdict(set)
     if args.fasta:
+        # Fail fast on anything that is not a FASTA (.fa/.fasta/.fna/... with
+        # optional .gz/.bgz). Plain-gzip references are fine: everything that
+        # opens them goes through fasta_utils, which decompresses once for
+        # pysam/htslib (they only read plain or bgzip FASTA).
+        from fasta_utils import check_fasta_path
+        for _fp in args.fasta:
+            check_fasta_path(_fp, "-f/--fasta reference")
         fastas = set(args.fasta)
     # ani_df holds the taxid-level ANI DataFrame (index & cols are taxid strings).
     # It is populated either by generating the matrix from FASTA signatures or by
@@ -1915,9 +1997,11 @@ def main():
     elif args.fasta:
         print("Using fasta files to get reference lengths")
         from Bio import SeqIO
+        from fasta_utils import open_fasta_text
         for fasta in fastas:
-            for record in SeqIO.parse(fasta, "fasta"):
-                orgn_lengths[record.id] = len(record.seq)
+            with open_fasta_text(fasta) as _fh:          # plain, gzip or bgzip
+                for record in SeqIO.parse(_fh, "fasta"):
+                    orgn_lengths[record.id] = len(record.seq)
     else:
         print("No fasta file provided, getting reference lengths from BAM file")
         # get reference lengths from bam file
@@ -1974,6 +2058,7 @@ def main():
         args=args,
         mask=_region_mask,
     )
+    _reference_db = describe_reference_db(inputfile, args.fasta)
     _mask_summary = None
     if _region_mask is not None:
         _mask_summary = _region_mask.describe()
@@ -1993,6 +2078,16 @@ def main():
         print(f"[mask] {len(_m_refs)}/{len(reference_hits)} references affected; "
               f"{_mask_summary['masked_bp']:,} bp masked; "
               f"{_mask_summary['reads_masked']:,}/{_mask_summary['reads_considered']:,} reads removed")
+        # "applied" = the mask actually changed what was scored for this sample;
+        # the report keys its notices off this rather than off "enabled".
+        _mask_summary["applied"] = bool(_m_refs) and (
+            _mask_summary["masked_bp"] > 0 or _mask_summary["reads_masked"] > 0)
+        if getattr(args, 'mask_write_bam', None):
+            _k, _d = write_masked_bam(inputfile, args.mask_write_bam, _region_mask)
+            _mask_summary["masked_bam"] = os.path.basename(args.mask_write_bam)
+            _mask_summary["masked_bam_alignments_kept"] = _k
+            _mask_summary["masked_bam_alignments_dropped"] = _d
+            print(f"[mask] wrote {args.mask_write_bam}: {_k:,} alignments kept, {_d:,} dropped")
     # exit()
 
     mmbert_dict = dict()
@@ -4497,6 +4592,14 @@ def main():
                         "sequencing_instrument", "sequencing_protocol_primer_set",
                         "sequencing_platform"}},
         "total_reads": total_reads,
+        # Size of what went in: read files as supplied, and the reference the
+        # reads were aligned to (sequence count / bp from the BAM header).
+        "input_data": {
+            "bytes": args.input_bytes if args.input_bytes and args.input_bytes > 0 else None,
+            "files": [f for f in (args.input_files or "").split(",") if f] or None,
+            "reads": total_reads,
+        },
+        "reference_db": _reference_db,
         "aligned_reads": aligned_reads_total,
         "total_organism_reads": int(_total_organism_reads),
         "num_species_groups": len(final_json),

@@ -2060,7 +2060,7 @@ async function _exportReportPdf() {
   const coverSub = document.getElementById("pdf-report-subtext");
   if (coverSub) {
     const stamp = new Date().toLocaleString();
-    coverSub.textContent = `${_buildBannerSub()} · Exported ${stamp}`;
+    coverSub.textContent = `${_buildBannerSub({ long: true })} · Exported ${stamp}`;
   }
   await _renderTabsForPdf();
   // Build the cover KPI banner + contents, then group/annotate each pane.

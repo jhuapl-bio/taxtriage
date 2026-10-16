@@ -76,16 +76,54 @@ body {
   font-weight: 700;
   flex-shrink: 0;
 }
+#banner .banner-title {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* Stats line: one line, gives way first (ellipsis; full text in its tooltip)
+   so the run name and the masking pill keep their room. */
 #banner .sub {
   font-size: 0.75em;
   font-weight: 400;
   opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 4ch;
+  flex: 0 1 auto;
+}
+/* Region-masking pill: short label, per-sample detail in the tooltip. */
+#banner .banner-mask {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2em 0.65em;
+  border-radius: 999px;
+  background: rgba(255, 193, 7, 0.22);
+  border: 1px solid rgba(255, 213, 79, 0.75);
+  color: #fff8e1;
+  font-size: 0.7em;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: help;
+}
+#banner .banner-mask[hidden] {
+  display: none;
+}
+/* Medium widths: the help buttons go icon-only (they keep their tooltips) so
+   the stats line isn't squeezed to a stub. */
+@media (max-width: 1280px) {
+  #helpmode-btn .help-btn-label,
+  #help-btn .help-btn-label {
+    display: none;
+  }
 }
 #banner .banner-run {
   display: inline-flex;
   align-items: center;
   gap: 0.4em;
-  max-width: 28ch;
+  max-width: 42ch;
   padding: 0.2em 0.7em;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.16);
@@ -94,7 +132,7 @@ body {
   font-weight: 600;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: nowrap;
-  flex-shrink: 1;
+  flex-shrink: 0;
   min-width: 0;
 }
 #banner .banner-run[hidden] {
@@ -4475,6 +4513,13 @@ textarea:focus-visible,
   }
   #banner {
     font-size: 1em;
+  }
+  #banner .banner-title {
+    display: none;
+  }
+  #banner .banner-run {
+    max-width: 22ch;
+    flex-shrink: 1;
   }
 }
 

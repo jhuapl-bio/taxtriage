@@ -1187,6 +1187,29 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
     else:
         _assign_src = {}
 
+    # ── Region masking (match_paths --mask_bed / --fcs) ──────────────────
+    # Present only in masked runs. "Genome Length (bp)" / "Breadth %" above
+    # are then over the SCORED (unmasked or targeted) bases; these columns say
+    # how much was taken out. Rows from unmasked samples get blanks (see
+    # _MASK_COLS fill in main) so mixed runs still line up.
+    _mask_cols = {}
+    if "mask_reads_total" in org or "length_full" in org:
+        _mt = float(org.get("mask_reads_total", 0) or 0)
+        _mm = float(org.get("mask_reads_masked", 0) or 0)
+        _mask_cols = {
+            "Masked Reads":            int(_mm),
+            "Masked Reads %":          round(100.0 * _mm / _mt, 2) if _mt > 0 else 0.0,
+            "Full Genome Length (bp)": int(org.get("length_full", genome_len) or 0),
+            "Masked bp":               int(org.get("masked_bp", 0) or 0),
+            "Masked bp %":             round(100.0 * float(org.get("mask_bp_fraction", 0) or 0), 3),
+            "Mask Penalty":            round(float(org.get("mask_penalty", 1.0) or 0), 4),
+        }
+    _fcs = org.get("fcs_assembly") or {}
+    if _fcs:
+        _mask_cols["FCS Assembly"] = _fcs.get("assembly", "")
+        _mask_cols["FCS Contaminated bp"] = (int(_fcs["contaminant_bp"])
+                                             if _fcs.get("contaminant_bp") not in (None, "") else None)
+
     if int(org.get("hmp_site_count", 0) or 0) > 0:
         _HMP_JSON_SRC[(str(sample_name), str(org.get("key", "")), str(level),
                        str(org.get("name", "Unknown")))] = {k: org.get(k) for k in _HMP_JSON_KEYS}
@@ -1271,7 +1294,15 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
         "Order":               tax.get("order", ""),
         "Family":              tax.get("family", ""),
         "Genus":               tax.get("genus", ""),
+        **_mask_cols,
     }
+
+
+# Columns _flatten_organism adds only for masked samples / FCS-annotated
+# organisms. main() back-fills them on every row when any row has them, so
+# they appear in the table (whose column list comes from the first row).
+_MASK_COLS = ["Masked Reads", "Masked Reads %", "Full Genome Length (bp)", "Masked bp",
+              "Masked bp %", "Mask Penalty", "FCS Assembly", "FCS Contaminated bp"]
 
 
 def _iter_organisms(json_data, sample_name, mintass=0, microbial_cats=None):
@@ -2878,6 +2909,17 @@ def main():
         print(f"[make_report] HMP outliers (z >= {args.hmp_zscore_threshold:g} = elevated): "
               + ", ".join(f"{k}={v}" for k, v in sorted(_st.items()))
               + f"; {len(hmp_payload.get('ref', {}))} reference distribution(s) embedded")
+
+    # ── masking columns: present on some rows -> present (blank) on all ──────
+    _present_mask_cols = [c for c in _MASK_COLS if any(c in r for r in rows)]
+    if _present_mask_cols:
+        for r in rows:
+            for c in _present_mask_cols:
+                r.setdefault(c, None)
+        _n_masked = sum(1 for m in sample_meta.values()
+                        if ((m or {}).get("masking") or {}).get("applied"))
+        print(f"[make_report] region masking: {_n_masked}/{len(sample_meta)} sample(s) masked; "
+              f"columns added: {', '.join(_present_mask_cols)}")
 
     # ── derive column lists ────────────────────────────────────────────────────
     # These fields are carried on each record for client-side analysis (the

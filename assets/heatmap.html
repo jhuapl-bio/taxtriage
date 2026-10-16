@@ -52,12 +52,16 @@
         </g>
         <circle cx="52" cy="18" r="7" fill="#ffffff" />
       </svg>
-      TaxTriage Multi-Run Analysis
+      <span class="banner-title">TaxTriage Multi-Run Analysis</span>
       <!-- Nextflow run name (BOOT.run_info.workflow.runName); filled by 51_admin_panel.js, hidden when absent/redacted -->
       <span class="banner-run" id="banner-run" hidden
         ><i class="fas fa-play-circle" aria-hidden="true"></i><span id="banner-run-name"></span
       ></span>
       <span class="sub" id="banner-sub"></span>
+      <!-- Region-masking pill; filled by _buildBannerSub (26_resizable_right_sidebar.js), hidden when no sample is masked -->
+      <span class="banner-mask" id="banner-mask" hidden tabindex="0"
+        ><i class="fas fa-eye-slash" aria-hidden="true"></i><span id="banner-mask-label"></span
+      ></span>
       <button id="pipeline-info-btn" type="button" aria-label="Show pipeline run metadata">
         <i class="fas fa-circle-info"></i><span class="info-btn-label">Run info</span>
       </button>

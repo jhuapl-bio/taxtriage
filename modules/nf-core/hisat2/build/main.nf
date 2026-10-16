@@ -48,13 +48,19 @@ process HISAT2_BUILD {
     """
     mkdir hisat2
     $extract_exons
+    # hisat2-build only reads plain FASTA: decompress a .gz / .bgz reference first.
+    REF="$fasta"
+    case "\$REF" in
+        *.gz|*.bgz) gzip -dc "\$REF" > hisat2_build_input.fa; REF=hisat2_build_input.fa ;;
+    esac
     hisat2-build \\
         -p $task.cpus \\
         $ss \\
         $exon \\
         $args \\
-        $fasta \\
+        "\$REF" \\
         hisat2/${fasta.baseName}
+    rm -f hisat2_build_input.fa
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

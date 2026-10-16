@@ -21,6 +21,10 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple, Optional
 
 import pysam
+try:
+    from fasta_utils import open_pysam_fasta as _open_fasta  # plain, bgzip or gzip FASTA
+except ImportError:  # pragma: no cover
+    _open_fasta = pysam.FastaFile
 
 
 def dirichlet_weights(n: int) -> List[float]:
@@ -143,7 +147,7 @@ def build_fasta_index(fasta_path: Path) -> Dict[str, int]:
     Returns:
         Set of reference names available in the FASTA
     """
-    fasta = pysam.FastaFile(str(fasta_path))
+    fasta = _open_fasta(str(fasta_path))
     refs = set(fasta.references)
     fasta.close()
     return refs
@@ -231,7 +235,7 @@ def extract_sequences(fasta_path: Path, accessions: List[str], output_fasta: Pat
     close_handle = False
     fa = _fasta_handle
     if fa is None:
-        fa = pysam.FastaFile(str(fasta_path))
+        fa = _open_fasta(str(fasta_path))
         close_handle = True
 
     available = set(fa.references)

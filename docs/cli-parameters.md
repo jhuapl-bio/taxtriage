@@ -674,7 +674,7 @@ Cross-sample frequency of zero, low and high depth windows along each reference,
 
 ## Region Masking (FCS / Targeted TASS)
 
-Restrict TASS scoring to part of each reference: ignore NCBI FCS contaminant spans or your own regions (`exclude`), or score only targeted sub-regions (`target`). Off unless one of `--fcs`, `--fcs_details`, `--mask_bed`, `--mask_feature_table`, `--mask_gff`, `--fcs_gx_report`, `--fcs_adaptor_report` is set. Full description: [Region Masking](masking.md).
+Restrict TASS scoring to part of each reference: ignore NCBI FCS contaminant spans or your own regions (`exclude`), or score only targeted sub-regions (`target`). Off unless one of `--fcs`, `--fcs_details`, `--mask_bed`, `--mask_fasta`, `--mask_feature_table`, `--mask_gff`, `--fcs_gx_report`, `--fcs_adaptor_report` is set. Full description: [Region Masking](masking.md).
 
 | Parameter               | Default            | Description                                                                                              |
 | ----------------------- | ------------------ | -------------------------------------------------------------------------------------------------------- |
@@ -688,6 +688,9 @@ Restrict TASS scoring to part of each reference: ignore NCBI FCS contaminant spa
 | `--fcs_min_len`         | –                  | Ignore FCS spans shorter than this (bp).                                                                 |
 | `--fcs_db`              | `<outdir>/fcs_db`  | Cache directory for downloaded FCS reports.                                                              |
 | `--mask_bed`            | –                  | Comma-separated BED(s): regions to ignore (exclude) or to score (target).                                |
+| `--mask_fasta`          | –                  | Comma-separated masked FASTA(s) of the references; masked bases are never scored.                        |
+| `--mask_fasta_case`     | `hard`             | Read `hard` (N runs), `soft` (lowercase) or `both` from `--mask_fasta`.                                  |
+| `--mask_fasta_min_run`  | `1`                | Ignore masked runs shorter than N bp in `--mask_fasta`.                                                  |
 | `--mask_mode`           | `exclude`          | `exclude` or `target`.                                                                                   |
 | `--mask_feature_table`  | –                  | Target mode: NCBI feature tables to select genes from.                                                   |
 | `--mask_gff`            | –                  | Target mode: GFF3 files to select genes from.                                                            |
@@ -700,6 +703,7 @@ Restrict TASS scoring to part of each reference: ignore NCBI FCS contaminant spa
 | `--mask_min_region`     | `0`                | Ignore intervals shorter than N bp.                                                                      |
 | `--mask_report`         | `true`             | Write `<outdir>/masking/all.masking.html` when masking is on.                                            |
 | `--mask_compare`        | `false`            | Also score every sample unmasked so the masking report shows TASS before/after (2× scoring time).        |
+| `--mask_write_bam`      | `false`            | Also write `masking/bam/<sample>.masked.bam` (+ `.bai`) with the masked alignments removed.              |
 | `--mask_report_top`     | `24`               | Coverage tracks drawn in the masking report.                                                             |
 
 ## Deprecated Parameters

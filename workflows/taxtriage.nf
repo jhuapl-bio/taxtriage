@@ -75,6 +75,8 @@ include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
 include { COUNT_READS  } from '../modules/local/count_reads'
 include { PIGZ_COMPRESS } from '../modules/nf-core/pigz/compress/main'
+include { DECOMPRESS_FASTA as DECOMPRESS_REFERENCE } from '../modules/local/decompress_fasta'
+include { DECOMPRESS_FASTA as DECOMPRESS_CRAM_REFERENCE } from '../modules/local/decompress_fasta'
 include { FASTP } from '../modules/nf-core/fastp/main'
 include { FASTPLONG } from '../modules/nf-core/fastplong/main'
 include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
@@ -293,7 +295,9 @@ workflow TAXTRIAGE {
     ]
     // ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
 
-    ch_reference_fasta = params.reference_fasta ? Channel.from(params.reference_fasta.split(" ").collect { it  }) : Channel.empty()
+    // Space- or comma-separated files and/or directories. Names are checked up
+    // front by WorkflowTaxtriage.validateReferenceInputs (FASTA extensions, .gz ok).
+    ch_reference_fasta = params.reference_fasta ? Channel.from(WorkflowTaxtriage.splitPaths(params.reference_fasta)) : Channel.empty()
     ch_reference_fasta
     .flatMap { fasta ->
         // Replace tilde with home directory
@@ -308,7 +312,7 @@ workflow TAXTRIAGE {
                 java.nio.file.Files.walk(path)
                     .filter { p ->
                         java.nio.file.Files.isRegularFile(p) &&
-                        (p.fileName.toString().toLowerCase().endsWith('.fa') || p.fileName.toString().toLowerCase().endsWith('.fasta'))
+                        WorkflowTaxtriage.isFastaName(p.fileName.toString())
                     }
                     .forEach { p -> fastaFiles << file(p.toString()) } // Use Nextflow's 'file' for consistency
             } else {
@@ -318,11 +322,11 @@ workflow TAXTRIAGE {
                     return []
                 }
                 fastaFiles = filesArray.toList().findAll { file ->
-                    file.name.toLowerCase().endsWith('.fa') || file.name.toLowerCase().endsWith('.fasta')
+                    file.isFile() && WorkflowTaxtriage.isFastaName(file.name)
                 }
             }
             if (fastaFiles.isEmpty()) {
-                println "Warning: No .fa or .fasta files found in directory '${normalizedPath}'."
+                println "Warning: No FASTA files (${WorkflowTaxtriage.FASTA_EXT_HELP}) found in directory '${normalizedPath}'."
                 return []
             }
             // Return the list of files
@@ -336,7 +340,32 @@ workflow TAXTRIAGE {
             return []
         }
     }
-    .set { ch_reference_fasta }
+    .set { ch_reference_fasta_raw }
+
+    // ── gzip-compressed references ─────────────────────────────────────────
+    // Passed through COMPRESSED by default: minimap2 and Deacon read .gz
+    // natively, bowtie2-build / hisat2-build decompress inside their own task,
+    // fuzzy_match_assembly.py reads gzip, and match_paths.py / conflict_regions.py
+    // stream gzip directly via bin/fasta_utils.py (no decompressed copy).
+    // Only bcftools mpileup/consensus and bedtools maskfasta (--get_variants,
+    // --reference_assembly) need plain FASTA, so only then is a .gz reference
+    // decompressed -- once, into the work directory (never published).
+    def _needs_plain_reference = params.get_variants || params.reference_assembly
+    if (_needs_plain_reference) {
+        ch_reference_fasta_raw
+            .branch { f ->
+                gz: WorkflowTaxtriage.isGzName(f.name)
+                plain: true
+            }
+            .set { ch_reference_split }
+        DECOMPRESS_REFERENCE(
+            ch_reference_split.gz.map { f -> [ [id: f.name], f ] }
+        )
+        ch_reference_fasta = ch_reference_split.plain
+            .mix(DECOMPRESS_REFERENCE.out.fasta.map { meta, f -> f })
+    } else {
+        ch_reference_fasta = ch_reference_fasta_raw
+    }
 
     if (params.get_pathogens){
         DOWNLOAD_PATHOGENS()
@@ -996,9 +1025,18 @@ workflow TAXTRIAGE {
     // reference FASTA was given, recover reference sequence from the alignment so
     // the sketching + ANI steps have bases to work with.  Runs BEFORE
     // REFERENCE_PREP because that consensus is mapped to taxids there.
-    ch_cram_reference = params.cram_reference
-        ? Channel.value(file(params.cram_reference, checkIfExists: true))
-        : Channel.value(ch_empty_file)
+    // samtools decodes CRAM against a plain or bgzip reference only; an ordinary
+    // gzip --cram_reference is decompressed first.
+    if (params.cram_reference && WorkflowTaxtriage.isGzName(params.cram_reference)) {
+        DECOMPRESS_CRAM_REFERENCE(
+            Channel.of([ [id: 'cram_reference'], file(params.cram_reference, checkIfExists: true) ])
+        )
+        ch_cram_reference = DECOMPRESS_CRAM_REFERENCE.out.fasta.map { meta, f -> f }.first()
+    } else {
+        ch_cram_reference = params.cram_reference
+            ? Channel.value(file(params.cram_reference, checkIfExists: true))
+            : Channel.value(ch_empty_file)
+    }
 
     BAM_PREP(
         ch_bam_inputs,

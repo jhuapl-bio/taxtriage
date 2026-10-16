@@ -212,6 +212,7 @@ def main(argv=None):
             "reads_masked": m.get("reads_masked", 0),
             "penalty_power": m.get("penalty_power", 0),
             "fcs_contaminated": m.get("fcs_assemblies_contaminated", ""),
+            "masked_bam": m.get("masked_bam", ""),
         })
         seen = set()
         for g, sk, st in _iter_strains(d):
@@ -368,7 +369,7 @@ def render(a, mode, sample_rows, rows, cols, tracks, asm_rows, mask_sum, build_i
 
     o.append("<h2>Per-sample read accounting</h2><div class=wrap><table class=sortable><thead><tr>")
     sc = ["sample", "references_masked", "references_in_bam", "masked_bp", "kept_bp", "reads_considered",
-          "reads_masked", "penalty_power", "fcs_contaminated"]
+          "reads_masked", "penalty_power", "fcs_contaminated", "masked_bam"]
     o.append("".join(f"<th class='{'l' if c == 'sample' else ''}'>{E(c.replace('_', ' '))}</th>" for c in sc))
     o.append("</tr></thead><tbody>")
     for r in sample_rows:

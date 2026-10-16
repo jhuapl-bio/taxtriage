@@ -127,6 +127,16 @@ def parse_args(argv=None):
 
     other = p.add_argument_group("Other")
     other.add_argument("--bed", nargs="+", default=[], help="Extra BED files merged in as-is")
+    other.add_argument("--masked_fasta", nargs="+", default=[],
+                       help="Masked FASTA(.gz) of the references: masked bases become mask regions. Use the "
+                            "same sequence IDs as the BAM (NZ_/version differences are tolerated).")
+    other.add_argument("--masked_fasta_case", choices=["hard", "soft", "both"], default="hard",
+                       help="Which masking to read from --masked_fasta: hard = runs of N/n (e.g. FCS-GX "
+                            "'clean' output, dustmasker -outfmt fasta with hard masking), soft = lowercase "
+                            "bases (RepeatMasker / dustmasker soft masking), both. Default hard.")
+    other.add_argument("--masked_fasta_min_run", type=int, default=1,
+                       help="Ignore masked runs shorter than this many bp (e.g. 10 to skip isolated "
+                            "ambiguity Ns). Default 1.")
     other.add_argument("--refs", nargs="+", default=[],
                        help="Restrict to these references: FASTA(.gz), .fai, BAM/CRAM, or text list of accessions")
     other.add_argument("--mapping", nargs="+", default=[],
@@ -395,6 +405,78 @@ def parse_gff(path, uni, sel_re, ftypes, stats):
             yield ref, int(f[3]) - 1, int(f[4]), f"target:{f[2]}:{label}"[:120].replace(" ", "_"), os.path.basename(path)
 
 
+def parse_masked_fasta(path, uni, case, min_run, stats):
+    """Turn masked bases of a FASTA into intervals.
+
+    hard: N/n runs. soft: lowercase runs (a lowercase 'n' counts for both).
+    Streams the file line by line, so multi-GB FASTAs are fine; sequences not
+    in --refs are skipped without being scanned in detail.
+    """
+    want_hard = case in ("hard", "both")
+    want_soft = case in ("soft", "both")
+    hard_re = re.compile(r"[Nn]+")
+    soft_re = re.compile(r"[a-z]+")
+    label_h = f"masked_fasta:hard:{os.path.basename(path)}"
+    label_s = f"masked_fasta:soft:{os.path.basename(path)}"
+    ref, pos = None, 0
+    open_h = open_s = None          # run start carried across line breaks
+
+    def flush(kind, start, end):
+        if start is None or ref is None or end - start < min_run:
+            return None
+        stats["masked_fasta_runs"] += 1
+        return (ref, start, end, label_h if kind == "h" else label_s, os.path.basename(path))
+
+    with open_text(path) as fh:
+        for line in fh:
+            if line.startswith(">"):
+                for kind, st in (("h", open_h), ("s", open_s)):
+                    r = flush(kind, st, pos)
+                    if r:
+                        yield r
+                ref = uni.resolve(line[1:].split()[0]) if len(line) > 1 else None
+                stats["masked_fasta_seqs"] += 1 if ref is not None else 0
+                pos, open_h, open_s = 0, None, None
+                continue
+            seq = line.strip()
+            if ref is None or not seq:
+                pos += len(seq)
+                continue
+            L = len(seq)
+            for kind, want, rx in (("h", want_hard, hard_re), ("s", want_soft, soft_re)):
+                if not want:
+                    continue
+                cur = open_h if kind == "h" else open_s
+                for m in rx.finditer(seq):
+                    a, b = m.start(), m.end()
+                    if cur is not None and a == 0:
+                        pass                      # run continues from previous line
+                    else:
+                        r = flush(kind, cur, pos) if cur is not None else None
+                        if r:
+                            yield r
+                        cur = pos + a
+                    if b < L:                     # run ends inside this line
+                        r = flush(kind, cur, pos + b)
+                        if r:
+                            yield r
+                        cur = None
+                if cur is not None and not (seq[-1:] and rx.match(seq[-1])):
+                    r = flush(kind, cur, pos)
+                    if r:
+                        yield r
+                    cur = None
+                if kind == "h":
+                    open_h = cur
+                else:
+                    open_s = cur
+            pos += L
+    for kind, st in (("h", open_h), ("s", open_s)):
+        r = flush(kind, st, pos)
+        if r:
+            yield r
+
+
 def parse_bed(path, uni, stats):
     with open_text(path) as fh:
         for line in fh:
@@ -455,6 +537,7 @@ def main(argv=None):
     stats = {
         "rows_scanned": 0, "by_action": Counter(), "skipped_action": Counter(),
         "skipped_division": 0, "assemblies_hit": set(), "features": 0, "bed_unmatched": 0,
+        "masked_fasta_runs": 0, "masked_fasta_seqs": 0,
     }
     subset_fh = open(args.subset_out, "w") if args.subset_out else None
 
@@ -483,6 +566,8 @@ def main(argv=None):
         add(parse_feature_table(p, uni, sel_re, ftypes, stats))
     for p in args.gff:
         add(parse_gff(p, uni, sel_re, ftypes, stats))
+    for p in args.masked_fasta:
+        add(parse_masked_fasta(p, uni, args.masked_fasta_case, args.masked_fasta_min_run, stats))
     for p in args.bed:
         add(parse_bed(p, uni, stats))
     if subset_fh is not None:
@@ -494,7 +579,8 @@ def main(argv=None):
     with open(args.out, "w") as out:
         _srcs = [k for k, v in (("fcs_details", args.fcs_details), ("fcs_gx_report", args.fcs_gx_report),
                                  ("fcs_adaptor_report", args.fcs_adaptor_report), ("feature_table", args.feature_table),
-                                 ("gff", args.gff), ("bed", args.bed)) if v]
+                                 ("gff", args.gff), ("bed", args.bed),
+                                 ("masked_fasta", args.masked_fasta)) if v]
         _fcs_note = f"; fcs_actions={args.actions}" if (args.fcs_details or args.fcs_gx_report or args.fcs_adaptor_report) else ""
         _sel_note = f"; feature_select={args.feature_select}" if args.feature_select else ""
         out.write(f"#TaxTriage region mask -- build_mask.py; sources={','.join(_srcs) or 'none'}{_fcs_note}{_sel_note}\n")
@@ -573,6 +659,8 @@ def main(argv=None):
         "fcs_assemblies_hit": sorted(stats["assemblies_hit"]),
         "annotation_features": stats["features"],
         "bed_rows_unmatched": stats["bed_unmatched"],
+        "masked_fasta_sequences_matched": stats["masked_fasta_seqs"],
+        "masked_fasta_runs": stats["masked_fasta_runs"],
         "actions": args.actions,
         "divisions": args.divisions,
         "assemblies_with_fcs_summary": len(asm_rows),

@@ -73,7 +73,12 @@ process BUILD_MASK {
     def sum_list  = real.call(fcs_summary).join(' ')
     def gx_list   = real.call(fcs_gx).join(' ')
     def ad_list   = real.call(fcs_adaptor).join(' ')
-    def bed_list  = real.call(user_beds).join(' ')
+    // --mask_bed and --mask_fasta share the user_beds input; masked FASTAs are
+    // told apart by extension and always mean "exclude these bases"
+    def _is_fa    = { f -> base.call(f) ==~ /.*\.(fa|fasta|fna|fas|fsa)(\.gz)?$/ }
+    def bed_list  = real.call(user_beds).findAll { !_is_fa.call(it) }.join(' ')
+    def mfa_list  = real.call(user_beds).findAll { _is_fa.call(it) }.join(' ')
+    def mfa_arg   = mfa_list ? "--masked_fasta ${mfa_list} --masked_fasta_case ${params.mask_fasta_case ?: 'hard'} --masked_fasta_min_run ${params.mask_fasta_min_run ?: 1}" : ''
     def feats     = real.call(feature_files)
     def gffs      = feats.findAll { base.call(it) ==~ /.*\.gff3?(\.gz)?$/ }.join(' ')
     def ftabs     = feats.findAll { !(base.call(it) ==~ /.*\.gff3?(\.gz)?$/) }.join(' ')
@@ -94,6 +99,7 @@ process BUILD_MASK {
         gx_list  ? "--fcs_gx_report ${gx_list}" : '',
         ad_list  ? "--fcs_adaptor_report ${ad_list}" : '',
         (!target && bed_list) ? "--bed ${bed_list}" : '',
+        mfa_arg,
     ].findAll { it }.join(' ')
     // target BED: user BEDs + annotation features selected by --mask_feature_select
     def tgt_srcs = [

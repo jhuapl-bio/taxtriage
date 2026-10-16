@@ -232,7 +232,11 @@ workflow HOST_REMOVAL {
             ch_bai_files = ch_bam_hosts.join(FILTERED_SAMTOOLS_INDEX.out.bai)
             FILTERED_STATS(
                 ch_bai_files,
-                ch_host_fasta.map { fasta -> [ [], fasta ] }
+                // samtools stats --reference needs a plain or bgzip FASTA; a gzipped
+                // host reference (fine for minimap2) is left out of the stats call
+                // rather than failing the task. Mismatch stats are then computed
+                // without the reference; read counts are unaffected.
+                ch_host_fasta.map { fasta -> [ [], WorkflowTaxtriage.isGzName(fasta.name) ? [] : fasta ] }
             )
             // Simulated (meta.insilico) datasets are excluded from the MultiQC feed.
             ch_filtered_stats = FILTERED_STATS.out.stats

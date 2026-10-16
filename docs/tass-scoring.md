@@ -970,24 +970,24 @@ To run `match_paths.py` you will need 4 files minimum along with a directory of 
 ```bash
 minimap2 \
      -ax sr \
-    --split-prefix Miseq_Run_A.Miseq_Run_A.dwnld.references.prefix \
-    Miseq_Run_A.dwnld.references.fasta \
-    Miseq_Run_A_1.fastq.gz Miseq_Run_A_2.fastq.gz \
+    --split-prefix sample.sample.dwnld.references.prefix \
+    sample.dwnld.references.fasta \
+    sample_1.fastq.gz sample_2.fastq.gz \
     -L \
-    -a | samtools sort | samtools view -b -h -o Miseq_Run_A.Miseq_Run_A.dwnld.references.bam
+    -a | samtools sort | samtools view -b -h -o sample.sample.dwnld.references.bam
 ```
 
 2. Ensure (for speed reasons) that the reference FASTA file is indexed with `samtools faidx` and that the BAM file is indexed with `samtools index` before running the TASS pipeline. You can run `samtools faidx` and `samtools index` with:
 
 ```bash
-samtools faidx Miseq_Run_A.dwnld.references.fasta
-samtools index Miseq_Run_A.Miseq_Run_A.dwnld.references.bam
+samtools faidx sample.dwnld.references.fasta
+samtools index sample.sample.dwnld.references.bam
 ```
 
 3. The bedgraph can be generated with `bedtools genomecov` or similar. Example command:
 
 ```bash
-bedtools genomecov -ibam Miseq_Run_A.Miseq_Run_A.dwnld.references.bam -bg > Miseq_Run_A.bedgraph
+bedtools genomecov -ibam sample.sample.dwnld.references.bam -bg > sample.bedgraph
 ```
 
 > **Note:** The bedgraph is **not required** when using `--compare_references`. In that mode the pipeline tiles windows across the FASTA files directly and derives coverage from the BAM index. You can omit `-b` entirely from the command below if you are using `--compare_references`.
@@ -1016,16 +1016,16 @@ Finally, the TASS scoring can be run with:
 
 ```bash
 match_paths.py \
-       -i Miseq_Run_A.Miseq_Run_A.dwnld.references.bam \
-       -o Miseq_Run_A.paths.json \
-       -b Miseq_Run_A.bedgraph \
-       -s Miseq_Run_A \
+       -i sample.sample.dwnld.references.bam \
+       -o sample.paths.json \
+       -b sample.bedgraph \
+       -s sample \
        -t nasal \
        --output_dir search_results \
-       -f Miseq_Run_A.dwnld.references.fasta \
+       -f sample.dwnld.references.fasta \
        -p pathogen_sheet.csv \
-       -m Miseq_Run_A.merged.taxid.tsv \
-       --k2 Miseq_Run_A.filtered.report \
+       -m sample.merged.taxid.tsv \
+       --k2 sample.filtered.report \
        --taxid_removal_stats \
        --rank genus \
        --minmapq 5 \
@@ -1041,9 +1041,9 @@ The output will be in JSON format, which can be generated downstream as ODR and 
 
 ```
 create_report.py \
-  -i Miseq_Run_A.paths.json \
-  -u Miseq_Run_A.organisms.report.txt \
-  -o Miseq_Run_A.organisms.report.pdf \
+  -i sample.paths.json \
+  -u sample.organisms.report.txt \
+  -o sample.organisms.report.pdf \
   --show_potentials \
   --rank genus
 ```

@@ -70,7 +70,7 @@
          the current DATA and SAMPLE_META globals.  Called from init() and from
          the upload / clear handlers so all three stay in sync.
       ────────────────────────────────────────────────────────────────────────── */
-function _buildBannerSub() {
+function _buildBannerSub(opts) {
   const rawSamples = uniq([
     ...DATA.map((r) => r["Specimen ID"] || ""),
     ...Object.keys((typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {}),
@@ -96,7 +96,77 @@ function _buildBannerSub() {
   if (pctClass === "0.0%" && totalOrgReads > 0) pctClass = "<0.1%";
   const totalReadsFmt = _fmtBig(totalInputReads).short;
 
-  return `${entities.length} ${
-    grouped ? "specimen(s)" : "sample(s)"
-  } \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads aligned \u2022 ${totalReadsFmt} total reads`;
+  const nEnt = entities.length;
+  const unit = grouped ? (nEnt === 1 ? "specimen" : "specimens") : nEnt === 1 ? "sample" : "samples";
+  const stats = [
+    `${nEnt} ${unit}`,
+    `${uniqueOrgs} organism${uniqueOrgs === 1 ? "" : "s"}`,
+    `${pctClass} aligned`,
+    `${totalReadsFmt} reads`,
+  ].join(" \u00B7 ");
+  const mask = _maskBannerNote(rawSamples);
+
+  // Banner: compact stats; the full wording (and masking detail) lives in the tooltip.
+  const el = document.getElementById("banner-sub");
+  if (el) {
+    el.title =
+      `${nEnt} ${grouped ? "specimen(s)" : "sample(s)"} \u2022 ${uniqueOrgs} unique organism(s) \u2022 ` +
+      `${pctClass} reads aligned \u2022 ${totalReadsFmt} total reads` +
+      (mask.text ? `\n\u26A0 Region masking: ${mask.text}` : "");
+  }
+  // opts.long (PDF cover): keep the masking note inline, since there is no pill there.
+  return opts && opts.long && mask.text ? `${stats} \u00B7 \u26A0 Region masking: ${mask.text}` : stats;
+}
+
+/* ── Region-masking notice ──────────────────────────────────────────────────
+   When match_paths ran with --mask_bed / --fcs, each sample's metadata carries
+   a `masking` block (applied, mode, masked_bp, reads_masked, ...). Scores in
+   this report were then computed only over unmasked / targeted bases, so say
+   so: a short amber pill in the banner (#banner-mask, per-sample detail in its
+   tooltip) and the full sentence on the PDF cover (_buildBannerSub({long})). */
+function _maskBannerNote(samples) {
+  const meta = (typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {};
+  const masked = samples.filter((s) => ((meta[s] || {}).masking || {}).applied);
+  const pill = document.getElementById("banner-mask");
+  const label = document.getElementById("banner-mask-label");
+  if (!masked.length) {
+    if (pill) pill.hidden = true;
+    return { text: "" };
+  }
+  const modes = uniq(masked.map((s) => meta[s].masking.mode || "exclude"));
+  const fcs = masked.some((s) => {
+    const m = meta[s].masking;
+    return (m.bed || []).concat(m.exclude_bed || []).some((b) => /fcs|mask\.exclude/i.test(b));
+  });
+  const kind =
+    modes.length > 1 ? "mixed" : modes[0] === "target" ? "target" : fcs ? "fcs" : "exclude";
+  const what = {
+    mixed: "mixed modes",
+    target: "TASS from targeted regions only",
+    fcs: "FCS contaminant regions excluded",
+    exclude: "masked regions excluded",
+  }[kind];
+  const short = { mixed: "Masked", target: "Targeted", fcs: "FCS-masked", exclude: "Masked" }[kind];
+  const count = `${masked.length}/${samples.length}`;
+  const lines = masked.map((s) => {
+    const m = meta[s].masking;
+    const pct = m.reads_considered ? ((100 * (m.reads_masked || 0)) / m.reads_considered).toFixed(2) : "0";
+    return (
+      `${s}: ${m.mode} \u2014 ${(m.references_masked || 0).toLocaleString()} reference(s), ` +
+      `${(m.masked_bp || 0).toLocaleString()} bp masked, ${(m.reads_masked || 0).toLocaleString()} reads removed (${pct}%)` +
+      (m.penalty_power ? `, penalty power ${m.penalty_power}` : "") +
+      (m.masked_bam ? `, masked BAM ${m.masked_bam}` : "")
+    );
+  });
+  const text = `${what} (${count} sample${samples.length === 1 ? "" : "s"})`;
+  if (pill) {
+    pill.hidden = false;
+    if (label) label.textContent = `${short} ${count}`;
+    pill.title =
+      `Region masking: ${text}.\n` +
+      "Breadth, depth, Gini and TASS were computed only over unmasked bases.\n" +
+      lines.join("\n");
+    pill.setAttribute("aria-label", `Region masking: ${text}`);
+  }
+  return { text };
 }

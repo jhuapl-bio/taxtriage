@@ -99,7 +99,7 @@
                 "cram_reference": {
                     "type": "string",
                     "format": "file-path",
-                    "description": "Reference FASTA used to decode CRAM input, if different from --reference_fasta.",
+                    "description": "Reference FASTA used to decode CRAM input, if different from --reference_fasta. Plain, bgzip or gzip (gzip is decompressed first).",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "bam_minmapq": {
@@ -380,7 +380,7 @@
                 "remove_reference_file": {
                     "type": "string",
                     "format": "file-path",
-                    "description": "Local FASTA file to remove host reads from your files. Used prior to kraken2. With --use_deacon this may also be a comma-separated list of FASTAs (built into one Deacon index) or a prebuilt Deacon .idx.",
+                    "description": "Local FASTA file (.fa/.fasta/.fna..., optionally .gz) to remove host reads from your files. Used prior to kraken2. With --use_deacon this may also be a comma-separated list of FASTAs (built into one Deacon index) or a prebuilt Deacon .idx.",
                     "fa_icon": "fas fa-file-signature",
                     "default": null
                 },
@@ -880,7 +880,7 @@
                     "type": "string",
                     "format": "file-path",
                     "schema": "assets/schema_input.json",
-                    "description": "Reference FASTA file to use instead of using ncbi API to pull genomes. Useful for offlined pipelines",
+                    "description": "Reference FASTA file(s) or directories (space- or comma-separated) to use instead of pulling genomes from NCBI. Useful for offline pipelines. Accepts .fa/.fasta/.fna/.fas/.fsa/.ffn/.frn/.mfa, optionally .gz/.bgz; compressed files are decompressed once for the tools that need plain FASTA.",
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
@@ -1795,6 +1795,27 @@
                     "fa_icon": "fas fa-file-alt",
                     "default": null
                 },
+                "mask_fasta": {
+                    "type": ["string", "null"],
+                    "description": "Comma-separated masked FASTA(s) of the reference sequences. Masked bases (N runs and/or lowercase, see --mask_fasta_case) are never scored, in either mask mode.",
+                    "help_text": "Sequence IDs must match the BAM references (version and RefSeq NZ_ differences are reconciled). Use this when your masking tool writes a masked FASTA rather than a BED (FCS-GX clean output, dustmasker, RepeatMasker, bedtools maskfasta).",
+                    "fa_icon": "fas fa-file-alt",
+                    "default": null
+                },
+                "mask_fasta_case": {
+                    "type": "string",
+                    "description": "Which masking to read from --mask_fasta: hard = runs of N, soft = lowercase bases, both.",
+                    "enum": ["hard", "soft", "both"],
+                    "default": "hard",
+                    "fa_icon": "fas fa-font"
+                },
+                "mask_fasta_min_run": {
+                    "type": "integer",
+                    "description": "Ignore masked runs in --mask_fasta shorter than this many bp (e.g. 10 to skip isolated ambiguity Ns).",
+                    "default": 1,
+                    "minimum": 1,
+                    "fa_icon": "fas fa-ruler"
+                },
                 "mask_mode": {
                     "type": "string",
                     "description": "exclude = score everything except the masked regions; target = score only the targeted regions (minus any FCS spans).",
@@ -1861,6 +1882,12 @@
                     "default": 0,
                     "minimum": 0,
                     "fa_icon": "fas fa-ruler"
+                },
+                "mask_write_bam": {
+                    "type": "boolean",
+                    "description": "Also write <outdir>/masking/bam/<sample>.masked.bam (+ .bai): the input BAM with every alignment the mask removed taken out. Partially masked alignments that are kept carry a ZM:i tag (masked bases).",
+                    "default": false,
+                    "fa_icon": "fas fa-file-archive"
                 },
                 "mask_report": {
                     "type": "boolean",

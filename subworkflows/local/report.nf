@@ -118,7 +118,7 @@ workflow REPORT {
         // Off unless --fcs, --mask_bed, --mask_feature_table/--mask_gff or
         // --fcs_gx_report/--fcs_adaptor_report is given. See docs/masking.md.
         def _csv_files = { v -> v ? v.toString().tokenize(',')*.trim().findAll { it }.collect { file(it, checkIfExists: true) } : [] }
-        def _mask_on = params.fcs || params.mask_bed || params.mask_feature_table || params.mask_gff ||
+        def _mask_on = params.fcs || params.mask_bed || params.mask_fasta || params.mask_feature_table || params.mask_gff ||
                        params.fcs_gx_report || params.fcs_adaptor_report || params.fcs_details
         ch_mask_files = Channel.value(file("$projectDir/assets/NO_FILE_mask"))
         if (_mask_on) {
@@ -150,7 +150,7 @@ workflow REPORT {
                 ch_fcs_summary,
                 Channel.value(_csv_files.call(params.fcs_gx_report) ?: _nf.call('NO_FILE_fcs_gx')),
                 Channel.value(_csv_files.call(params.fcs_adaptor_report) ?: _nf.call('NO_FILE_fcs_adaptor')),
-                Channel.value(_csv_files.call(params.mask_bed) ?: _nf.call('NO_FILE_mask_bed')),
+                Channel.value((_csv_files.call(params.mask_bed) + _csv_files.call(params.mask_fasta)) ?: _nf.call('NO_FILE_mask_bed')),
                 Channel.value((_csv_files.call(params.mask_feature_table) + _csv_files.call(params.mask_gff)) ?: _nf.call('NO_FILE_mask_features')),
             )
             ch_mask_files = BUILD_MASK.out.beds.flatten()

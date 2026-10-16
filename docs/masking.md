@@ -42,6 +42,8 @@ Because the genome the scorer sees has no masked bases in it, nothing else needs
 - **Gini evenness** is computed over the compressed genome, so a pile-up in a masked contaminant span cannot make coverage look uneven, and a deliberately uncovered region cannot look like a gap.
 - **Species / genus aggregation** sums the kept lengths of member references, exactly as it sums full lengths in an unmasked run.
 
+The original BAM is never modified: the mask is applied to the reads as they are scored. If you also want the masked alignment as a file - to open in IGV, or to feed another tool - add `--mask_write_bam`. It writes `masking/bam/<sample>.masked.bam` (+ `.bai`) using exactly the same rule as scoring: every alignment with at least `--mask_read_overlap` of its span masked is removed (primary, secondary and supplementary), unmapped reads pass through, and a kept alignment that partly overlaps the mask carries a `ZM:i` tag with the number of masked bases. The BAM header records the mask in an `@PG` line (`ID:taxtriage-mask`).
+
 ### Optional penalty
 
 Ignoring masked reads is usually what you want. If reads piling into masked space should also count **against** an organism - typically, an assembly whose "signal" is mostly its contaminant contig - set `--mask_penalty_power`:
@@ -107,7 +109,6 @@ RefSeq assemblies are already screened, and many contaminated sequences are remo
 
 The per-assembly summary is still useful. With `--fcs_summary` (or `--fcs`), every organism whose reference assembly NCBI found contaminated gets an `fcs_assembly` annotation - assembly, contaminated bp, contaminated fraction, number of contaminant sequences - and `masking/fcs_assemblies.tsv` lists every assembly in the run. This changes no score; it tells you which detections rest on an assembly NCBI has flagged.
 
-> Example from a real run (`test_output/dehostedblood`): 21 RefSeq assemblies, none with GenBank-details spans, but the RefSeq summary flags `GCF_022179445.1` (_Methylobacterium mesophilicum_ NBRC 15688: 15 contaminant sequences, 3,597 bp). 66 reads in that sample sit on one 215 bp contig of that assembly - exactly the pattern the flag is for.
 
 ### Narrowing what is masked
 
@@ -121,7 +122,7 @@ The per-assembly summary is still useful. With `--fcs_summary` (or `--fcs`), eve
 
 ### Running FCS yourself
 
-For references NCBI has not screened (custom assemblies, MAGs, new genomes), run FCS directly and hand TaxTriage the reports. See the [FCS wiki](https://github.com/ncbi/fcs/wiki) for installation; the full GX database is several hundred GiB and is best run on a large-memory host (NCBI ships a small `test-only` database for trying it out).
+For references NCBI has not screened (custom assemblies, MAGs, new genomes), run FCS directly and hand TaxTriage the reports. See the [FCS wiki](https://github.com/ncbi/fcs/wiki) for installation; the full GX database is several hundred GiB and is best run on a large-memory host.
 
 ```bash
 # FCS-GX: contamination from other organisms
@@ -139,6 +140,41 @@ nextflow run jhuapl-bio/taxtriage ... \
 Per-assembly `*_fcs_report.txt` files from an assembly's NCBI FTP folder use the same format and are accepted by `--fcs_gx_report` too.
 
 ---
+
+## Custom masks: BED or masked FASTA
+
+Any mask you make yourself works, in either of two forms:
+
+- **BED** (`--mask_bed`): `accession  start  end  [label]`, 0-based, half-open, `.gz` accepted. In exclude mode these regions are ignored; in target mode they are the only regions scored.
+- **Masked FASTA** (`--mask_fasta`): a copy of the reference FASTA with the unwanted bases masked - what FCS-GX `clean`, `dustmasker`, RepeatMasker or `bedtools maskfasta` produce. Masked bases are never scored, in either mode. `--mask_fasta_case hard` (default) reads runs of `N`, `soft` reads lowercase bases, `both` reads both.
+
+```bash
+nextflow run jhuapl-bio/taxtriage ... --mask_fasta refs.masked.fasta.gz
+nextflow run jhuapl-bio/taxtriage ... --mask_fasta refs.softmasked.fa --mask_fasta_case soft
+```
+
+Give TaxTriage the masked FASTA **as a mask, not as the alignment reference**. Aligning to an N-masked reference would also stop reads from landing in those regions, and they would then pile onto other organisms instead of being visibly set aside.
+
+Reference FASTAs already contain native `N`s (scaffold gaps, single ambiguity bases). Those are masked too. That is harmless because no reads align to them, but `--mask_fasta_min_run 10` skips isolated `N`s and keeps the mask summary tidy.
+
+### Making a test mask
+
+`bin/make_dummy_masked_fasta.py` writes a masked copy of a reference FASTA, which is a quick way to see what masking does to a run before using a real mask. Give it either a region table or ask for random regions:
+
+```bash
+# Fixed regions: seq_id, start, end, kind (hard = N, soft = lowercase), note; 0-based, half-open, end may be "end"
+bin/make_dummy_masked_fasta.py -i refs.fasta -r regions.tsv -o refs.masked.fasta.gz
+
+# 1-3 random regions per accession listed in a TaxTriage mapping file (reproducible with --seed)
+bin/make_dummy_masked_fasta.py -i refs.fasta --mapping sample.dwnld.gcfmapping.tsv \
+    --random 3 --seed 42 -o refs.masked.fasta.gz
+
+nextflow run jhuapl-bio/taxtriage ... --mask_fasta refs.masked.fasta.gz --mask_compare --mask_write_bam
+```
+
+The regions actually applied are written next to the output (`refs.masked.fasta.regions.tsv`). `--max_frac` (default 0.05) caps how much of each sequence random regions cover and `--soft_prob` (default 0.2) sets the share of lowercase regions.
+
+What to expect: organisms lose roughly the reads that fell in their masked spans, breadth is recomputed over the remaining bases (it can rise slightly when the masked span held little coverage), and an organism whose reads were concentrated in a masked span can drop below the detection minimum and disappear. In `all.odr.html` the header shows **⚠ Region masking: …**, the Table tab gains the Masked Reads / Masked bp / Mask Penalty columns, and the breadth tracks shade the masked spans; `masking/all.masking.html` lists any detection that disappeared as `removed`.
 
 ## Targeted TASS
 
@@ -175,6 +211,9 @@ BED column 1 must name the reference accession. A quick way to get the accession
 | `--fcs_min_len`         | –                  | Ignore FCS spans shorter than this (bp).                                                                  |
 | `--fcs_db`              | `<outdir>/fcs_db`  | Where downloaded FCS reports are cached.                                                                  |
 | `--mask_bed`            | –                  | Comma-separated BED(s): regions to ignore (exclude) or to score (target).                                 |
+| `--mask_fasta`          | –                  | Comma-separated masked FASTA(s) of the references; masked bases are never scored.                         |
+| `--mask_fasta_case`     | `hard`             | `hard` = runs of N, `soft` = lowercase, `both`.                                                           |
+| `--mask_fasta_min_run`  | `1`                | Ignore masked runs shorter than N bp (e.g. `10` to skip isolated ambiguity Ns).                           |
 | `--mask_mode`           | `exclude`          | `exclude` or `target`.                                                                                    |
 | `--mask_feature_table`  | –                  | Target mode: NCBI feature tables to select genes from.                                                    |
 | `--mask_gff`            | –                  | Target mode: GFF3 files to select genes from.                                                             |
@@ -187,6 +226,7 @@ BED column 1 must name the reference accession. A quick way to get the accession
 | `--mask_min_region`     | `0`                | Ignore intervals shorter than N bp.                                                                       |
 | `--mask_report`         | `true`             | Write `masking/all.masking.html` when masking is on.                                                      |
 | `--mask_compare`        | `false`            | Also score every sample **unmasked** so the masking report shows TASS before/after. Doubles scoring time. |
+| `--mask_write_bam`      | `false`            | Also write `masking/bam/<sample>.masked.bam` (+ `.bai`) with the masked alignments removed.               |
 | `--mask_report_top`     | `24`               | Coverage tracks drawn in the masking report.                                                              |
 
 ---
@@ -205,10 +245,11 @@ Everything lands in `<outdir>/masking/`:
 | `fcs_subset.txt`                        | The FCS rows that matched this run's references - reuse as `--fcs_details`.                                                                                                        |
 | `all.masking.html` / `all.masking.tsv`  | The masking report (below).                                                                                                                                                        |
 | `unmasked/<sample>.unmasked.paths.json` | With `--mask_compare`: the unmasked baseline scores.                                                                                                                               |
+| `bam/<sample>.masked.bam` (+ `.bai`)    | With `--mask_write_bam`: the sample's BAM minus every alignment the mask removed.                                                                                                  |
 
 In every per-sample JSON (`alignment/<sample>.paths.json`):
 
-- `metadata.masking` - mode, BEDs, read overlap, references masked, masked / kept bp, reads considered / removed, penalty power, FCS assembly counts. `null` when masking is off.
+- `metadata.masking` - `applied` (true when the mask changed what was scored for this sample), mode, BEDs, read overlap, references masked, masked / kept bp, reads considered / removed, penalty power, FCS assembly counts, and `masked_bam` with its kept / dropped alignment counts when `--mask_write_bam` is on. `null` when masking is off.
 - Per organism (strain, species, genus): `length` is the **scored** length, plus `length_full`, `masked_bp`, `mask_bp_fraction`, `mask_reads_total`, `mask_reads_masked`, `mask_read_fraction`, `mask_penalty`, and `fcs_assembly` when available.
 - Per contig: `length_full`, `masked_bp`, `reads_masked`.
 - Per strain: `mask_regions` (the masked or targeted intervals, original coordinates) and `breadth_histogram.mask_b64` (per-bin masked %).
@@ -217,7 +258,13 @@ In every per-sample JSON (`alignment/<sample>.paths.json`):
 
 ## Visualization
 
-**Interactive report (`report/all.odr.html` → Histograms → Breadth of Coverage).** In a masked run the positional breadth track is drawn in real genome coordinates with the masked spans shaded grey (exclude) or the targets shaded amber (target), and hovering a bin shows how much of it was masked or targeted.
+**Interactive report (`report/all.odr.html`).** When any sample was masked:
+
+- the header line ends with **⚠ Region masking: …** (FCS contaminant regions excluded / masked regions excluded / TASS from targeted regions only, and how many samples). Hovering it lists each sample's mode, references and bp masked, reads removed, penalty and masked BAM. The PDF export cover carries the same line;
+- the Table tab gains **Masked Reads**, **Masked Reads %**, **Full Genome Length (bp)**, **Masked bp**, **Masked bp %** and **Mask Penalty** columns (plus **FCS Assembly** / **FCS Contaminated bp** when an NCBI FCS summary was used). **Genome Length (bp)** and **Breadth %** are over the scored bases. Rows from unmasked samples are blank in these columns;
+- Histograms → Breadth of Coverage draws the positional track in real genome coordinates with the masked spans shaded grey (exclude) or the targets shaded amber (target); hovering a bin shows how much of it was masked or targeted.
+
+Reports from unmasked runs look exactly as before.
 
 **Masking report (`masking/all.masking.html`).** A standalone page with:
 
@@ -226,7 +273,7 @@ In every per-sample JSON (`alignment/<sample>.paths.json`):
 - coverage tracks for the most-affected organisms with the masked or targeted spans drawn in;
 - the NCBI FCS assembly table and the per-reference mask contents.
 
-**IGV.** `masking/mask.exclude.bed` (or `mask.target.bed`) loads as a track next to `alignment/*.bam`.
+**IGV.** `masking/mask.exclude.bed` (or `mask.target.bed`) loads as a track next to `alignment/*.bam`; with `--mask_write_bam`, load `masking/bam/<sample>.masked.bam` beside the original to see exactly which alignments were removed.
 
 ---
 
