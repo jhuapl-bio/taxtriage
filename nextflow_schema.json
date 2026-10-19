@@ -920,7 +920,7 @@
                     "fa_icon": "fas fa-wave-square"
                 },
                 "custom_accession_map": {
-                    "type": ["string", "null"],
+                    "type": "string",
                     "format": "file-path",
                     "default": null,
                     "description": "Accession -> taxid map (header with 'accession' and 'taxid', optional 'name'; tab or comma delimited).",
