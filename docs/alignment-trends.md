@@ -45,25 +45,25 @@ The sub-tab has two views.
 
 **Pipeline results** (shown whenever the pipeline step ran, i.e. unless `--alignment_trends false`):
 `make_report.py` embeds `all.alignment_trends.json` (`--alignment_trends_json`), and
-this view reports the comparison exactly as the pipeline computed it — the settings
+this view reports the comparison exactly as the pipeline computed it: the settings
 used, totals, the per-reference summary, every recurrent region (filter by type and
 reference, download TSV) and the per-sample rows. Clicking a reference or region
 opens it in the live view with the pipeline's settings applied and filters off.
 
 **Live analysis** recomputes the same thing in the browser from the per-sample
 depth profiles, so every cutoff can be changed. It opens with more permissive
-defaults than the pipeline so shallow samples still show up — **Window × 4**,
+defaults than the pipeline so shallow samples still show up: **Window × 4**,
 **min reads 3**, **min reads / window 1** (pipeline: window × 1, 10 reads, 20 reads
 per window); the other cutoffs match. Opening a reference from _Pipeline
 results_ switches the controls to the pipeline's settings.
 
 - **Reference** picker, ordered by how many samples count; the _All references_
   table at the bottom summarises every reference and opens one on click.
-- **Heatmap** — one row per sample, log2(depth ÷ sample mean); black = zero,
+- **Heatmap**: one row per sample, log2(depth ÷ sample mean); black = zero,
   faded = the sample does not count there, `*` = below the expected-reads cutoff.
-- **Frequency track** — fraction of counted samples zero / low-or-zero / high,
+- **Frequency track**: fraction of counted samples zero / low-or-zero / high,
   recurrent regions shaded, grey where too few samples count. Drag to zoom.
-- **Recurrent regions** table — click a row to zoom to it; download as TSV.
+- **Recurrent regions** table: click a row to zoom to it; download as TSV.
 - **Respect filters** (on by default) limits the analysis to detections that pass
   the report's active filters and TASS cutoff; hidden samples are always excluded.
 
