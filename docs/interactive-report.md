@@ -200,9 +200,9 @@ Picking a new color updates the box, its member rows, the heatmap/legend, and an
 
 ### Healthy-abundance (HMP) outliers
 
-The same outlier information the ODR PDF shows: each detection is compared with how abundant that organism is in **healthy subjects** at the sample's body site, using the HMP distributions (`assets/taxid_abundance_stats.hmp.tsv.gz`, or `--distributions`). It applies to sample types that map to an HMP site — `stool`, `oral`, `nasal`, `skin`, `throat`, `vaginal` and synonyms such as `gut`/`feces`, `sputum`/`saliva`, `NP`/`NPS`/`nasopharyngeal`/`nose`/`nares`, `OP`/`oropharyngeal`, `lung`/`BAL` (oral + nasal). Normally sterile sample types — `blood`, `plasma`, `serum`, `WB`/`whole blood`, `CSF`, `sterile`, … — have no HMP distribution because nothing is expected there in health: every detection is marked **sterile site** (never faded). Environmental, urine and unknown sample types show `—`. Matching is case-insensitive and also works on words inside the type (`NP swab`, `whole_blood`).
+The same outlier information the ODR PDF shows: each detection is compared with how abundant that organism is in **healthy subjects** at the sample's body site, using the HMP distributions (`assets/taxid_abundance_stats.hmp.tsv.gz`, or `--distributions`). It applies to sample types that map to an HMP site: `stool`, `oral`, `nasal`, `skin`, `throat`, `vaginal` and synonyms such as `gut`/`feces`, `sputum`/`saliva`, `NP`/`NPS`/`nasopharyngeal`/`nose`/`nares`, `OP`/`oropharyngeal`, `lung`/`BAL` (oral + nasal). Normally sterile sample types (`blood`, `plasma`, `serum`, `WB`/`whole blood`, `CSF`, `sterile`, …) have no HMP distribution because nothing is expected there in health: every detection is marked **sterile site** (never faded). Environmental, urine and unknown sample types show `—`. Matching is case-insensitive and also works on words inside the type (`NP swab`, `whole_blood`).
 
-- **z = (sample % reads − healthy mean %) / healthy sd %**. At or above the threshold (`--report_hmp_zscore`, default `2.0`, same as the PDF) the detection is **Elevated**; below it, it is **Within healthy range**: the row is faded and carries the PDF's grey `◆ n (p%) ◆` marker — _n_ healthy reference samples carried the organism, _p_% of all reference samples for the site. An organism never seen in healthy subjects at the site is **Absent in healthy** (`new`).
+- **z = (sample % reads − healthy mean %) / healthy sd %**. At or above the threshold (`--report_hmp_zscore`, default `2.0`, same as the PDF) the detection is **Elevated**; below it, it is **Within healthy range**: the row is faded and carries the PDF's grey `◆ n (p%) ◆` marker: _n_ healthy reference samples carried the organism, _p_% of all reference samples for the site. An organism never seen in healthy subjects at the site is **Absent in healthy** (`new`).
 - The Summary tab's **Healthy (HMP)** column plots the healthy range on a log scale (5–95 % whiskers, interquartile box, median tick) with this sample's abundance as a dot, plus the z-score; it sorts by z. Hover it (or the `◆` marker, or the Table tab's _HMP Status_ / _HMP Z-Score_ cells) for the full healthy distribution histogram, percentile and prevalence.
 - When a strain's own taxid has no healthy reference, it is compared at species level, using the species' abundance in that sample (the tooltip says so).
 - **Fade healthy-range (HMP)** and the **z <** box in the Summary and Table toolbars turn the fading off or change the threshold live.
@@ -438,6 +438,21 @@ A few tables - per-gene VF/AMR hits, novelty candidates, in-silico series, per-c
 A live preview shows the first rows and columns before you download. Samples with nothing recorded for the chosen field are collected under `(not recorded)` rather than dropped, so the column totals still add up. The pivot is built from the detections plus metadata, so it ignores the table selection above it.
 
 For the raw material behind it, tick **Detections + Metadata** in the table list: one row per detection with every metadata column joined on, ready to drop into your own pivot table.
+
+### Exporting hits with their metadata
+
+The pivot answers one question at a time. When you want the hits _and_ the sample context in one sheet to slice yourself, export the **Detections + Metadata** table:
+
+1. Click **Export…** under _Filters_ in the right panel (<kbd>Ctrl/⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>).
+2. Choose **Data tables**.
+3. Under _Summary / Table_, tick **Detections + Metadata**. Untick the other tables if you only want this one.
+4. Pick **Excel workbook** (or the stacked CSV) and download.
+
+![Exporting detections with their run metadata joined on](images/svgs/export_detections_metadata.svg)
+
+Each row is one detection: every column of the Detections export, including **TASS Cutoff**, **Passes Cutoff** and **Organism QC Flag**, followed by every metadata field the run carries (location, host type, host disease, country, sequencing platform, run id, and any columns you added or uploaded on the Metadata tab). The metadata is joined on Specimen ID, so a sample's values repeat on each of its hits, and a field a sample has no value for is left blank. Where a field appears both in the pipeline's sample metadata and on the Metadata tab, the Metadata tab's value wins, so in-browser edits are what get exported.
+
+The table only appears in the list when the run has metadata. Like the other tables it follows **Apply current filters**, and its **columns** chip trims it down, so you can keep, say, Specimen ID, Detected Organism, TASS Score and the two metadata fields you care about. It is not part of the pipeline's default export set; to write the same table during the run, name it: `--export_data --export_data_datasets detections_meta` (or add `detections_meta` to your existing list, or use `all`). See [CLI Parameters → Combined Data Export](cli-parameters.md#combined-data-export).
 
 !!! tip "Same tables, without opening the report"
 The pipeline can write all of this during the run with `--export_data`, into `<outdir>/report/export_data/` - pivot included, via `--export_data_pivot`. The tables and column headers are identical, so a spreadsheet from the pipeline lines up with one exported by hand here. See [CLI Parameters → Combined Data Export](cli-parameters.md#combined-data-export).
