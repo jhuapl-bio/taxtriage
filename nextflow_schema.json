@@ -1797,10 +1797,11 @@
                 },
                 "mask_fasta": {
                     "type": ["string", "null"],
+                    "format": "file-path",
+                    "default": null,
                     "description": "Comma-separated masked FASTA(s) of the reference sequences. Masked bases (N runs and/or lowercase, see --mask_fasta_case) are never scored, in either mask mode.",
                     "help_text": "Sequence IDs must match the BAM references (version and RefSeq NZ_ differences are reconciled). Use this when your masking tool writes a masked FASTA rather than a BED (FCS-GX clean output, dustmasker, RepeatMasker, bedtools maskfasta).",
-                    "fa_icon": "fas fa-file-alt",
-                    "default": null
+                    "fa_icon": "fas fa-file-alt"
                 },
                 "mask_fasta_case": {
                     "type": "string",
