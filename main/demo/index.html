@@ -474,16 +474,127 @@ body {
   font-weight: 700;
   flex-shrink: 0;
 }
+#banner .banner-title {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* Stats line: one line, gives way first (ellipsis; full text in its tooltip)
+   so the run name and the masking pill keep their room. */
 #banner .sub {
   font-size: 0.75em;
   font-weight: 400;
   opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 4ch;
+  flex: 0 1 auto;
+}
+/* Region-masking pill: short label; per-sample detail in a popover (below). */
+#banner .banner-mask {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2em 0.65em;
+  border-radius: 999px;
+  background: rgba(255, 193, 7, 0.22);
+  border: 1px solid rgba(255, 213, 79, 0.75);
+  color: #fff8e1;
+  font-size: 0.7em;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+#banner .banner-mask[hidden] {
+  display: none;
+}
+#banner .banner-mask:hover,
+#banner .banner-mask:focus-visible,
+#banner .banner-mask.open {
+  background: rgba(255, 193, 7, 0.34);
+  outline: none;
+}
+/* Masking detail popover. Appended to <body> (position: fixed) so the right
+   sidebar / its resize handle can't paint over it; placed by _maskPopSet(). */
+.banner-mask-pop {
+  display: none;
+  position: fixed;
+  z-index: 10001;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 16px));
+  padding: 0.7em 0.85em;
+  border-radius: 8px;
+  background: #263238;
+  color: #eceff1;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+}
+.banner-mask-pop.show {
+  display: block;
+}
+.banner-mask-pop .bmp-title {
+  font-weight: 700;
+  color: #ffe082;
+  margin-bottom: 0.25em;
+}
+.banner-mask-pop .bmp-note {
+  color: #b0bec5;
+  font-size: 0.9em;
+  margin: 0.25em 0;
+}
+.banner-mask-pop table {
+  border-collapse: collapse;
+  margin-top: 0.4em;
+  font-size: 0.9em;
+}
+.banner-mask-pop th,
+.banner-mask-pop td {
+  padding: 0.2em 0.7em 0.2em 0;
+  white-space: nowrap;
+  text-align: left;
+  background: transparent !important;
+  border: none;
+  color: inherit;
+}
+.banner-mask-pop th {
+  color: #90a4ae;
+  font-weight: 600;
+  position: static;
+  box-shadow: none;
+}
+.banner-mask-pop td.num {
+  text-align: right;
+}
+.banner-mask-pop tr,
+.banner-mask-pop tr:hover {
+  background: transparent !important;
+}
+body.report-pdf-printing .banner-mask-pop {
+  display: none !important;
+}
+/* Medium widths: the help buttons go icon-only (they keep their tooltips) so
+   the stats line isn't squeezed to a stub. */
+@media (max-width: 1280px) {
+  #helpmode-btn .help-btn-label,
+  #help-btn .help-btn-label {
+    display: none;
+  }
 }
 #banner .banner-run {
   display: inline-flex;
   align-items: center;
   gap: 0.4em;
-  max-width: 28ch;
+  max-width: 42ch;
   padding: 0.2em 0.7em;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.16);
@@ -492,7 +603,7 @@ body {
   font-weight: 600;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: nowrap;
-  flex-shrink: 1;
+  flex-shrink: 0;
   min-width: 0;
 }
 #banner .banner-run[hidden] {
@@ -4874,6 +4985,13 @@ textarea:focus-visible,
   #banner {
     font-size: 1em;
   }
+  #banner .banner-title {
+    display: none;
+  }
+  #banner .banner-run {
+    max-width: 22ch;
+    flex-shrink: 1;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -8773,12 +8891,16 @@ body.report-pdf-printing #tt-admin-overlay {
         </g>
         <circle cx="52" cy="18" r="7" fill="#ffffff" />
       </svg>
-      TaxTriage Multi-Run Analysis
+      <span class="banner-title">TaxTriage Multi-Run Analysis</span>
       <!-- Nextflow run name (BOOT.run_info.workflow.runName); filled by 51_admin_panel.js, hidden when absent/redacted -->
       <span class="banner-run" id="banner-run" hidden
         ><i class="fas fa-play-circle" aria-hidden="true"></i><span id="banner-run-name"></span
       ></span>
       <span class="sub" id="banner-sub"></span>
+      <!-- Region-masking pill; filled by _buildBannerSub (26_resizable_right_sidebar.js), hidden when no sample is masked -->
+      <span class="banner-mask" id="banner-mask" hidden tabindex="0"
+        ><i class="fas fa-eye-slash" aria-hidden="true"></i><span id="banner-mask-label"></span
+      ></span>
       <button id="pipeline-info-btn" type="button" aria-label="Show pipeline run metadata">
         <i class="fas fa-circle-info"></i><span class="info-btn-label">Run info</span>
       </button>
@@ -15705,7 +15827,8 @@ function _enhanceExports() {
   });
 
   document.querySelectorAll("table").forEach((table) => {
-    if (table.closest("#tooltip, #embed-detail, .export-modal-overlay, .export-control")) return;
+    if (table.closest("#tooltip, #banner, #banner-mask-pop, #embed-detail, .export-modal-overlay, .export-control"))
+      return;
     const host = _tableExportHost(table);
     if (!host) return;
     host.classList.add("table-export-host");
@@ -16373,7 +16496,7 @@ async function _exportReportPdf() {
   const coverSub = document.getElementById("pdf-report-subtext");
   if (coverSub) {
     const stamp = new Date().toLocaleString();
-    coverSub.textContent = `${_buildBannerSub()} · Exported ${stamp}`;
+    coverSub.textContent = `${_buildBannerSub({ long: true })} · Exported ${stamp}`;
   }
   await _renderTabsForPdf();
   // Build the cover KPI banner + contents, then group/annotate each pane.
@@ -22443,12 +22566,28 @@ function renderTableHeaders() {
         // Top-N set — build filtered bins/breaks/names restricted to visible contigs
         const topContigSet = new Set((cd.contigs || []).slice(0, limitTo).map((c) => c.name));
 
+        // Region mask overlay (match_paths --mask_bed): per-bin % of bases that
+        // were masked (exclude mode) or lay outside the targets (target mode).
+        // Decoded lazily and cached on the histogram object.
+        if (bh.mask_b64 && !bh._maskBins) {
+          try {
+            const mraw = atob(bh.mask_b64);
+            bh._maskBins = Array.from({ length: mraw.length }, (_, i) => mraw.charCodeAt(i));
+          } catch (e) {
+            bh._maskBins = null;
+          }
+        }
+        const maskBins = Array.isArray(bh._maskBins) && bh._maskBins.length === nBins ? bh._maskBins : null;
+        const maskMode = bh.mask_mode || "exclude";
+
         // Remap breadth histogram to only the top-N contigs so grey sections disappear
         let filteredBins = bins,
           filteredBreaks = breaks,
-          filteredContigNames = contigNames;
+          filteredContigNames = contigNames,
+          filteredMask = maskBins;
         if (topContigSet.size > 0 && contigNames.length > 0) {
           const remappedBins = [];
+          const remappedMask = [];
           const remappedBreaks = [];
           const remappedNames = [];
           contigNames.forEach((cName, ci) => {
@@ -22457,12 +22596,16 @@ function renderTableHeaders() {
             const bEnd = ci + 1 < breaks.length ? breaks[ci + 1] : nBins;
             remappedBreaks.push(remappedBins.length);
             remappedNames.push(cName);
-            for (let b = bStart; b < bEnd; b++) remappedBins.push(bins[b]);
+            for (let b = bStart; b < bEnd; b++) {
+              remappedBins.push(bins[b]);
+              if (maskBins) remappedMask.push(maskBins[b]);
+            }
           });
           if (remappedBins.length > 0) {
             filteredBins = remappedBins;
             filteredBreaks = remappedBreaks;
             filteredContigNames = remappedNames;
+            filteredMask = maskBins ? remappedMask : null;
           }
         }
         const fNBins = filteredBins.length;
@@ -22560,6 +22703,47 @@ function renderTableHeaders() {
           .style("pointer-events", "none");
 
         const barsG = g.append("g").attr("clip-path", `url(#${clipId})`);
+
+        // ── Mask layer (behind the coverage bars) ──────────────────────────
+        // exclude: grey = masked bases (not scored). target: amber = targeted
+        // bases (the only ones scored). Equal neighbouring bins merge into one
+        // rect so long masked spans draw as a solid band.
+        if (filteredMask) {
+          const layer = filteredMask.map((m) => {
+            const v = maskMode === "target" ? 100 - m : m;
+            return Math.round(v / 5) * 5;
+          });
+          const runs = [];
+          for (let i = 0; i < layer.length; ) {
+            let j = i;
+            while (j + 1 < layer.length && layer[j + 1] === layer[i]) j++;
+            if (layer[i] > 0) runs.push({ i0: i, i1: j + 1, v: layer[i] });
+            i = j + 1;
+          }
+          barsG
+            .selectAll("rect.bh-mask")
+            .data(runs)
+            .enter()
+            .append("rect")
+            .attr("class", "bh-mask")
+            .attr("x", (d) => xSc(d.i0))
+            .attr("y", 0)
+            .attr("width", (d) => Math.max(1, xSc(d.i1) - xSc(d.i0)))
+            .attr("height", iH)
+            .attr("fill", maskMode === "target" ? "#f2b84b" : "#9a9aa1")
+            .attr("opacity", (d) => 0.12 + 0.38 * (d.v / 100))
+            .attr("shape-rendering", "crispEdges")
+            .style("pointer-events", "none");
+          svg
+            .append("text")
+            .attr("x", mL + iW)
+            .attr("y", 14)
+            .attr("text-anchor", "end")
+            .attr("font-size", 9)
+            .attr("fill", maskMode === "target" ? "#a8741a" : "#77777e")
+            .text(maskMode === "target" ? "\u25A0 targeted (only scored region)" : "\u25A0 masked (not scored)");
+        }
+
         barsG
           .selectAll("rect.bh-bar")
           .data(binsData)
@@ -22593,7 +22777,14 @@ function renderTableHeaders() {
               `<b>${cName || `Bin ${i + 1}`}</b><br>` +
                 `<span style="color:#aaa;font-size:0.9em">Click to filter</span><br>` +
                 `Pos: ${fmtLen(posStart)} \u2013 ${fmtLen(posEnd)}<br>` +
-                `Covered: <b>${v.toFixed(1)}%</b>`,
+                `Covered: <b>${v.toFixed(1)}%</b>` +
+                (filteredMask && filteredMask[i] > 0
+                  ? maskMode === "target"
+                    ? `<br>Targeted: <b>${(100 - filteredMask[i]).toFixed(0)}%</b> of bin`
+                    : `<br>Masked: <b>${filteredMask[i].toFixed(0)}%</b> of bin (not scored)`
+                  : maskMode === "target" && filteredMask
+                  ? `<br>Targeted: <b>100%</b> of bin`
+                  : ""),
               ev,
             );
             d3.select(this).attr("stroke", "#333").attr("stroke-width", 0.8);
@@ -25167,6 +25358,113 @@ function _fmtBig(n) {
   }
   return { short: full, full };
 }
+// Bytes -> "38.4 MB" (decimal units, like file managers / sequencers report).
+function _fmtBytes(n) {
+  n = num(n);
+  if (!(n > 0)) return "—";
+  const u = ["B", "kB", "MB", "GB", "TB", "PB"];
+  const i = Math.min(u.length - 1, Math.floor(Math.log10(n) / 3));
+  const v = n / Math.pow(1000, i);
+  return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${u[i]}`;
+}
+// Base pairs -> "52.3 Mbp".
+function _fmtBp(n) {
+  n = num(n);
+  if (!(n > 0)) return "—";
+  const u = ["bp", "kbp", "Mbp", "Gbp", "Tbp"];
+  const i = Math.min(u.length - 1, Math.floor(Math.log10(n) / 3));
+  const v = n / Math.pow(1000, i);
+  return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${u[i]}`;
+}
+// "a" when every value formats the same, else "min–max".
+function _fmtRange(vals, fmt) {
+  const ok = vals.filter((v) => num(v) > 0);
+  if (!ok.length) return "—";
+  const lo = fmt(_ttMin(ok)),
+    hi = fmt(_ttMax(ok));
+  return lo === hi ? lo : `${lo}\u2013${hi}`;
+}
+// Input data / reference size cards (match_paths metadata.input_data and
+// metadata.reference_db). Whole-run and filter-blind, like Total Reads.
+function _sizeKpis() {
+  const meta = SAMPLE_META || {};
+  const names = Object.keys(meta);
+  const inp = names.map((sn) => ({ sn, ...((meta[sn] || {}).input_data || {}) }));
+  const ref = names.map((sn) => ({ sn, ...((meta[sn] || {}).reference_db || {}) }));
+  const inBytes = inp.reduce((s, d) => s + (num(d.bytes) || 0), 0);
+  const inKnown = inp.filter((d) => num(d.bytes) > 0).length;
+  const nFiles = inp.reduce((s, d) => s + (Array.isArray(d.files) ? d.files.length : 0), 0);
+  const refKnown = ref.filter((d) => num(d.bp) > 0);
+  const refBytes = _fmtRange(
+    refKnown.map((d) => d.bytes),
+    _fmtBytes,
+  );
+  const td = (t, c) => `<td style="padding:2px 8px 2px 0;white-space:nowrap;${c || ""}">${t}</td>`;
+  const hdr = (cols) =>
+    `<tr style="color:#888;font-size:0.78em">${cols
+      .map((c) => `<td style="padding-right:8px">${c}</td>`)
+      .join("")}</tr>`;
+  const inTip =
+    `<b style="color:#90caf9">Input data size</b><br>` +
+    `<span style="color:#aaa;font-size:0.85em">Read files as supplied (before trimming / host removal), summed over every sample in the run.</span>` +
+    `<table style="margin-top:5px;border-collapse:collapse">${hdr(["Sample", "Size", "Reads", "Files"])}` +
+    inp
+      .map(
+        (d) =>
+          `<tr>${td(d.sn, "color:#e0e0e0")}${td(_fmtBytes(d.bytes), "color:#90caf9;text-align:right")}` +
+          `${td(_fmtBig(num(d.reads) || num((meta[d.sn] || {}).total_reads)).short, "text-align:right")}` +
+          `${td(Array.isArray(d.files) ? d.files.join(", ") : "not recorded", "color:#aaa")}</tr>`,
+      )
+      .join("") +
+    `</table>`;
+  const refTip =
+    `<b style="color:#90caf9">Reference database size</b><br>` +
+    `<span style="color:#aaa;font-size:0.85em">The references each sample's reads were aligned to (from the BAM header; FASTA size on disk).</span>` +
+    `<table style="margin-top:5px;border-collapse:collapse">${hdr(["Sample", "Length", "Sequences", "FASTA"])}` +
+    ref
+      .map(
+        (d) =>
+          `<tr>${td(d.sn, "color:#e0e0e0")}${td(_fmtBp(d.bp), "color:#90caf9;text-align:right")}` +
+          `${td(num(d.sequences) > 0 ? _fmtInt(d.sequences) : "—", "text-align:right")}` +
+          `${td(
+            num(d.bytes) > 0 ? `${_fmtBytes(d.bytes)}${Array.isArray(d.files) ? " · " + d.files.join(", ") : ""}` : "—",
+            "color:#aaa",
+          )}</tr>`,
+      )
+      .join("") +
+    `</table>`;
+  const seqs = _fmtRange(
+    refKnown.map((d) => d.sequences),
+    (v) => _fmtInt(v),
+  );
+  return {
+    cards: [
+      {
+        label: "Input Data",
+        value: inKnown ? _fmtBytes(inBytes) : "—",
+        full: inKnown ? `${_fmtInt(inBytes)} bytes` : "",
+        sub: inKnown
+          ? `${_fmtInt(nFiles)} read file${nFiles === 1 ? "" : "s"}${
+              inKnown < names.length ? ` (${inKnown}/${names.length} samples)` : ""
+            }`
+          : "not recorded",
+        tipId: "kpi-tip-input",
+      },
+      {
+        label: "Reference DB",
+        value: refKnown.length
+          ? _fmtRange(
+              refKnown.map((d) => d.bp),
+              _fmtBp,
+            )
+          : "—",
+        sub: refKnown.length ? `${seqs} sequences${refBytes !== "—" ? ` · ${refBytes}` : ""}` : "not recorded",
+        tipId: "kpi-tip-refdb",
+      },
+    ],
+    tips: { "kpi-tip-input": inTip, "kpi-tip-refdb": refTip },
+  };
+}
 function _sup(n) {
   const map = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
   return String(n)
@@ -25611,6 +25909,7 @@ function drawSummary() {
   const total_taxa_notfilter = new Set(
     [..._strainTaxids, ...Array.from(_fallbackTaxidByGroup.values()).map((g) => g.taxid)].filter(Boolean),
   ).size;
+  const _sizes = _sizeKpis();
   const cards = [
     {
       label: "Samples",
@@ -25625,6 +25924,7 @@ function drawSummary() {
       sub: "aligned + unaligned, without filters",
       tipId: "kpi-tip-reads",
     },
+    ..._sizes.cards,
     {
       label: "% Classified",
       value: pctClass,
@@ -25728,6 +26028,15 @@ function drawSummary() {
     sampCard.addEventListener("mousemove", moveTip);
     sampCard.addEventListener("mouseout", hideTip);
   }
+
+  // ── KPI tooltips: Input Data / Reference DB ────────────────────────
+  Object.entries(_sizes.tips).forEach(([id, html]) => {
+    const card = document.getElementById(id);
+    if (!card) return;
+    card.addEventListener("mouseover", (ev) => showTip(html, ev));
+    card.addEventListener("mousemove", moveTip);
+    card.addEventListener("mouseout", hideTip);
+  });
 
   // ── KPI tooltips: Total Reads ──────────────────────────────────────
   const readsCard = document.getElementById("kpi-tip-reads");
@@ -34266,7 +34575,7 @@ if (_protScaleEl) _protScaleEl.addEventListener("change", drawProtGenus);
          the current DATA and SAMPLE_META globals.  Called from init() and from
          the upload / clear handlers so all three stay in sync.
       ────────────────────────────────────────────────────────────────────────── */
-function _buildBannerSub() {
+function _buildBannerSub(opts) {
   const rawSamples = uniq([
     ...DATA.map((r) => r["Specimen ID"] || ""),
     ...Object.keys((typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {}),
@@ -34292,9 +34601,157 @@ function _buildBannerSub() {
   if (pctClass === "0.0%" && totalOrgReads > 0) pctClass = "<0.1%";
   const totalReadsFmt = _fmtBig(totalInputReads).short;
 
-  return `${entities.length} ${
-    grouped ? "specimen(s)" : "sample(s)"
-  } \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads aligned \u2022 ${totalReadsFmt} total reads`;
+  const nEnt = entities.length;
+  const unit = grouped ? (nEnt === 1 ? "specimen" : "specimens") : nEnt === 1 ? "sample" : "samples";
+  const stats = [
+    `${nEnt} ${unit}`,
+    `${uniqueOrgs} organism${uniqueOrgs === 1 ? "" : "s"}`,
+    `${pctClass} aligned`,
+    `${totalReadsFmt} reads`,
+  ].join(" \u00B7 ");
+  const mask = _maskBannerNote(rawSamples);
+
+  // Banner: compact stats; the full wording (and masking detail) lives in the tooltip.
+  const el = document.getElementById("banner-sub");
+  if (el) {
+    el.title =
+      `${nEnt} ${grouped ? "specimen(s)" : "sample(s)"} \u2022 ${uniqueOrgs} unique organism(s) \u2022 ` +
+      `${pctClass} reads aligned \u2022 ${totalReadsFmt} total reads` +
+      (mask.text ? `\n\u26A0 Region masking: ${mask.text}` : "");
+  }
+  // opts.long (PDF cover): keep the masking note inline, since there is no pill there.
+  return opts && opts.long && mask.text ? `${stats} \u00B7 \u26A0 Region masking: ${mask.text}` : stats;
+}
+
+/* ── Region-masking notice ──────────────────────────────────────────────────
+   When match_paths ran with --mask_bed / --fcs, each sample's metadata carries
+   a `masking` block (applied, mode, masked_bp, reads_masked, ...). Scores in
+   this report were then computed only over unmasked / targeted bases, so say
+   so: a short amber pill in the banner (#banner-mask, per-sample detail in its
+   tooltip) and the full sentence on the PDF cover (_buildBannerSub({long})). */
+function _maskBannerNote(samples) {
+  const meta = (typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {};
+  const masked = samples.filter((s) => ((meta[s] || {}).masking || {}).applied);
+  const pill = document.getElementById("banner-mask");
+  const label = document.getElementById("banner-mask-label");
+  if (!masked.length) {
+    if (pill) pill.hidden = true;
+    if (typeof _maskPopSet === "function") _maskPopSet(false, false);
+    return { text: "" };
+  }
+  const modes = uniq(masked.map((s) => meta[s].masking.mode || "exclude"));
+  const fcs = masked.some((s) => {
+    const m = meta[s].masking;
+    return (m.bed || []).concat(m.exclude_bed || []).some((b) => /fcs|mask\.exclude/i.test(b));
+  });
+  const kind = modes.length > 1 ? "mixed" : modes[0] === "target" ? "target" : fcs ? "fcs" : "exclude";
+  const what = {
+    mixed: "mixed modes",
+    target: "TASS from targeted regions only",
+    fcs: "FCS contaminant regions excluded",
+    exclude: "masked regions excluded",
+  }[kind];
+  const short = { mixed: "Masked", target: "Targeted", fcs: "FCS-masked", exclude: "Masked" }[kind];
+  const count = `${masked.length}/${samples.length}`;
+  const esc = typeof _esc === "function" ? _esc : (v) => String(v);
+  const fmt = (v) => (Number(v) || 0).toLocaleString();
+  const rows = masked
+    .map((s) => {
+      const m = meta[s].masking;
+      const pct = m.reads_considered ? ((100 * (m.reads_masked || 0)) / m.reads_considered).toFixed(2) : "0";
+      return (
+        `<tr><td>${esc(s)}</td><td>${esc(m.mode || "exclude")}</td><td class="num">${fmt(m.references_masked)}</td>` +
+        `<td class="num">${fmt(m.masked_bp)}</td><td class="num">${fmt(m.reads_masked)} (${pct}%)</td>` +
+        `<td>${m.penalty_power ? esc(m.penalty_power) : "\u2014"}</td></tr>`
+      );
+    })
+    .join("");
+  const bams = masked.map((s) => meta[s].masking.masked_bam).filter(Boolean);
+  const text = `${what} (${count} sample${samples.length === 1 ? "" : "s"})`;
+  if (pill) {
+    pill.hidden = false;
+    pill.removeAttribute("title"); // native tooltips don't show in every viewer; use the popover
+    if (label) label.textContent = `${short} ${count}`;
+    let pop = document.getElementById("banner-mask-pop");
+    if (!pop) pop = _initMaskPopover(pill);
+    pop.innerHTML =
+      `<div class="bmp-title">Region masking: ${esc(text)}</div>` +
+      `<div class="bmp-note">Breadth, depth, Gini and TASS were computed only over unmasked bases.</div>` +
+      `<table><thead><tr><th>Sample</th><th>Mode</th><th>Refs</th><th>bp masked</th><th>Reads removed</th><th>Penalty</th></tr></thead>` +
+      `<tbody>${rows}</tbody></table>` +
+      (bams.length ? `<div class="bmp-note">Masked BAMs: ${bams.map(esc).join(", ")}</div>` : "");
+    pill.setAttribute("aria-label", `Region masking: ${text}`);
+  }
+  return { text };
+}
+
+/* Masking popover. It lives on <body> with position:fixed, not inside the
+   banner, so nothing with its own stacking context (the right sidebar and its
+   resize handle) can draw over it. Hover or keyboard focus shows it; a click
+   or tap pins it open until the next click elsewhere or Esc. The pill's icon
+   switches eye-slash -> eye while the panel is open.                        */
+let _maskPopPinned = false;
+let _maskPopHideTimer = null;
+function _maskPopSet(show, pin) {
+  const pill = document.getElementById("banner-mask");
+  const pop = document.getElementById("banner-mask-pop");
+  if (!pill || !pop) return;
+  if (pin !== undefined) _maskPopPinned = pin;
+  const visible = show || _maskPopPinned;
+  clearTimeout(_maskPopHideTimer);
+  pop.classList.toggle("show", visible);
+  pill.classList.toggle("open", visible);
+  pill.setAttribute("aria-expanded", visible ? "true" : "false");
+  const icon = pill.querySelector("i");
+  if (icon) {
+    icon.classList.toggle("fa-eye", visible);
+    icon.classList.toggle("fa-eye-slash", !visible);
+  }
+  if (visible) {
+    const r = pill.getBoundingClientRect();
+    const w = pop.offsetWidth;
+    pop.style.top = `${Math.round(r.bottom + 8)}px`;
+    pop.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - w - 8)))}px`;
+  }
+}
+function _initMaskPopover(pill) {
+  const pop = document.createElement("div");
+  pop.id = "banner-mask-pop";
+  pop.className = "banner-mask-pop";
+  pop.setAttribute("role", "tooltip");
+  document.body.appendChild(pop);
+  pill.setAttribute("aria-describedby", "banner-mask-pop");
+  pill.setAttribute("role", "button");
+  const hideSoon = () => {
+    clearTimeout(_maskPopHideTimer);
+    _maskPopHideTimer = setTimeout(() => _maskPopSet(false), 150); // time to move into the panel
+  };
+  pill.addEventListener("mouseenter", () => _maskPopSet(true));
+  pill.addEventListener("mouseleave", hideSoon);
+  pop.addEventListener("mouseenter", () => clearTimeout(_maskPopHideTimer));
+  pop.addEventListener("mouseleave", hideSoon);
+  pill.addEventListener("focus", () => _maskPopSet(true));
+  // Blur only closes an unpinned panel the pointer isn't over (clicks elsewhere unpin via document).
+  pill.addEventListener("blur", () => {
+    if (!_maskPopPinned && !pop.matches(":hover")) _maskPopSet(false);
+  });
+  pill.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    _maskPopSet(!_maskPopPinned, !_maskPopPinned);
+  });
+  pill.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") _maskPopSet(false, false);
+    if (ev.key === "Enter" || ev.key === " ") {
+      ev.preventDefault();
+      _maskPopSet(!_maskPopPinned, !_maskPopPinned);
+    }
+  });
+  pop.addEventListener("click", (ev) => ev.stopPropagation()); // clicks inside keep it open
+  document.addEventListener("click", () => _maskPopSet(false, false));
+  window.addEventListener("resize", () => {
+    if (pop.classList.contains("show")) _maskPopSet(true);
+  });
+  return pop;
 }
     </script>
     <script>
