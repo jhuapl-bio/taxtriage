@@ -107,7 +107,6 @@ body {
   white-space: nowrap;
   flex-shrink: 0;
   cursor: pointer;
-  position: relative;
 }
 #banner .banner-mask[hidden] {
   display: none;
@@ -118,67 +117,72 @@ body {
   background: rgba(255, 193, 7, 0.34);
   outline: none;
 }
-/* Masking detail popover (shown on hover, keyboard focus, or click/tap). */
-#banner .banner-mask-pop {
+/* Masking detail popover. Appended to <body> (position: fixed) so the right
+   sidebar / its resize handle can't paint over it; placed by _maskPopSet(). */
+.banner-mask-pop {
   display: none;
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  z-index: 1000;
+  position: fixed;
+  z-index: 10001;
   width: max-content;
-  max-width: min(560px, 90vw);
+  max-width: min(560px, calc(100vw - 16px));
   padding: 0.7em 0.85em;
   border-radius: 8px;
   background: #263238;
   color: #eceff1;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  font-size: 1.15em;
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+  font-size: 0.85rem;
   font-weight: 400;
-  white-space: normal;
-  cursor: default;
+  line-height: 1.4;
   text-align: left;
 }
-#banner .banner-mask:hover .banner-mask-pop,
-#banner .banner-mask:focus-visible .banner-mask-pop,
-#banner .banner-mask.open .banner-mask-pop {
+.banner-mask-pop.show {
   display: block;
 }
-#banner .banner-mask-pop .bmp-title {
+.banner-mask-pop .bmp-title {
   font-weight: 700;
   color: #ffe082;
   margin-bottom: 0.25em;
 }
-#banner .banner-mask-pop .bmp-note {
+.banner-mask-pop .bmp-note {
   color: #b0bec5;
   font-size: 0.9em;
   margin: 0.25em 0;
 }
-#banner .banner-mask-pop table {
+.banner-mask-pop table {
   border-collapse: collapse;
   margin-top: 0.4em;
   font-size: 0.9em;
 }
-#banner .banner-mask-pop th,
-#banner .banner-mask-pop td {
+.banner-mask-pop th,
+.banner-mask-pop td {
   padding: 0.2em 0.7em 0.2em 0;
   white-space: nowrap;
   text-align: left;
   background: transparent !important;
   border: none;
+  color: inherit;
 }
-#banner .banner-mask-pop th {
+.banner-mask-pop th {
   color: #90a4ae;
   font-weight: 600;
   position: static;
   box-shadow: none;
 }
-#banner .banner-mask-pop td.num {
+.banner-mask-pop td.num {
   text-align: right;
 }
-#banner .banner-mask-pop tr,
-#banner .banner-mask-pop tr:hover {
+.banner-mask-pop tr,
+.banner-mask-pop tr:hover {
   background: transparent !important;
+}
+body.report-pdf-printing .banner-mask-pop {
+  display: none !important;
 }
 /* Medium widths: the help buttons go icon-only (they keep their tooltips) so
    the stats line isn't squeezed to a stub. */

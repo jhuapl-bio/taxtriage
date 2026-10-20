@@ -131,6 +131,7 @@ function _maskBannerNote(samples) {
   const label = document.getElementById("banner-mask-label");
   if (!masked.length) {
     if (pill) pill.hidden = true;
+    if (typeof _maskPopSet === "function") _maskPopSet(false, false);
     return { text: "" };
   }
   const modes = uniq(masked.map((s) => meta[s].masking.mode || "exclude"));
@@ -138,8 +139,7 @@ function _maskBannerNote(samples) {
     const m = meta[s].masking;
     return (m.bed || []).concat(m.exclude_bed || []).some((b) => /fcs|mask\.exclude/i.test(b));
   });
-  const kind =
-    modes.length > 1 ? "mixed" : modes[0] === "target" ? "target" : fcs ? "fcs" : "exclude";
+  const kind = modes.length > 1 ? "mixed" : modes[0] === "target" ? "target" : fcs ? "fcs" : "exclude";
   const what = {
     mixed: "mixed modes",
     target: "TASS from targeted regions only",
@@ -168,28 +168,7 @@ function _maskBannerNote(samples) {
     pill.removeAttribute("title"); // native tooltips don't show in every viewer; use the popover
     if (label) label.textContent = `${short} ${count}`;
     let pop = document.getElementById("banner-mask-pop");
-    if (!pop) {
-      pop = document.createElement("div");
-      pop.id = "banner-mask-pop";
-      pop.className = "banner-mask-pop";
-      pop.setAttribute("role", "tooltip");
-      pill.appendChild(pop);
-      pill.setAttribute("aria-describedby", "banner-mask-pop");
-      // Click / tap pins it open (touch screens have no hover); Esc or a click elsewhere closes.
-      pill.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        if (ev.target.closest && ev.target.closest(".banner-mask-pop")) return; // clicks inside keep it open
-        pill.classList.toggle("open");
-      });
-      document.addEventListener("click", () => pill.classList.remove("open"));
-      pill.addEventListener("keydown", (ev) => {
-        if (ev.key === "Escape") pill.classList.remove("open");
-        if (ev.key === "Enter" || ev.key === " ") {
-          ev.preventDefault();
-          pill.classList.toggle("open");
-        }
-      });
-    }
+    if (!pop) pop = _initMaskPopover(pill);
     pop.innerHTML =
       `<div class="bmp-title">Region masking: ${esc(text)}</div>` +
       `<div class="bmp-note">Breadth, depth, Gini and TASS were computed only over unmasked bases.</div>` +
@@ -199,4 +178,73 @@ function _maskBannerNote(samples) {
     pill.setAttribute("aria-label", `Region masking: ${text}`);
   }
   return { text };
+}
+
+/* Masking popover. It lives on <body> with position:fixed, not inside the
+   banner, so nothing with its own stacking context (the right sidebar and its
+   resize handle) can draw over it. Hover or keyboard focus shows it; a click
+   or tap pins it open until the next click elsewhere or Esc. The pill's icon
+   switches eye-slash -> eye while the panel is open.                        */
+let _maskPopPinned = false;
+let _maskPopHideTimer = null;
+function _maskPopSet(show, pin) {
+  const pill = document.getElementById("banner-mask");
+  const pop = document.getElementById("banner-mask-pop");
+  if (!pill || !pop) return;
+  if (pin !== undefined) _maskPopPinned = pin;
+  const visible = show || _maskPopPinned;
+  clearTimeout(_maskPopHideTimer);
+  pop.classList.toggle("show", visible);
+  pill.classList.toggle("open", visible);
+  pill.setAttribute("aria-expanded", visible ? "true" : "false");
+  const icon = pill.querySelector("i");
+  if (icon) {
+    icon.classList.toggle("fa-eye", visible);
+    icon.classList.toggle("fa-eye-slash", !visible);
+  }
+  if (visible) {
+    const r = pill.getBoundingClientRect();
+    const w = pop.offsetWidth;
+    pop.style.top = `${Math.round(r.bottom + 8)}px`;
+    pop.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - w - 8)))}px`;
+  }
+}
+function _initMaskPopover(pill) {
+  const pop = document.createElement("div");
+  pop.id = "banner-mask-pop";
+  pop.className = "banner-mask-pop";
+  pop.setAttribute("role", "tooltip");
+  document.body.appendChild(pop);
+  pill.setAttribute("aria-describedby", "banner-mask-pop");
+  pill.setAttribute("role", "button");
+  const hideSoon = () => {
+    clearTimeout(_maskPopHideTimer);
+    _maskPopHideTimer = setTimeout(() => _maskPopSet(false), 150); // time to move into the panel
+  };
+  pill.addEventListener("mouseenter", () => _maskPopSet(true));
+  pill.addEventListener("mouseleave", hideSoon);
+  pop.addEventListener("mouseenter", () => clearTimeout(_maskPopHideTimer));
+  pop.addEventListener("mouseleave", hideSoon);
+  pill.addEventListener("focus", () => _maskPopSet(true));
+  // Blur only closes an unpinned panel the pointer isn't over (clicks elsewhere unpin via document).
+  pill.addEventListener("blur", () => {
+    if (!_maskPopPinned && !pop.matches(":hover")) _maskPopSet(false);
+  });
+  pill.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    _maskPopSet(!_maskPopPinned, !_maskPopPinned);
+  });
+  pill.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") _maskPopSet(false, false);
+    if (ev.key === "Enter" || ev.key === " ") {
+      ev.preventDefault();
+      _maskPopSet(!_maskPopPinned, !_maskPopPinned);
+    }
+  });
+  pop.addEventListener("click", (ev) => ev.stopPropagation()); // clicks inside keep it open
+  document.addEventListener("click", () => _maskPopSet(false, false));
+  window.addEventListener("resize", () => {
+    if (pop.classList.contains("show")) _maskPopSet(true);
+  });
+  return pop;
 }

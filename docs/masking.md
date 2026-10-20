@@ -109,7 +109,6 @@ RefSeq assemblies are already screened, and many contaminated sequences are remo
 
 The per-assembly summary is still useful. With `--fcs_summary` (or `--fcs`), every organism whose reference assembly NCBI found contaminated gets an `fcs_assembly` annotation - assembly, contaminated bp, contaminated fraction, number of contaminant sequences - and `masking/fcs_assemblies.tsv` lists every assembly in the run. This changes no score; it tells you which detections rest on an assembly NCBI has flagged.
 
-
 ### Narrowing what is masked
 
 ```bash

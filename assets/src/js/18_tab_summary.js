@@ -66,7 +66,9 @@ function _sizeKpis() {
   );
   const td = (t, c) => `<td style="padding:2px 8px 2px 0;white-space:nowrap;${c || ""}">${t}</td>`;
   const hdr = (cols) =>
-    `<tr style="color:#888;font-size:0.78em">${cols.map((c) => `<td style="padding-right:8px">${c}</td>`).join("")}</tr>`;
+    `<tr style="color:#888;font-size:0.78em">${cols
+      .map((c) => `<td style="padding-right:8px">${c}</td>`)
+      .join("")}</tr>`;
   const inTip =
     `<b style="color:#90caf9">Input data size</b><br>` +
     `<span style="color:#aaa;font-size:0.85em">Read files as supplied (before trimming / host removal), summed over every sample in the run.</span>` +
@@ -89,7 +91,10 @@ function _sizeKpis() {
         (d) =>
           `<tr>${td(d.sn, "color:#e0e0e0")}${td(_fmtBp(d.bp), "color:#90caf9;text-align:right")}` +
           `${td(num(d.sequences) > 0 ? _fmtInt(d.sequences) : "—", "text-align:right")}` +
-          `${td(num(d.bytes) > 0 ? `${_fmtBytes(d.bytes)}${Array.isArray(d.files) ? " · " + d.files.join(", ") : ""}` : "—", "color:#aaa")}</tr>`,
+          `${td(
+            num(d.bytes) > 0 ? `${_fmtBytes(d.bytes)}${Array.isArray(d.files) ? " · " + d.files.join(", ") : ""}` : "—",
+            "color:#aaa",
+          )}</tr>`,
       )
       .join("") +
     `</table>`;
@@ -104,13 +109,20 @@ function _sizeKpis() {
         value: inKnown ? _fmtBytes(inBytes) : "—",
         full: inKnown ? `${_fmtInt(inBytes)} bytes` : "",
         sub: inKnown
-          ? `${_fmtInt(nFiles)} read file${nFiles === 1 ? "" : "s"}${inKnown < names.length ? ` (${inKnown}/${names.length} samples)` : ""}`
+          ? `${_fmtInt(nFiles)} read file${nFiles === 1 ? "" : "s"}${
+              inKnown < names.length ? ` (${inKnown}/${names.length} samples)` : ""
+            }`
           : "not recorded",
         tipId: "kpi-tip-input",
       },
       {
         label: "Reference DB",
-        value: refKnown.length ? _fmtRange(refKnown.map((d) => d.bp), _fmtBp) : "—",
+        value: refKnown.length
+          ? _fmtRange(
+              refKnown.map((d) => d.bp),
+              _fmtBp,
+            )
+          : "—",
         sub: refKnown.length ? `${seqs} sequences${refBytes !== "—" ? ` · ${refBytes}` : ""}` : "not recorded",
         tipId: "kpi-tip-refdb",
       },
