@@ -1,0 +1,50 @@
+name: Close stale issues
+
+# Closes issues that have had no activity for 60 days.
+#
+# An issue with no comments, label changes or edits for 53 days gets a `stale`
+# label and a comment saying it will close in a week. Any activity in that week
+# (a comment, an edit, removing the label) clears `stale` and resets the clock.
+# If nothing happens, it closes at day 60 as "not planned". Reopening a closed
+# issue is always fine.
+#
+# Pull requests are left alone. Issues labelled `pinned`, `keep-open` or
+# `security`, or assigned to a milestone, are never marked stale.
+#
+# Closing an issue that a merged PR shipped is handled by close-issues.yml.
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # daily, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-issue-stale: 53
+          days-before-issue-close: 7
+          # Never touch pull requests.
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+
+          stale-issue-label: stale
+          exempt-issue-labels: pinned,keep-open,security
+          exempt-all-issue-milestones: true
+          remove-issue-stale-when-updated: true
+          close-issue-reason: not_planned
+
+          stale-issue-message: >
+            This issue has had no activity for 53 days and will be closed in
+            7 days. Comment or remove the `stale` label to keep it open.
+          close-issue-message: >
+            Closed after 60 days without activity. If this is still relevant,
+            reopen it or open a new issue with any updated details.
+
+          # Room to work through the existing backlog on the first runs.
+          operations-per-run: 200
