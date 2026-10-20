@@ -148,24 +148,54 @@ function _maskBannerNote(samples) {
   }[kind];
   const short = { mixed: "Masked", target: "Targeted", fcs: "FCS-masked", exclude: "Masked" }[kind];
   const count = `${masked.length}/${samples.length}`;
-  const lines = masked.map((s) => {
-    const m = meta[s].masking;
-    const pct = m.reads_considered ? ((100 * (m.reads_masked || 0)) / m.reads_considered).toFixed(2) : "0";
-    return (
-      `${s}: ${m.mode} \u2014 ${(m.references_masked || 0).toLocaleString()} reference(s), ` +
-      `${(m.masked_bp || 0).toLocaleString()} bp masked, ${(m.reads_masked || 0).toLocaleString()} reads removed (${pct}%)` +
-      (m.penalty_power ? `, penalty power ${m.penalty_power}` : "") +
-      (m.masked_bam ? `, masked BAM ${m.masked_bam}` : "")
-    );
-  });
+  const esc = typeof _esc === "function" ? _esc : (v) => String(v);
+  const fmt = (v) => (Number(v) || 0).toLocaleString();
+  const rows = masked
+    .map((s) => {
+      const m = meta[s].masking;
+      const pct = m.reads_considered ? ((100 * (m.reads_masked || 0)) / m.reads_considered).toFixed(2) : "0";
+      return (
+        `<tr><td>${esc(s)}</td><td>${esc(m.mode || "exclude")}</td><td class="num">${fmt(m.references_masked)}</td>` +
+        `<td class="num">${fmt(m.masked_bp)}</td><td class="num">${fmt(m.reads_masked)} (${pct}%)</td>` +
+        `<td>${m.penalty_power ? esc(m.penalty_power) : "\u2014"}</td></tr>`
+      );
+    })
+    .join("");
+  const bams = masked.map((s) => meta[s].masking.masked_bam).filter(Boolean);
   const text = `${what} (${count} sample${samples.length === 1 ? "" : "s"})`;
   if (pill) {
     pill.hidden = false;
+    pill.removeAttribute("title"); // native tooltips don't show in every viewer; use the popover
     if (label) label.textContent = `${short} ${count}`;
-    pill.title =
-      `Region masking: ${text}.\n` +
-      "Breadth, depth, Gini and TASS were computed only over unmasked bases.\n" +
-      lines.join("\n");
+    let pop = document.getElementById("banner-mask-pop");
+    if (!pop) {
+      pop = document.createElement("div");
+      pop.id = "banner-mask-pop";
+      pop.className = "banner-mask-pop";
+      pop.setAttribute("role", "tooltip");
+      pill.appendChild(pop);
+      pill.setAttribute("aria-describedby", "banner-mask-pop");
+      // Click / tap pins it open (touch screens have no hover); Esc or a click elsewhere closes.
+      pill.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (ev.target.closest && ev.target.closest(".banner-mask-pop")) return; // clicks inside keep it open
+        pill.classList.toggle("open");
+      });
+      document.addEventListener("click", () => pill.classList.remove("open"));
+      pill.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") pill.classList.remove("open");
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          pill.classList.toggle("open");
+        }
+      });
+    }
+    pop.innerHTML =
+      `<div class="bmp-title">Region masking: ${esc(text)}</div>` +
+      `<div class="bmp-note">Breadth, depth, Gini and TASS were computed only over unmasked bases.</div>` +
+      `<table><thead><tr><th>Sample</th><th>Mode</th><th>Refs</th><th>bp masked</th><th>Reads removed</th><th>Penalty</th></tr></thead>` +
+      `<tbody>${rows}</tbody></table>` +
+      (bams.length ? `<div class="bmp-note">Masked BAMs: ${bams.map(esc).join(", ")}</div>` : "");
     pill.setAttribute("aria-label", `Region masking: ${text}`);
   }
   return { text };

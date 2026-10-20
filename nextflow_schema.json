@@ -103,7 +103,7 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "bam_minmapq": {
-                    "type": "number",
+                    "type": ["null", "number"],
                     "description": "Optional MAPQ filter applied to pre-aligned (--bam / bam column) input. By default the alignment is taken as given.",
                     "fa_icon": "fas fa-filter"
                 },
@@ -125,7 +125,7 @@
                     "fa_icon": "fas fa-ruler-horizontal"
                 },
                 "consensus_min_mapq": {
-                    "type": "number",
+                    "type": ["null", "number"],
                     "description": "Exclude reads below this mapping quality when calling consensus from a BAM (samtools consensus --min-MQ).",
                     "fa_icon": "fas fa-filter"
                 },

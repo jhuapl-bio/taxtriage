@@ -1392,7 +1392,7 @@ function _enhanceExports() {
   });
 
   document.querySelectorAll("table").forEach((table) => {
-    if (table.closest("#tooltip, #embed-detail, .export-modal-overlay, .export-control")) return;
+    if (table.closest("#tooltip, #banner, #embed-detail, .export-modal-overlay, .export-control")) return;
     const host = _tableExportHost(table);
     if (!host) return;
     host.classList.add("table-export-host");
