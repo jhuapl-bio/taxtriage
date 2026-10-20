@@ -36,6 +36,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import pysam
+try:
+    from fasta_utils import open_pysam_fasta as _open_fasta  # accepts plain, bgzip AND gzip FASTA
+except ImportError:  # pragma: no cover - fasta_utils ships next to this file in bin/
+    _open_fasta = pysam.FastaFile
 from tqdm import tqdm
 
 from sourmash import MinHash, SourmashSignature, save_signatures, load_file_as_signatures
@@ -429,7 +433,7 @@ def _sketch_region_batch(args: Tuple) -> List[Tuple]:
             if fp is None:
                 continue
             if fp not in open_fastas:
-                open_fastas[fp] = pysam.FastaFile(fp)
+                open_fastas[fp] = _open_fasta(fp)
             fa = open_fastas[fp]
             seq = fa.fetch(chrom, start, end)
             if not seq or len(seq) < kmer_size:
@@ -478,7 +482,7 @@ def create_signatures_for_regions(
     # progressive slowdown seen toward the end of a large run.
     chrom_to_fasta_path: Dict[str, str] = {}
     for fp in fasta_paths:
-        fa = pysam.FastaFile(fp)
+        fa = _open_fasta(fp)
         for ref in fa.references:
             if ref not in chrom_to_fasta_path:
                 chrom_to_fasta_path[ref] = fp
@@ -987,7 +991,7 @@ def _iter_window_tasks(fasta_path, fasta_label, ksize, window, step, max_n_frac,
     This avoids holding all subsequences in memory simultaneously -- only one
     contig's worth of data is live at a time.
     """
-    fa = pysam.FastaFile(fasta_path)
+    fa = _open_fasta(fasta_path)
     contig_list = contigs if contigs is not None else list(fa.references)
     for contig in contig_list:
         if contig not in fa.references:
@@ -1334,7 +1338,7 @@ def _find_high_ani_pairs(
     for fp in fasta_files:
         label = os.path.basename(fp)
         try:
-            fa = pysam.FastaFile(fp)
+            fa = _open_fasta(fp)
         except Exception as exc:
             print(f"  [ANI pass0] WARNING: could not open {fp}: {exc}")
             continue
@@ -2434,7 +2438,7 @@ def build_organism_signatures_from_fastas_ani(
         return header.split()[0]
 
     for fp in fasta_paths:
-        fa = pysam.FastaFile(fp)
+        fa = _open_fasta(fp)
         fasta_label = os.path.basename(fp)
         for rec_name in fa.references:
             acc = _normalize_accession(rec_name)

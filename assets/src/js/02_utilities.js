@@ -1392,7 +1392,8 @@ function _enhanceExports() {
   });
 
   document.querySelectorAll("table").forEach((table) => {
-    if (table.closest("#tooltip, #embed-detail, .export-modal-overlay, .export-control")) return;
+    if (table.closest("#tooltip, #banner, #banner-mask-pop, #embed-detail, .export-modal-overlay, .export-control"))
+      return;
     const host = _tableExportHost(table);
     if (!host) return;
     host.classList.add("table-export-host");
@@ -2060,7 +2061,7 @@ async function _exportReportPdf() {
   const coverSub = document.getElementById("pdf-report-subtext");
   if (coverSub) {
     const stamp = new Date().toLocaleString();
-    coverSub.textContent = `${_buildBannerSub()} · Exported ${stamp}`;
+    coverSub.textContent = `${_buildBannerSub({ long: true })} · Exported ${stamp}`;
   }
   await _renderTabsForPdf();
   // Build the cover KPI banner + contents, then group/annotate each pane.

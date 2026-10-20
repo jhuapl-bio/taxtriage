@@ -429,9 +429,123 @@ class WorkflowTaxtriage {
     }
 
     //
+    // ── Reference FASTA inputs ───────────────────────────────────────────────
+    // Every user-supplied reference must look like a FASTA, optionally gzipped.
+    // Tools differ in what they can read: minimap2 and deacon read .gz natively;
+    // bowtie2-build / hisat2-build, bcftools, bedtools and htslib faidx (pysam)
+    // need plain (or, for htslib, bgzip) FASTA. The workflow decompresses where a
+    // consumer needs it, so users can pass either. See docs/troubleshooting.md.
+    //
+    public static final String FASTA_EXT_PATTERN = /(?i).*\.(fa|fasta|fna|fas|fsa|ffn|frn|mfa)(\.(gz|bgz))?$/
+    public static final String FASTA_EXT_HELP =
+        '.fa, .fasta, .fna, .fas, .fsa, .ffn, .frn or .mfa, each optionally compressed as .gz / .bgz'
+
+    public static String baseName(value) {
+        return value == null ? '' : value.toString().replaceAll('/+$', '').tokenize('/\\')[-1]
+    }
+
+    public static boolean isFastaName(value) {
+        return value != null && (baseName(value) ==~ FASTA_EXT_PATTERN)
+    }
+
+    public static boolean isGzName(value) {
+        return value != null && (baseName(value).toLowerCase() ==~ /.*\.(gz|bgz)$/)
+    }
+
+    /** Split a multi-value path param on commas and/or whitespace. */
+    /**
+     * On-disk size of a sample's input reads, as supplied in the samplesheet
+     * (fastq_1 may be a ';'-list or a directory; BAM/CRAM rows use the bam
+     * column). Returns [bytes, [file names]], or [null, []] when the size can't
+     * be read (simulated samples, remote paths without size support, ...).
+     * Used only for reporting (match_paths metadata.input_data).
+     */
+    public static List inputSize(Map meta) {
+        try {
+            if (meta == null || meta.insilico) { return [null, []] }
+            def paths = []
+            if (meta.is_bam && meta.bam) {
+                paths << meta.bam.toString()
+            } else {
+                if (meta.fastq_1) { paths.addAll(meta.fastq_1.toString().split(';')*.trim()) }
+                if (meta.fastq_2) { paths.addAll(meta.fastq_2.toString().split(';')*.trim()) }
+            }
+            long total = 0
+            def names = []
+            paths.findAll { it }.each { p ->
+                def f = Nextflow.file(p)
+                if (f instanceof List) { f = f[0] }
+                if (f.isDirectory()) {
+                    f.eachFileRecurse { c ->
+                        if (c.isFile() && c.getName() =~ /(?i)\.(fastq|fq|fasta|fa|fna)(\.gz)?$/) {
+                            total += c.size(); names << c.getName()
+                        }
+                    }
+                } else {
+                    total += f.size(); names << f.getName()
+                }
+            }
+            return [total > 0 ? total : null, names]
+        } catch (Exception e) {
+            return [null, []]
+        }
+    }
+
+    public static List<String> splitPaths(value) {
+        if (value == null || value == true || value == false) { return [] }
+        return value.toString().split(/[,\s]+/).collect { it.trim() }.findAll { it }
+    }
+
+    /**
+     * Fail early, with a useful message, when a reference param points at
+     * something that is not a FASTA (e.g. a FASTQ or BAM passed by mistake).
+     *   allowDirs  directories are allowed (scanned for FASTA files later)
+     *   allowIdx   a Deacon .idx is allowed (--remove_reference_file with --use_deacon)
+     * Remote paths (s3://, https://, ...) are checked by name only.
+     */
+    public static void checkFastaParam(value, String param, boolean allowDirs = false, boolean allowIdx = false) {
+        splitPaths(value).each { entry ->
+            def remote = entry ==~ /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/.*/
+            if (!remote) {
+                def f = Nextflow.file(entry.replaceFirst('^~', System.getProperty('user.home')))
+                if (!f.exists()) {
+                    Nextflow.error("${param}: '${entry}' does not exist.")
+                }
+                if (f.isDirectory()) {
+                    if (!allowDirs) {
+                        Nextflow.error("${param}: '${entry}' is a directory; give FASTA file(s) (${FASTA_EXT_HELP}).")
+                    }
+                    return
+                }
+            }
+            if (allowIdx && entry.toLowerCase().endsWith('.idx')) { return }
+            if (!isFastaName(entry)) {
+                Nextflow.error(
+                    "${param}: '${entry}' is not a FASTA file name. Accepted extensions: ${FASTA_EXT_HELP}" +
+                    (allowIdx ? ' (or a Deacon .idx index with --use_deacon)' : '') + '.')
+            }
+        }
+    }
+
+    public static void validateReferenceInputs(params) {
+        checkFastaParam(params.reference_fasta, '--reference_fasta', true)
+        checkFastaParam(params.remove_reference_file, '--remove_reference_file', false, params.use_deacon as boolean)
+        checkFastaParam(params.cram_reference, '--cram_reference')
+        if (params.containsKey('mask_fasta')) {
+            checkFastaParam(params.mask_fasta, '--mask_fasta')
+        }
+        def genome_entry = (params.genome && params.genomes) ? params.genomes[params.genome] : null
+        if (genome_entry?.fasta) {
+            checkFastaParam(genome_entry.fasta, "--genome ${params.genome} (fasta)")
+        }
+    }
+
+    //
     // Container engine / classifier / input pre-flight checks.
     //
     public static void validateInputs(params, workflow, log) {
+        validateReferenceInputs(params)
+
         if (workflow.containerEngine != 'singularity' && workflow.containerEngine != 'docker') {
             Nextflow.error("Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting...")
         }

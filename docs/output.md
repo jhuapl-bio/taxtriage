@@ -149,6 +149,10 @@ Written only with `--export_data`. Holds the interactive report's tables as spre
 
 Written by default (turn off with `--alignment_trends false`): cross-sample tables of recurrent zero, low and high depth regions per reference (`all.alignment_trends.{summary,regions,windows,samples}.tsv`, `.json`, `.xlsx`, and PNG plots). The same results are embedded in the HTML report under **Trends → Alignment Trends → Pipeline results**, next to a live, adjustable version of the analysis. See [Alignment Trends](alignment-trends.md).
 
+### Region Masking (`masking/`) - Optional
+
+Written only when masking is on (`--fcs`, `--mask_bed`, …): the mask BEDs actually used (`mask.exclude.bed`, `mask.target.bed` - load them in IGV next to the BAMs), per-reference mask summaries, `fcs_assemblies.tsv` (NCBI FCS status of every assembly in the run), `fcs_subset.txt` (the matching FCS rows, reusable as `--fcs_details`), and `all.masking.html` / `.tsv`, a visual report of what masking changed. With `--mask_compare`, `unmasked/` holds the baseline per-sample JSONs; with `--mask_write_bam`, `bam/` holds each sample's BAM with the masked alignments removed. See [Region Masking](masking.md#outputs).
+
 ### Microbial Sheet (`report/<sample>.odr.txt`)
 
 Tabular plain-text version of the ODR data. Contains all organisms including commensals and potentials regardless of `--show_commensals` / `--show_potentials` flags.

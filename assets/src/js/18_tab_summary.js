@@ -23,6 +23,113 @@ function _fmtBig(n) {
   }
   return { short: full, full };
 }
+// Bytes -> "38.4 MB" (decimal units, like file managers / sequencers report).
+function _fmtBytes(n) {
+  n = num(n);
+  if (!(n > 0)) return "—";
+  const u = ["B", "kB", "MB", "GB", "TB", "PB"];
+  const i = Math.min(u.length - 1, Math.floor(Math.log10(n) / 3));
+  const v = n / Math.pow(1000, i);
+  return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${u[i]}`;
+}
+// Base pairs -> "52.3 Mbp".
+function _fmtBp(n) {
+  n = num(n);
+  if (!(n > 0)) return "—";
+  const u = ["bp", "kbp", "Mbp", "Gbp", "Tbp"];
+  const i = Math.min(u.length - 1, Math.floor(Math.log10(n) / 3));
+  const v = n / Math.pow(1000, i);
+  return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${u[i]}`;
+}
+// "a" when every value formats the same, else "min–max".
+function _fmtRange(vals, fmt) {
+  const ok = vals.filter((v) => num(v) > 0);
+  if (!ok.length) return "—";
+  const lo = fmt(_ttMin(ok)),
+    hi = fmt(_ttMax(ok));
+  return lo === hi ? lo : `${lo}\u2013${hi}`;
+}
+// Input data / reference size cards (match_paths metadata.input_data and
+// metadata.reference_db). Whole-run and filter-blind, like Total Reads.
+function _sizeKpis() {
+  const meta = SAMPLE_META || {};
+  const names = Object.keys(meta);
+  const inp = names.map((sn) => ({ sn, ...((meta[sn] || {}).input_data || {}) }));
+  const ref = names.map((sn) => ({ sn, ...((meta[sn] || {}).reference_db || {}) }));
+  const inBytes = inp.reduce((s, d) => s + (num(d.bytes) || 0), 0);
+  const inKnown = inp.filter((d) => num(d.bytes) > 0).length;
+  const nFiles = inp.reduce((s, d) => s + (Array.isArray(d.files) ? d.files.length : 0), 0);
+  const refKnown = ref.filter((d) => num(d.bp) > 0);
+  const refBytes = _fmtRange(
+    refKnown.map((d) => d.bytes),
+    _fmtBytes,
+  );
+  const td = (t, c) => `<td style="padding:2px 8px 2px 0;white-space:nowrap;${c || ""}">${t}</td>`;
+  const hdr = (cols) =>
+    `<tr style="color:#888;font-size:0.78em">${cols
+      .map((c) => `<td style="padding-right:8px">${c}</td>`)
+      .join("")}</tr>`;
+  const inTip =
+    `<b style="color:#90caf9">Input data size</b><br>` +
+    `<span style="color:#aaa;font-size:0.85em">Read files as supplied (before trimming / host removal), summed over every sample in the run.</span>` +
+    `<table style="margin-top:5px;border-collapse:collapse">${hdr(["Sample", "Size", "Reads", "Files"])}` +
+    inp
+      .map(
+        (d) =>
+          `<tr>${td(d.sn, "color:#e0e0e0")}${td(_fmtBytes(d.bytes), "color:#90caf9;text-align:right")}` +
+          `${td(_fmtBig(num(d.reads) || num((meta[d.sn] || {}).total_reads)).short, "text-align:right")}` +
+          `${td(Array.isArray(d.files) ? d.files.join(", ") : "not recorded", "color:#aaa")}</tr>`,
+      )
+      .join("") +
+    `</table>`;
+  const refTip =
+    `<b style="color:#90caf9">Reference database size</b><br>` +
+    `<span style="color:#aaa;font-size:0.85em">The references each sample's reads were aligned to (from the BAM header; FASTA size on disk).</span>` +
+    `<table style="margin-top:5px;border-collapse:collapse">${hdr(["Sample", "Length", "Sequences", "FASTA"])}` +
+    ref
+      .map(
+        (d) =>
+          `<tr>${td(d.sn, "color:#e0e0e0")}${td(_fmtBp(d.bp), "color:#90caf9;text-align:right")}` +
+          `${td(num(d.sequences) > 0 ? _fmtInt(d.sequences) : "—", "text-align:right")}` +
+          `${td(
+            num(d.bytes) > 0 ? `${_fmtBytes(d.bytes)}${Array.isArray(d.files) ? " · " + d.files.join(", ") : ""}` : "—",
+            "color:#aaa",
+          )}</tr>`,
+      )
+      .join("") +
+    `</table>`;
+  const seqs = _fmtRange(
+    refKnown.map((d) => d.sequences),
+    (v) => _fmtInt(v),
+  );
+  return {
+    cards: [
+      {
+        label: "Input Data",
+        value: inKnown ? _fmtBytes(inBytes) : "—",
+        full: inKnown ? `${_fmtInt(inBytes)} bytes` : "",
+        sub: inKnown
+          ? `${_fmtInt(nFiles)} read file${nFiles === 1 ? "" : "s"}${
+              inKnown < names.length ? ` (${inKnown}/${names.length} samples)` : ""
+            }`
+          : "not recorded",
+        tipId: "kpi-tip-input",
+      },
+      {
+        label: "Reference DB",
+        value: refKnown.length
+          ? _fmtRange(
+              refKnown.map((d) => d.bp),
+              _fmtBp,
+            )
+          : "—",
+        sub: refKnown.length ? `${seqs} sequences${refBytes !== "—" ? ` · ${refBytes}` : ""}` : "not recorded",
+        tipId: "kpi-tip-refdb",
+      },
+    ],
+    tips: { "kpi-tip-input": inTip, "kpi-tip-refdb": refTip },
+  };
+}
 function _sup(n) {
   const map = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
   return String(n)
@@ -467,6 +574,7 @@ function drawSummary() {
   const total_taxa_notfilter = new Set(
     [..._strainTaxids, ...Array.from(_fallbackTaxidByGroup.values()).map((g) => g.taxid)].filter(Boolean),
   ).size;
+  const _sizes = _sizeKpis();
   const cards = [
     {
       label: "Samples",
@@ -481,6 +589,7 @@ function drawSummary() {
       sub: "aligned + unaligned, without filters",
       tipId: "kpi-tip-reads",
     },
+    ..._sizes.cards,
     {
       label: "% Classified",
       value: pctClass,
@@ -584,6 +693,15 @@ function drawSummary() {
     sampCard.addEventListener("mousemove", moveTip);
     sampCard.addEventListener("mouseout", hideTip);
   }
+
+  // ── KPI tooltips: Input Data / Reference DB ────────────────────────
+  Object.entries(_sizes.tips).forEach(([id, html]) => {
+    const card = document.getElementById(id);
+    if (!card) return;
+    card.addEventListener("mouseover", (ev) => showTip(html, ev));
+    card.addEventListener("mousemove", moveTip);
+    card.addEventListener("mouseout", hideTip);
+  });
 
   // ── KPI tooltips: Total Reads ──────────────────────────────────────
   const readsCard = document.getElementById("kpi-tip-reads");

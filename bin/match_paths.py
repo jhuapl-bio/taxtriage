@@ -358,6 +358,19 @@ def parse_args(argv=None):
         help="HMP distribution of abundances of organisms on a per-sample basis. Optional but useful for some sample types that are highly diverse in content",
     )
     parser.add_argument(
+        "--input_bytes",
+        default=None,
+        type=int,
+        metavar="BYTES",
+        help="Size on disk of the sample's input read file(s), as supplied (recorded in metadata.input_data).",
+    )
+    parser.add_argument(
+        "--input_files",
+        default=None,
+        metavar="NAMES",
+        help="Comma-separated names of the sample's input read file(s) (recorded in metadata.input_data).",
+    )
+    parser.add_argument(
         "--readcount",
         default=None,
         metavar="READCOUNT",
@@ -610,6 +623,52 @@ def parse_args(argv=None):
                              "in the JSON (read by alignment_trends.py and the report's Alignment Trends tab). "
                              "Window size is the smallest 100*2^k bp giving <= this many windows over the "
                              "strain's total reference length. Set to 0 to disable.")
+    # ── Region masking (targeted / FCS-masked scoring) ───────────────────────
+    # See docs/masking.md.  Off unless --mask_bed is given.
+    parser.add_argument("--mask_bed", nargs='+', default=None,
+                        help="One or more BED files (0-based, half-open; .gz ok) of regions used to "
+                             "restrict TASS scoring. With --mask_mode exclude (default) the regions are "
+                             "IGNORED (e.g. NCBI FCS contaminant spans from build_mask.py); with "
+                             "--mask_mode target ONLY these regions are scored. Accessions are matched "
+                             "version- and NZ_-prefix-tolerantly.")
+    parser.add_argument("--mask_exclude_bed", nargs='+', default=None,
+                        help="Extra BED(s) of regions that must never be scored, whatever --mask_mode is "
+                             "(typically NCBI FCS contaminant spans). exclude mode: merged into the mask. "
+                             "target mode: subtracted from the targets.")
+    parser.add_argument("--mask_mode", choices=["exclude", "target"], default="exclude",
+                        help="exclude = score everything except the BED regions; target = score only "
+                             "the BED regions. Default: exclude.")
+    parser.add_argument("--mask_read_overlap", type=float, default=0.5,
+                        help="Drop a read when at least this fraction of its aligned span falls in masked "
+                             "space (outside targets in target mode). Kept reads contribute only their "
+                             "unmasked bases. 1.0 = drop only reads that are completely masked. Default 0.5.")
+    parser.add_argument("--mask_untargeted", choices=["drop", "keep"], default="drop",
+                        help="target mode only: what to do with references that have NO target interval. "
+                             "drop (default) = not scored (TASS only from targeted areas); keep = scored "
+                             "over their whole length as usual.")
+    parser.add_argument("--mask_pad", type=int, default=0,
+                        help="Extend every BED interval by this many bp on each side before masking.")
+    parser.add_argument("--mask_min_region", type=int, default=0,
+                        help="Ignore BED intervals shorter than this (bp).")
+    parser.add_argument("--mask_penalty_power", type=float, default=0.0,
+                        help="Penalise organisms by the fraction of their reads that landed in masked space: "
+                             "TASS *= (1 - masked_read_fraction) ^ power. 0 (default) = no penalty, the "
+                             "masked reads are simply ignored. In exclude mode with FCS regions this "
+                             "down-weights hits driven by contaminant spans; in target mode it rewards "
+                             "organisms whose reads concentrate on the targets.")
+    parser.add_argument("--fcs_assembly_table", default=None,
+                        help="Per-assembly NCBI FCS summary written by build_mask.py --assembly_out. "
+                             "Every organism whose reference assembly NCBI flagged as contaminated gets an "
+                             "'fcs_assembly' annotation in the JSON / report (no score change). Needs -m with "
+                             "a GCF_/GCA_ assembly column.")
+    parser.add_argument("--mask_write_bam", default=None, metavar="OUT.bam",
+                        help="Also write a physically masked copy of the input BAM: every alignment that "
+                             "--mask_read_overlap would remove is dropped (primary, secondary and "
+                             "supplementary alike); kept alignments that partly overlap the mask carry a "
+                             "ZM:i tag with the number of masked reference bases. Indexed (.bai). Only "
+                             "written when a mask is active.")
+    parser.add_argument("--mask_regions_json_max", type=int, default=2000,
+                        help="Max masked/target intervals per accession written to the JSON for plotting.")
     parser.add_argument("--min_threshold", type=float, default=0.2, help="Min Jaccard similarity to report.")
     parser.add_argument("--abu_file", required=False, help="Path to ground truth coverage file (abu.txt).")
     parser.add_argument("--use_variance", required=False, action='store_true', help="Use variance instead of Gini index.")
@@ -1143,12 +1202,49 @@ def _make_group_read_filter(args):
     return _passes
 
 
-def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_lengths={}, args={}):
+def _add_span_events(events, start, end):
+    """Record a read span as +1/-1 endpoint counts in an events dict."""
+    events[start] += 1
+    events[end] -= 1
+
+
+def _sweep_events(events):
+    """Sweep a {pos: net_delta} endpoint dict into (start, end, depth) runs.
+
+    Simultaneous starts and ends have no intervening bases, so the net delta
+    per position is sufficient.
+    """
+    regions = []
+    current_depth = 0
+    last_pos = 0
+    for pos, delta in sorted(events.items()):
+        if pos > last_pos and current_depth > 0:
+            regions.append((last_pos, pos, current_depth))
+        current_depth += delta
+        last_pos = pos
+    return regions
+
+
+def _sweep_coverage(positions):
+    """Sweep-line (start, end) read spans into non-overlapping (start, end, depth) runs."""
+    events = defaultdict(int)
+    for start, end in positions:
+        _add_span_events(events, start, end)
+    return _sweep_events(events)
+
+
+def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_lengths={}, args={}, mask=None):
     """
     Count the number of reads aligned to each reference in a BAM file.
 
     Args:
     bam_file_path (str): Path to the BAM file.
+
+    mask (mask_regions.RegionMask, optional): restrict scoring to part of each
+        reference. Reads are clipped to the kept intervals and translated into a
+        compressed coordinate space whose length is the kept bp, so breadth,
+        depth, Gini and every other downstream metric only see kept bases.
+        See docs/masking.md.
 
     Returns:
     dict: A dictionary with reference names as keys and counts of aligned reads as values.
@@ -1207,6 +1303,16 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 accession = ref,
                 covered_regions = [],  # Store regions covered by reads
             )
+            if mask is not None:
+                _rm = mask.build(ref, reference_lengths[ref])
+                _ms = reference_stats[ref]
+                _ms["length_full"] = reference_lengths[ref]
+                _ms["length"] = _rm.kept_bp if _rm is not None else reference_lengths[ref]
+                _ms["masked_bp"] = _rm.masked_bp if _rm is not None else 0
+                _ms["mask_reads_total"] = 0
+                _ms["mask_reads_masked"] = 0
+                # original-coordinate endpoints, kept only for plotting
+                _ms["depth_events_orig"] = defaultdict(int)
         # Open BAM file
         total_reads = 0
         # check if the alignment was paired end or single end
@@ -1227,6 +1333,22 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             # Skip reads that are in alignments_to_remove if provided
             if alignments_to_remove and read.query_name in alignments_to_remove and ref in alignments_to_remove[read.query_name]:
                 continue
+
+            # ── Region mask (--mask_bed / FCS) ──────────────────────────────
+            # Reads with >= mask.read_overlap of their span in masked space are
+            # dropped before ANY metric (MAPQ fraction included) sees them;
+            # kept reads contribute only their unmasked pieces.
+            _mask_pieces = None
+            if mask is not None:
+                reference_stats[ref]["mask_reads_total"] += 1
+                _rm = mask.build(ref, reference_lengths[ref])
+                if _rm is not None:
+                    _rs, _re = read.reference_start, read.reference_end
+                    _orig, _comp, _kb = _rm.clip(_rs, _re)
+                    if mask.read_is_masked(_re - _rs, _kb):
+                        reference_stats[ref]["mask_reads_masked"] += 1
+                        continue
+                    _mask_pieces = (_orig, _comp)
 
             # Track MAPQ for the high-quality fraction (computed on ALL mapped reads)
             reference_stats[ref]["sum_mapq"] += read.mapping_quality
@@ -1280,8 +1402,16 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 # Endpoint counts give the same sweep-line coverage as sorting
                 # every individual read endpoint, with one entry per position.
                 _events = reference_stats[ref]["depth_events"]
-                _events[read.reference_start] += 1
-                _events[read.reference_end] -= 1
+                if _mask_pieces is not None:
+                    # compressed coords drive scoring; original coords are kept
+                    # only for plotting (breadth histogram mask overlay)
+                    for _s, _e in _mask_pieces[1]:
+                        _add_span_events(_events, _s, _e)
+                    _orig_events = reference_stats[ref]["depth_events_orig"]
+                    for _s, _e in _mask_pieces[0]:
+                        _add_span_events(_orig_events, _s, _e)
+                else:
+                    _add_span_events(_events, read.reference_start, read.reference_end)
         # Calculate statistics for each reference
         for ref, _ in reference_lengths.items():
             stats = reference_stats.get(ref, None)
@@ -1315,25 +1445,29 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
 
 
 
-                # Sweep distinct endpoints; simultaneous starts and ends have
-                # no intervening bases, so their net delta is sufficient.
-                coverage_regions = []
-                current_depth = 0
-                last_pos = 0
+                # Compute coverage regions from aggregated endpoint counts
+                coverage_regions = _sweep_events(stats["depth_events"])
 
-                for pos, delta in sorted(stats["depth_events"].items()):
-                    if pos > last_pos and current_depth > 0:
-                        coverage_regions.append( (last_pos, pos, current_depth) )
-                    current_depth += delta
-                    last_pos = pos
+                # Scoring length: the kept (unmasked) bp when a mask applies,
+                # otherwise the full reference length.
+                _score_len = stats["length"] if mask is not None else reference_lengths.get(ref, 0)
 
                 # Calculate average depth
                 sum_depth_bases = sum(depth * (end - start) for start, end, depth in coverage_regions)
-                avg_depth = sum_depth_bases / reference_lengths.get(ref,0) if reference_lengths.get(ref,0)   > 0 else 0
+                avg_depth = sum_depth_bases / _score_len if _score_len > 0 else 0
 
                 # Calculate coverage breadth
                 covered_length = sum(end - start for start, end, depth in coverage_regions)
-                coverage_breadth = covered_length / reference_lengths.get(ref, 0) if reference_lengths.get(ref, 0) > 0 else 0
+                coverage_breadth = covered_length / _score_len if _score_len > 0 else 0
+
+                if mask is not None:
+                    _orig_ev = stats.get("depth_events_orig")
+                    if _orig_ev:
+                        reference_stats[ref]["covered_regions_orig"] = _sweep_events(_orig_ev)
+                    _mt = stats.get("mask_reads_total", 0)
+                    reference_stats[ref]["mask_read_fraction"] = (
+                        stats.get("mask_reads_masked", 0) / _mt if _mt > 0 else 0.0)
+                    reference_stats[ref].pop("depth_events_orig", None)
 
                 # Assign computed statistics
                 reference_stats[ref]["avg_read_length"] = avg_read_length
@@ -1382,6 +1516,62 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
     print(f"Processed {total_reads} reads from {len(reference_lengths)} references in {time.time()-start_time} seconds.")
     bam_file.close()
     return reference_stats, aligned_reads, total_reads
+def write_masked_bam(in_bam, out_bam, mask):
+    """Stream in_bam -> out_bam, dropping alignments the region mask removes.
+
+    Uses the same test as scoring (mask.read_is_masked on the aligned span), so
+    the file is what TaxTriage scored: open it in IGV next to the original to
+    see exactly which reads were excluded. Unmapped reads and references the
+    mask does not touch pass through unchanged. Returns (kept, dropped).
+    """
+    kept = dropped = 0
+    with pysam.AlignmentFile(in_bam, "rb") as src:
+        hdr = src.header.to_dict()
+        pg = hdr.setdefault("PG", [])
+        pg.append({"ID": "taxtriage-mask", "PN": "match_paths.py",
+                   "CL": f"mask mode={mask.mode} read_overlap={mask.read_overlap} "
+                         f"bed={','.join(os.path.basename(p) for p in mask.bed_paths + mask.exclude_paths)}"})
+        lengths = dict(zip(src.references, src.lengths))
+        with pysam.AlignmentFile(out_bam, "wb", header=hdr) as dst:
+            for read in src.fetch(until_eof=True):
+                if not read.is_unmapped and read.reference_name is not None:
+                    rm = mask.build(read.reference_name, lengths.get(read.reference_name, 0))
+                    if rm is not None:
+                        rs, re_ = read.reference_start, read.reference_end
+                        _, _, kb = rm.clip(rs, re_)
+                        if mask.read_is_masked(re_ - rs, kb):
+                            dropped += 1
+                            continue
+                        if kb < re_ - rs:
+                            read.set_tag("ZM", int((re_ - rs) - kb), value_type="i")
+                kept += 1
+                dst.write(read)
+    try:
+        pysam.index(out_bam)
+    except Exception as _e:  # unsorted input: leave unindexed rather than fail the run
+        print(f"[mask] WARNING: could not index {out_bam}: {_e}")
+    return kept, dropped
+
+
+def describe_reference_db(bam_path, fasta_paths=None):
+    """Size of the alignment reference: sequence count and total bp from the
+    BAM header (exactly what the reads were aligned against), plus the on-disk
+    size of the reference FASTA(s) when given. Never raises."""
+    out = {"sequences": None, "bp": None, "files": None, "bytes": None}
+    try:
+        with pysam.AlignmentFile(bam_path, check_sq=False) as bam:
+            lengths = bam.lengths
+        out["sequences"] = len(lengths)
+        out["bp"] = int(sum(lengths))
+    except Exception as e:  # pragma: no cover - informational only
+        print(f"WARNING: could not read reference sizes from {bam_path}: {e}", file=sys.stderr)
+    files = [f for f in (fasta_paths or []) if f and os.path.exists(f)]
+    if files:
+        out["files"] = [os.path.basename(f) for f in files]
+        out["bytes"] = int(sum(os.path.getsize(f) for f in files))
+    return out
+
+
 def main():
     args = parse_args()
     inputfile = args.input
@@ -1612,6 +1802,13 @@ def main():
     comparison_df =  pd.DataFrame()
     alignments_to_remove = defaultdict(set)
     if args.fasta:
+        # Fail fast on anything that is not a FASTA (.fa/.fasta/.fna/... with
+        # optional .gz/.bgz). Plain-gzip references are fine: everything that
+        # opens them goes through fasta_utils, which decompresses once for
+        # pysam/htslib (they only read plain or bgzip FASTA).
+        from fasta_utils import check_fasta_path
+        for _fp in args.fasta:
+            check_fasta_path(_fp, "-f/--fasta reference")
         fastas = set(args.fasta)
     # ani_df holds the taxid-level ANI DataFrame (index & cols are taxid strings).
     # It is populated either by generating the matrix from FASTA signatures or by
@@ -1800,9 +1997,11 @@ def main():
     elif args.fasta:
         print("Using fasta files to get reference lengths")
         from Bio import SeqIO
+        from fasta_utils import open_fasta_text
         for fasta in fastas:
-            for record in SeqIO.parse(fasta, "fasta"):
-                orgn_lengths[record.id] = len(record.seq)
+            with open_fasta_text(fasta) as _fh:          # plain, gzip or bgzip
+                for record in SeqIO.parse(_fh, "fasta"):
+                    orgn_lengths[record.id] = len(record.seq)
     else:
         print("No fasta file provided, getting reference lengths from BAM file")
         # get reference lengths from bam file
@@ -1832,12 +2031,63 @@ def main():
                     except Exception as e:
                         print(f"Error in: {e}")
                 i+=1
+    _region_mask = None
+    if getattr(args, 'mask_bed', None) or getattr(args, 'mask_exclude_bed', None):
+        from mask_regions import RegionMask
+        if not getattr(args, 'mask_bed', None) and args.mask_mode == 'target':
+            print("[mask] WARNING: --mask_mode target without --mask_bed targets; "
+                  "falling back to exclude mode with --mask_exclude_bed", file=sys.stderr)
+            args.mask_mode = 'exclude'
+        _region_mask = RegionMask(
+            args.mask_bed or [],
+            exclude_paths=args.mask_exclude_bed or [],
+            mode=args.mask_mode,
+            read_overlap=args.mask_read_overlap,
+            untargeted=args.mask_untargeted,
+            pad=args.mask_pad,
+            min_region=args.mask_min_region,
+        )
+        _d = _region_mask.describe()
+        print(f"[mask] mode={_d['mode']} intervals={_d['bed_intervals']} on {_d['bed_sequences']} "
+              f"sequences ({_d['bed_bp']:,} bp); read_overlap={_d['read_overlap']}"
+              + (f"; untargeted={_d['untargeted']}" if _d['untargeted'] else ""))
     print("Counting reference hits from BAM file…")
     reference_hits, _, total_reads = count_reference_hits(
         inputfile,
         alignments_to_remove=alignments_to_remove,
-        args=args
+        args=args,
+        mask=_region_mask,
     )
+    _reference_db = describe_reference_db(inputfile, args.fasta)
+    _mask_summary = None
+    if _region_mask is not None:
+        _mask_summary = _region_mask.describe()
+        _m_refs = [r for r in reference_hits if _region_mask.build(r, int(reference_hits[r].get('length_full', 0) or 0)) is not None]
+        _mask_summary.update({
+            "references_in_bam": len(reference_hits),
+            "references_masked": len(_m_refs),
+            "masked_bp": int(sum(int(reference_hits[r].get('masked_bp', 0) or 0) for r in _m_refs)),
+            "kept_bp": int(sum(int(reference_hits[r].get('length', 0) or 0) for r in reference_hits)),
+            "reads_considered": int(sum(int(h.get('mask_reads_total', 0) or 0) for h in reference_hits.values())),
+            "reads_masked": int(sum(int(h.get('mask_reads_masked', 0) or 0) for h in reference_hits.values())),
+            "penalty_power": float(args.mask_penalty_power or 0.0),
+        })
+        if _region_mask.mode == "exclude" and not _m_refs:
+            print("[mask] WARNING: no BAM reference matched any BED sequence name — scoring is unmasked. "
+                  "Check that BED column 1 uses the same accessions as the BAM header.")
+        print(f"[mask] {len(_m_refs)}/{len(reference_hits)} references affected; "
+              f"{_mask_summary['masked_bp']:,} bp masked; "
+              f"{_mask_summary['reads_masked']:,}/{_mask_summary['reads_considered']:,} reads removed")
+        # "applied" = the mask actually changed what was scored for this sample;
+        # the report keys its notices off this rather than off "enabled".
+        _mask_summary["applied"] = bool(_m_refs) and (
+            _mask_summary["masked_bp"] > 0 or _mask_summary["reads_masked"] > 0)
+        if getattr(args, 'mask_write_bam', None):
+            _k, _d = write_masked_bam(inputfile, args.mask_write_bam, _region_mask)
+            _mask_summary["masked_bam"] = os.path.basename(args.mask_write_bam)
+            _mask_summary["masked_bam_alignments_kept"] = _k
+            _mask_summary["masked_bam_alignments_dropped"] = _d
+            print(f"[mask] wrote {args.mask_write_bam}: {_k:,} alignments kept, {_d:,} dropped")
     # exit()
 
     mmbert_dict = dict()
@@ -2722,6 +2972,25 @@ def main():
 
         _d['score_power_scale'] = (_reads / _group_total) if _group_total > 0 else 1.0
 
+    def _mask_adjust(data, val):
+        """--mask_penalty_power: TASS *= (1 - masked_read_fraction) ^ power.
+
+        Applied to the raw (0-1) score at every level. Records the factor on
+        the organism so the report can show why a score moved."""
+        if _region_mask is None or val is None:
+            return val
+        _tot = float(data.get('mask_reads_total', 0) or 0)
+        _msk = float(data.get('mask_reads_masked', 0) or 0)
+        _pw = float(getattr(args, 'mask_penalty_power', 0) or 0)
+        _frac = (_msk / _tot) if _tot > 0 else 0.0
+        data['mask_read_fraction'] = _frac
+        _fac = (1.0 - _frac) ** _pw if _pw > 0 else 1.0
+        data['mask_penalty'] = _fac
+        try:
+            return float(val) * _fac
+        except (TypeError, ValueError):
+            return val
+
     def _scale_tass_value(val):
         if val is None:
             return None
@@ -2762,10 +3031,10 @@ def main():
             dmnd = dmnd,
             total_reads = total_reads,
         )
-        data['tass_score'] = _scale_tass_value(compute_tass_score(
-            data = data,
-            weights = weights,
-        ))
+        data['tass_score'] = _scale_tass_value(_mask_adjust(data, compute_tass_score(
+            data=data,
+            weights=weights,
+        )))
     # : Define a function to calculate disparity for each organism
     i=0
 
@@ -2792,7 +3061,16 @@ def main():
     _toplevelkey_cov_frac = {}
     _subkey_numreads_override = {}
     _toplevelkey_numreads_override = {}
-    if comparison_df is not None and not comparison_df.empty and 'Covered BP Subkey' in comparison_df.columns:
+    if _region_mask is not None and comparison_df is not None and not comparison_df.empty \
+            and 'Covered BP Subkey' in comparison_df.columns:
+        # The union-breadth / LCA read-count overrides come from
+        # determine_conflicts, which runs on the UNMASKED alignment. Mixing them
+        # with masked strain metrics would leak masked bases back into species
+        # and genus breadth, so masked runs aggregate strictly from the masked
+        # per-strain values.
+        print("[mask] species/genus union-breadth & LCA read-count overrides disabled "
+              "(they are computed on the unmasked alignment)")
+    elif comparison_df is not None and not comparison_df.empty and 'Covered BP Subkey' in comparison_df.columns:
         _ucb = comparison_df.copy()
         _ucb['_sk'] = _ucb.index.map(lambda a: str(acc_to_subkey.get(a, a)))
         _ucb['_tlk'] = _ucb.index.map(lambda a: str(acc_to_toplevelkey.get(a, a)))
@@ -3040,10 +3318,10 @@ def main():
             group_reads=sk_group_reads,
             total_reads=total_reads,
         )
-        sk_data['tass_score'] = _scale_tass_value(compute_tass_score(
+        sk_data['tass_score'] = _scale_tass_value(_mask_adjust(sk_data, compute_tass_score(
             data=sk_data,
             weights=weights,
-        ))
+        )))
 
     # ── Monotone rollup floor ──────────────────────────────────────────────
     # A parent rank is a strictly WEAKER claim than any of its children:
@@ -3125,10 +3403,10 @@ def main():
             group_reads = group_reads,
             total_reads = total_reads,
         )
-        data['tass_score'] = _scale_tass_value(compute_tass_score(
-            data = data,
-            weights = weights,
-        ))
+        data['tass_score'] = _scale_tass_value(_mask_adjust(data, compute_tass_score(
+            data=data,
+            weights=weights,
+        )))
 
     # Genus-level floor.  Runs after the species floor above so the invariant
     # propagates transitively: genus >= max(species) >= max(strain).
@@ -3764,6 +4042,11 @@ def main():
     _breadth_names_by_key  = {}   # skey -> list of accession names in break order
     _breadth_bins_by_key   = {}   # filled in pass 2
 
+    # With a region mask the breadth histogram is drawn in ORIGINAL reference
+    # coordinates (so positions stay meaningful) with a per-bin masked-% overlay;
+    # every scored metric above used the compressed, mask-free coordinates.
+    _breadth_mask_by_key = defaultdict(list)   # skey -> [(RefMask, offset)]
+    _mask_regions_by_key = defaultdict(list)   # skey -> [{accession, intervals}]
     for _acc, _hit in reference_hits.items():
         _skey = str(_hit.get('key', _acc))
         _numreads  = int(_hit.get('numreads', 0) or 0)
@@ -3773,6 +4056,23 @@ def main():
         _cov       = round(_covered / max(1, _length), 5)
         # Compute per-contig depth histogram so the heatmap can filter by accession
         _cov_regs = _hit.get('covered_regions', [])
+        _acc_rm = None
+        _plot_regs, _plot_len = _cov_regs, _length
+        if _region_mask is not None:
+            _len_full = int(_hit.get('length_full', _length) or 0)
+            _acc_rm = _region_mask.build(_acc, _len_full)
+            if _acc_rm is not None:
+                _plot_regs = _hit.get('covered_regions_orig') or []
+                _plot_len = _len_full
+                if _numreads > 0 or _hit.get('mask_reads_masked', 0):
+                    _ivs = _acc_rm.kept if _region_mask.mode == 'target' else _acc_rm.masked
+                    _mask_regions_by_key[_skey].append({
+                        'accession': _acc,
+                        'length': _len_full,
+                        'kind': 'target' if _region_mask.mode == 'target' else 'masked',
+                        'intervals': [[int(a), int(b)] for a, b in _ivs[:int(args.mask_regions_json_max)]],
+                        'truncated': len(_ivs) > int(args.mask_regions_json_max),
+                    })
         _acc_hist = {}
         if _cov_regs and _length > 0:
             _acc_hist = _build_depth_hist(_cov_regs, _length)
@@ -3787,9 +4087,11 @@ def main():
                     _breadth_names_by_key[_skey]  = []
                 _breadth_breaks_by_key[_skey].append(_offset)
                 _breadth_names_by_key[_skey].append(_acc)
-                for (_s, _e, _d) in _cov_regs:
+                for (_s, _e, _d) in _plot_regs:
                     _breadth_regs_by_key[_skey].append((_s + _offset, _e + _offset, _d))
-                _breadth_len_by_key[_skey] = _offset + _length
+                if _acc_rm is not None:
+                    _breadth_mask_by_key[_skey].append((_acc_rm, _offset))
+                _breadth_len_by_key[_skey] = _offset + _plot_len
         _contig_entry = {
             'name':          _acc,
             'length':        _length,
@@ -3798,6 +4100,10 @@ def main():
             'covered_bases': _covered,
             'coverage':      _cov,
         }
+        if _region_mask is not None:
+            _contig_entry['length_full'] = int(_hit.get('length_full', _length) or 0)
+            _contig_entry['masked_bp'] = int(_hit.get('masked_bp', 0) or 0)
+            _contig_entry['reads_masked'] = int(_hit.get('mask_reads_masked', 0) or 0)
         if _acc_hist and any(_acc_hist.values()):
             _contig_entry['depth_histogram'] = _acc_hist
         _contig_by_key[_skey].append(_contig_entry)
@@ -3822,6 +4128,13 @@ def main():
                     'breaks':       _brk_bins,
                     'contig_names': _breadth_names_by_key.get(_skey, []),
                 }
+                if _breadth_mask_by_key.get(_skey):
+                    from mask_regions import mask_fraction_bins as _mfb
+                    _mbins = [0.0] * len(_bins)
+                    for _rm_i, _off_i in _breadth_mask_by_key[_skey]:
+                        _mfb(_rm_i, _rm_i.length, _off_i, _bsz, len(_bins), _mbins)
+                    _breadth_bins_by_key[_skey]['mask_bins'] = [
+                        min(100.0, 100.0 * _v / _bsz) for _v in _mbins]
                 # Compact covered runs (concatenated coords) so the report can
                 # compute an exact breadth union across a specimen's samples.
                 _ivals = _merge_covered_intervals(_breadth_regs_by_key[_skey])
@@ -3864,10 +4177,13 @@ def main():
     _json_out = _copy.deepcopy(final_json)
     for _grp in _json_out:
         _grp.pop('covered_regions', None)
+        _grp.pop('covered_regions_orig', None)
         for _sk_m in _grp.get('members', []):
             _sk_m.pop('covered_regions', None)
+            _sk_m.pop('covered_regions_orig', None)
             for _strain in _sk_m.get('members', []):
                 _strain.pop('covered_regions', None)
+                _strain.pop('covered_regions_orig', None)
 
     # ── Annotate taxonomy lineage into JSON output ────────────────────────────
     # Store superkingdom/kingdom, phylum, class, order, family, genus names on
@@ -3923,6 +4239,52 @@ def main():
                 _sk_m['taxonomy'] = _sk_lineage
                 for _strain in _sk_m.get('members', []):
                     _strain['taxonomy'] = _sk_lineage
+    # ── NCBI FCS assembly-level annotation (--fcs_assembly_table) ───────────
+    _fcs_by_acc = {}
+    if getattr(args, 'fcs_assembly_table', None) and os.path.exists(args.fcs_assembly_table):
+        _fcs_asm = {}
+        with open(args.fcs_assembly_table) as _fh:
+            _rdr = csv.DictReader(_fh, delimiter='\t')
+            for _r in _rdr:
+                _a = (_r.get('assembly') or '').strip()
+                if _a:
+                    _fcs_asm[_a] = _r
+        _acc2asm = {}
+        if args.match and os.path.exists(args.match):
+            with open(args.match) as _fh:
+                for _line in _fh:
+                    _f = _line.rstrip('\n').split('\t')
+                    for _c in _f[1:]:
+                        if re.match(r'^GC[AF]_\d+', _c):
+                            _acc2asm[_f[0]] = _c
+                            break
+        for _acc in reference_hits:
+            _asm = _acc2asm.get(_acc)
+            _r = _fcs_asm.get(_asm) if _asm else None
+            if _r is None:
+                continue
+            def _num(x):
+                try:
+                    return float(x)
+                except (TypeError, ValueError):
+                    return None
+            _fcs_by_acc[_acc] = {
+                'assembly': _asm,
+                'screened': _r.get('fcs_source', '') not in ('', 'not_screened'),
+                'fraction_contaminated': _num(_r.get('fraction_contaminated')),
+                'contaminant_bp': _num(_r.get('total_contaminant_length')),
+                'contaminant_sequences': _num(_r.get('total_contaminant_accessions')),
+                'masked_in_run_bp': _num(_r.get('masked_bp')),
+                'source': _r.get('fcs_source', ''),
+            }
+        _n_flag = len({v['assembly'] for v in _fcs_by_acc.values() if (v['contaminant_bp'] or 0) > 0})
+        print(f"[fcs] assembly-level FCS info for {len({v['assembly'] for v in _fcs_by_acc.values()})} "
+              f"assemblies; {_n_flag} flagged as contaminated by NCBI")
+        if _mask_summary is None:
+            _mask_summary = {'enabled': False}
+        _mask_summary['fcs_assemblies'] = len({v['assembly'] for v in _fcs_by_acc.values()})
+        _mask_summary['fcs_assemblies_contaminated'] = _n_flag
+
     # ── Attach per-contig histogram data to JSON strains ─────────────────────
     for _grp in _json_out:
         for _sk_m in _grp.get('members', []):
@@ -3953,6 +4315,13 @@ def main():
                         'breaks':       _bbins['breaks'],
                         'contig_names': _bbins.get('contig_names', []),
                     }
+                    if _bbins.get('mask_bins'):
+                        # per-bin % of bases masked (exclude) / outside targets
+                        # (target); drawn as a hatched overlay in the report
+                        _strain['breadth_histogram']['mask_b64'] = _b64.b64encode(
+                            bytes([min(255, round(v)) for v in _bbins['mask_bins']])
+                        ).decode()
+                        _strain['breadth_histogram']['mask_mode'] = _region_mask.mode
                     # Carry the compact covered runs through to the report so it
                     # can compute an EXACT breadth union across a specimen's
                     # samples (per-bin max is only a lower bound). Built in
@@ -3960,6 +4329,17 @@ def main():
                     _ci = _bbins.get('covered_intervals')
                     if _ci:
                         _strain['breadth_histogram']['covered_intervals'] = _ci
+                if _mask_regions_by_key.get(_skey):
+                    _strain['mask_regions'] = _mask_regions_by_key[_skey]
+                if _fcs_by_acc:
+                    _s_accs = _strain.get('accessions') or [c['name'] for c in (_contigs or [])]
+                    _s_fcs = [_fcs_by_acc[a] for a in _s_accs if a in _fcs_by_acc]
+                    if _s_fcs:
+                        _best = max(_s_fcs, key=lambda v: v.get('contaminant_bp') or 0)
+                        _strain['fcs_assembly'] = _best
+                        if (_best.get('contaminant_bp') or 0) > 0:
+                            _sk_m['fcs_contaminated_member'] = True
+                            _grp['fcs_contaminated_member'] = True
 
     # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
     # Extract per-group best_threshold values so create_report.py can use
@@ -4212,6 +4592,14 @@ def main():
                         "sequencing_instrument", "sequencing_protocol_primer_set",
                         "sequencing_platform"}},
         "total_reads": total_reads,
+        # Size of what went in: read files as supplied, and the reference the
+        # reads were aligned to (sequence count / bp from the BAM header).
+        "input_data": {
+            "bytes": args.input_bytes if args.input_bytes and args.input_bytes > 0 else None,
+            "files": [f for f in (args.input_files or "").split(",") if f] or None,
+            "reads": total_reads,
+        },
+        "reference_db": _reference_db,
         "aligned_reads": aligned_reads_total,
         "total_organism_reads": int(_total_organism_reads),
         "num_species_groups": len(final_json),
@@ -4219,6 +4607,7 @@ def main():
         "num_subkeys": len(_all_subkeys),
         "num_toplevelkeys": len(_all_toplevelkeys),
         "minmapq": args.minmapq,
+        "masking": _mask_summary,  # None when no --mask_bed; see docs/masking.md
         "mapq_breadth_power": args.mapq_breadth_power,
         "weights": dict(weights),
         "min_conf_applied": None,  # populated by create_report per-sample

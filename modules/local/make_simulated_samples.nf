@@ -40,7 +40,14 @@ process MAKE_SIMULATED_SAMPLES {
 
     """
     # Concatenate all reference FASTAs into a single file
-    cat ${fastas} > merged_reference.fasta
+    # References may be plain or gzip/bgzip compressed: decompress while merging
+    # (a plain `cat` of mixed inputs would produce an invalid FASTA).
+    for f in ${fastas}; do
+        case "\$f" in
+            *.gz|*.GZ|*.bgz|*.BGZ) gzip -dc "\$f" ;;
+            *) cat "\$f" ;;
+        esac
+    done > merged_reference.fasta
 
     make_simulated_samples.py \
         ${top_report_arg} \

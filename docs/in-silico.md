@@ -653,7 +653,7 @@ An accession may be a RefSeq/GenBank assembly (`GCF_`/`GCA_`), a nuccore accessi
 or a path to a local FASTA (`.fa`/`.fasta`/`.fna`, optionally `.gz`; absolute, or
 relative to the directory you launch Nextflow from). References are resolved from
 the pipeline's `assembly_summary` first, then the NCBI `datasets` CLI, then Entrez.
-A local FASTA is keyed by its file name (`test_output/orthopox.fasta` -> `orthopox`).
+A local FASTA is keyed by its file name (`refs/orthopox.fasta` -> `orthopox`).
 
 **Spiking part of a reference.** Add a `record` column naming the FASTA record id(s)
 to keep (`;`-separated; version optional). One record becomes the row's id, so a

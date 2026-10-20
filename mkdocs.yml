@@ -176,6 +176,7 @@ nav:
           - Output: output.md
           - Interactive Report: interactive-report.md
           - Alignment Trends: alignment-trends.md
+          - Region Masking (FCS / Targeted): masking.md
           - TASS Scoring: tass-scoring.md
           - Microbial Categories: microbial-categories.md
           - Novelty Detection: novelty-detection.md

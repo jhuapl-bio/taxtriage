@@ -134,6 +134,28 @@ If it still fails:
 - Increase Docker/Singularity memory limits
 - Split the run into smaller batches of samples
 
+### Compressed (`.gz`) reference FASTAs
+
+Every reference input (`--reference_fasta`, `--remove_reference_file`, `--cram_reference`, `--mask_fasta`, a `--genome` FASTA) can be plain or compressed. Accepted names are `.fa`, `.fasta`, `.fna`, `.fas`, `.fsa`, `.ffn`, `.frn` or `.mfa`, each optionally followed by `.gz` or `.bgz` (case-insensitive). Anything else (a FASTQ, a BAM, a `.zip`, a typo) stops the run at startup with a message naming the parameter, before any work is queued. `--reference_fasta` directories are scanned for the same extensions.
+
+Compressed references are passed through **compressed** wherever the consumer can read them; nothing is decompressed up front.
+
+| Consumer                                                       | Reads `.gz`?                  | What TaxTriage does                                                                                                                                    |
+| -------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| minimap2 (alignment, host removal)                             | yes                           | passes the `.gz` as is                                                                                                                                 |
+| Deacon index build                                             | yes                           | passes the `.gz` as is (several files are concatenated, decompressing as needed)                                                                       |
+| `fuzzy_match_assembly.py` (accession mapping)                  | yes                           | reads the `.gz` directly                                                                                                                               |
+| `match_paths.py`, `conflict_regions.py`, simulation scripts    | yes, via `bin/fasta_utils.py` | plain and bgzip FASTA open with pysam; ordinary gzip is **streamed directly** (no decompressed copy; only a few-KB name/length/offset index is cached) |
+| bowtie2-build, hisat2-build                                    | no                            | decompressed inside the build task only (temporary)                                                                                                    |
+| in-silico simulation merge                                     | n/a                           | concatenates references with `gzip -dc` for compressed ones                                                                                            |
+| bcftools / bedtools (`--get_variants`, `--reference_assembly`) | no                            | only with these options, `--reference_fasta` `.gz` files are decompressed once into the work directory (`DECOMPRESS_REFERENCE`, never published)       |
+| CRAM decoding (`--cram_reference`)                             | plain or bgzip only           | an ordinary-gzip `--cram_reference` is decompressed once                                                                                               |
+| `samtools stats` in host removal                               | plain or bgzip only           | a gzipped host reference is left out of the stats call (read counts are unaffected)                                                                    |
+
+For a very large gzip reference read with heavy random access by the Python steps, `export TAXTRIAGE_GZ_FASTA=decompress` switches them to one plain copy (`<name>.taxtriage.fasta` + `.fai`) instead of streaming. Converting the file to bgzip (`gunzip -c x.fa.gz | bgzip > x.fa.bgz`) gives indexed access with no plain copy at all.
+
+**`OSError: error when opening file 'x.fasta.gz'` from pysam (running a script by hand):** that is htslib refusing an ordinary-gzip FASTA. Current `bin/` scripts handle it automatically; with an older copy, either `gunzip` the file or recompress it with `bgzip` (`gunzip -c x.fasta.gz | bgzip > x.fasta.gz.bgz`).
+
 ### SAMTOOLS_HIST_COVERAGE
 
 Make sure a `.bam` file exists in the `alignment/` directory for each sample. An empty or missing BAM indicates alignment failed upstream.

@@ -76,16 +76,127 @@ body {
   font-weight: 700;
   flex-shrink: 0;
 }
+#banner .banner-title {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* Stats line: one line, gives way first (ellipsis; full text in its tooltip)
+   so the run name and the masking pill keep their room. */
 #banner .sub {
   font-size: 0.75em;
   font-weight: 400;
   opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 4ch;
+  flex: 0 1 auto;
+}
+/* Region-masking pill: short label; per-sample detail in a popover (below). */
+#banner .banner-mask {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2em 0.65em;
+  border-radius: 999px;
+  background: rgba(255, 193, 7, 0.22);
+  border: 1px solid rgba(255, 213, 79, 0.75);
+  color: #fff8e1;
+  font-size: 0.7em;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+#banner .banner-mask[hidden] {
+  display: none;
+}
+#banner .banner-mask:hover,
+#banner .banner-mask:focus-visible,
+#banner .banner-mask.open {
+  background: rgba(255, 193, 7, 0.34);
+  outline: none;
+}
+/* Masking detail popover. Appended to <body> (position: fixed) so the right
+   sidebar / its resize handle can't paint over it; placed by _maskPopSet(). */
+.banner-mask-pop {
+  display: none;
+  position: fixed;
+  z-index: 10001;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 16px));
+  padding: 0.7em 0.85em;
+  border-radius: 8px;
+  background: #263238;
+  color: #eceff1;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+}
+.banner-mask-pop.show {
+  display: block;
+}
+.banner-mask-pop .bmp-title {
+  font-weight: 700;
+  color: #ffe082;
+  margin-bottom: 0.25em;
+}
+.banner-mask-pop .bmp-note {
+  color: #b0bec5;
+  font-size: 0.9em;
+  margin: 0.25em 0;
+}
+.banner-mask-pop table {
+  border-collapse: collapse;
+  margin-top: 0.4em;
+  font-size: 0.9em;
+}
+.banner-mask-pop th,
+.banner-mask-pop td {
+  padding: 0.2em 0.7em 0.2em 0;
+  white-space: nowrap;
+  text-align: left;
+  background: transparent !important;
+  border: none;
+  color: inherit;
+}
+.banner-mask-pop th {
+  color: #90a4ae;
+  font-weight: 600;
+  position: static;
+  box-shadow: none;
+}
+.banner-mask-pop td.num {
+  text-align: right;
+}
+.banner-mask-pop tr,
+.banner-mask-pop tr:hover {
+  background: transparent !important;
+}
+body.report-pdf-printing .banner-mask-pop {
+  display: none !important;
+}
+/* Medium widths: the help buttons go icon-only (they keep their tooltips) so
+   the stats line isn't squeezed to a stub. */
+@media (max-width: 1280px) {
+  #helpmode-btn .help-btn-label,
+  #help-btn .help-btn-label {
+    display: none;
+  }
 }
 #banner .banner-run {
   display: inline-flex;
   align-items: center;
   gap: 0.4em;
-  max-width: 28ch;
+  max-width: 42ch;
   padding: 0.2em 0.7em;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.16);
@@ -94,7 +205,7 @@ body {
   font-weight: 600;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: nowrap;
-  flex-shrink: 1;
+  flex-shrink: 0;
   min-width: 0;
 }
 #banner .banner-run[hidden] {
@@ -4475,6 +4586,13 @@ textarea:focus-visible,
   }
   #banner {
     font-size: 1em;
+  }
+  #banner .banner-title {
+    display: none;
+  }
+  #banner .banner-run {
+    max-width: 22ch;
+    flex-shrink: 1;
   }
 }
 

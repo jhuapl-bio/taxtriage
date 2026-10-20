@@ -15,6 +15,10 @@ from collections import defaultdict
 from pathlib import Path
 
 import pysam
+try:
+    from fasta_utils import open_pysam_fasta as _open_fasta  # plain, bgzip or gzip FASTA
+except ImportError:  # pragma: no cover
+    _open_fasta = pysam.FastaFile
 
 
 def extract_sequences_for_accessions(fa: pysam.FastaFile, accessions: list,
@@ -114,7 +118,7 @@ def main():
         org_accs[org].append(acc)
 
     # 4. Open reference FASTA once (pysam auto-creates .fai if missing)
-    fa = pysam.FastaFile(str(args.reference))
+    fa = _open_fasta(str(args.reference))
 
     # 5. Create per-organism FASTAs and build genome_list + size_file
     genome_list_path = args.outdir / "genome_list.tsv"

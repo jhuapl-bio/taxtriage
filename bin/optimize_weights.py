@@ -566,6 +566,18 @@ def calculate_normalized_groups(
         agg["covered_bases"] = sums.get("covered_bases", 0.0)
         agg["k2_reads"] = sums.get("k2_reads", 0.0)
 
+        # ── Region-mask bookkeeping (only present with --mask_bed) ───────────
+        # Summed so species/genus carry the pooled masked-read fraction used by
+        # --mask_penalty_power and shown in the report.
+        if any("mask_reads_total" in e for e in entries):
+            for _mf in ("mask_reads_total", "mask_reads_masked", "masked_bp", "length_full"):
+                agg[_mf] = sum(_to_float(e.get(_mf, 0)) for e in entries)
+            agg["mask_read_fraction"] = (
+                agg["mask_reads_masked"] / agg["mask_reads_total"]
+                if agg["mask_reads_total"] > 0 else 0.0)
+            agg["mask_bp_fraction"] = (
+                agg["masked_bp"] / agg["length_full"] if agg["length_full"] > 0 else 0.0)
+
         # ── Species/genus numreads override (MAPQ-filtered by default; see
         #    group_numreads_override in the docstring) ─────────────────────────
         # The per-strain numreads from count_reference_hits is filtered by
