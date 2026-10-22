@@ -36,7 +36,7 @@ nextflow -v
 ```
 
 > **HPC users:** Make sure `nextflow` is in your `$PATH` if it's not globally available on your cluster.
-> **OSX users:** The Brew package manager simplifies installation: brew install nextflow  
+> **OSX users:** The Brew package manager simplifies installation: `brew install nextflow`  
 
 
 ---
