@@ -21,13 +21,16 @@ process BEDTOOLS_MASKFASTA {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
+    // bedtools maskfasta cannot read gzip/bgzip FASTA (arq5x/bedtools2#985): it aborts with
+    // std::out_of_range. Stream it through `zcat -f`, which also passes plain FASTA through unchanged.
     """
     bedtools \\
         maskfasta \\
         $args \\
-        -fi $fasta \\
+        -fi <(zcat -f $fasta) \\
         -bed $bed \\
         -fo ${prefix}.fa
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         bedtools: \$(bedtools --version | sed -e "s/bedtools v//g")
