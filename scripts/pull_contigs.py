@@ -198,16 +198,18 @@ class Eutils:
             time.sleep(self.next_ok - now)
         self.next_ok = time.monotonic() + self.interval
 
-    def request(self, endpoint, params):
+    def request(self, endpoint, params, retries=None, timeout=None):
         data = urllib.parse.urlencode(params, doseq=True).encode()
         url = EUTILS_BASE.rstrip("/") + "/" + endpoint
+        retries = retries or self.retries
+        timeout = timeout or self.timeout
         last = None
-        for attempt in range(self.retries):
+        for attempt in range(retries):
             self._wait()
             try:
                 req = urllib.request.Request(url, data=data,
                                              headers={"User-Agent": "taxtriage-pull-contigs"})
-                with urllib.request.urlopen(req, context=self.ctx, timeout=self.timeout) as r:
+                with urllib.request.urlopen(req, context=self.ctx, timeout=timeout) as r:
                     body = r.read().decode("utf-8", errors="replace")
                 self.requests += 1
                 return body
@@ -222,7 +224,7 @@ class Eutils:
                     if e.code == 429:
                         self.interval = min(self.interval * 1.5, 2.0)
                     LOG.warning("NCBI %s HTTP %s, retry %d/%d in %.1fs",
-                                endpoint, e.code, attempt + 1, self.retries, delay)
+                                endpoint, e.code, attempt + 1, retries, delay)
                     time.sleep(min(delay, 60))
                     continue
                 raise
@@ -240,15 +242,15 @@ class Eutils:
                     continue
                 delay = 2.0 ** attempt + random.uniform(0, 0.5)
                 LOG.warning("NCBI %s network error (%s), retry %d/%d in %.1fs",
-                            endpoint, e.reason, attempt + 1, self.retries, delay)
+                            endpoint, e.reason, attempt + 1, retries, delay)
                 time.sleep(min(delay, 60))
             except Exception as e:  # noqa: BLE001 - socket timeouts, resets
                 last = e
                 delay = 2.0 ** attempt + random.uniform(0, 0.5)
                 LOG.warning("NCBI %s error (%s), retry %d/%d in %.1fs",
-                            endpoint, e, attempt + 1, self.retries, delay)
+                            endpoint, e, attempt + 1, retries, delay)
                 time.sleep(min(delay, 60))
-        raise RuntimeError(f"NCBI {endpoint} failed after {self.retries} attempts: {last}")
+        raise RuntimeError(f"NCBI {endpoint} failed after {retries} attempts: {last}")
 
     def esearch_accn(self, accs):
         p = self._common("nuccore")
@@ -270,11 +272,16 @@ class Eutils:
         p.update(id=",".join(uids), rettype="fasta", retmode="text")
         return self.request("efetch.fcgi", p)
 
-    def elink_assembly(self, uids):
-        """{nuccore uid: [assembly uid, ...]} (one linkset per id)."""
+    def elink_assembly(self, uids, retries=2, timeout=60):
+        """{nuccore uid: [assembly uid, ...]} (one linkset per id).
+
+        Each repeated id= is a separate link computation on NCBI's side, so a large
+        batch can outlast NCBI's backend limit (~15 s) and the connection is dropped
+        with an empty body (IncompleteRead(0 bytes)). Retrying the same batch does
+        not help, so fail fast here and let ncbi_assemblies() split it."""
         p = self._common("assembly")
         p.update(dbfrom="nuccore", id=list(uids), retmode="json", linkname="nuccore_assembly")
-        js = json.loads(self.request("elink.fcgi", p))
+        js = json.loads(self.request("elink.fcgi", p, retries=retries, timeout=timeout))
         out = {}
         for ls in js.get("linksets", []):
             ids = [str(i) for i in ls.get("ids", [])]
@@ -924,32 +931,68 @@ def ncbi_sequences(eu, todo, state, max_bp, max_ids):
     return got
 
 
+def _elink_split(eu, chunk, depth=0):
+    """elink a chunk; on failure split it in half until single ids.
+    Returns ({nuccore uid: [assembly uids]}, [failed (acc, uid)], n_splits)."""
+    try:
+        return eu.elink_assembly([u for _, u in chunk]), [], 0
+    except Exception as e:  # noqa: BLE001
+        if len(chunk) == 1:
+            LOG.warning("elink failed for %s (uid %s): %s", chunk[0][0], chunk[0][1], e)
+            return {}, list(chunk), 0
+        LOG.info("elink batch of %d failed (%s); splitting", len(chunk),
+                 str(e).split(":")[-1].strip())
+        mid = len(chunk) // 2
+        l1, f1, s1 = _elink_split(eu, chunk[:mid], depth + 1)
+        l2, f2, s2 = _elink_split(eu, chunk[mid:], depth + 1)
+        l1.update(l2)
+        return l1, f1 + f2, s1 + s2 + 1
+
+
 def ncbi_assemblies(eu, records, state, batch_size):
-    """records: list of (record acc, uid). nuccore->assembly via elink."""
+    """records: list of (record acc, uid). nuccore->assembly via elink.
+
+    Batches are small (--elink-batch-size) and a batch NCBI drops is split in half
+    recursively, so one slow id no longer costs the whole batch. Ids that still
+    fail are not cached and are retried on the next run."""
     items = [(a, u) for a, u in records if u]
     nb = (len(items) + batch_size - 1) // batch_size
+    all_failed = []
     for b in range(nb):
         chunk = items[b * batch_size:(b + 1) * batch_size]
+        links, failed, splits = _elink_split(eu, chunk)
+        asm_uids = sorted({x for v in links.values() for x in v})
+        asm = {}
         try:
-            links = eu.elink_assembly([u for _, u in chunk])
-            asm_uids = sorted({x for v in links.values() for x in v})
-            asm = {}
             for i in range(0, len(asm_uids), 200):
                 for ds in eu.esummary("assembly", asm_uids[i:i + 200]):
                     asm[str(ds.get("uid"))] = ds.get("assemblyaccession", "")
         except Exception as e:  # noqa: BLE001
-            LOG.error("Assembly batch %d/%d failed: %s (will retry on the next run)", b + 1, nb, e)
+            LOG.error("Assembly batch %d/%d: assembly esummary failed: %s (will retry on the "
+                      "next run)", b + 1, nb, e)
+            all_failed.extend(chunk)
             continue
+        failed_uids = {u for _, u in failed}
         out = []
         for acc, uid in chunk:
+            if uid in failed_uids:
+                continue
             accs = [asm[x] for x in links.get(uid, []) if asm.get(x)]
             pref = "GCF_" if re.match(r"^(N[CZTGW]|AC|NW)_", acc) else "GCA_"
             accs.sort(key=lambda a: (not a.startswith(pref), a))
             out.append(dict(acc=acc, assembly=accs[0] if accs else "", source="ncbi_elink",
                             n_linked=len(accs)))
         state.put_assembly(out)
-        LOG.info("Assembly batch %d/%d: %d/%d linked to an assembly", b + 1, nb,
-                 sum(1 for d in out if d["assembly"]), len(out))
+        all_failed.extend(failed)
+        LOG.info("Assembly batch %d/%d: %d/%d linked to an assembly%s%s", b + 1, nb,
+                 sum(1 for d in out if d["assembly"]), len(chunk),
+                 f", {splits} split(s)" if splits else "",
+                 f", {len(failed)} failed" if failed else "")
+    if all_failed:
+        LOG.warning("Assembly lookup failed for %d record(s) (%s%s); the FASTA and taxids are "
+                    "unaffected, only their Assembly column is empty. Re-run to retry, or "
+                    "pass --no-elink to skip.", len(all_failed),
+                    ", ".join(a for a, _ in all_failed[:5]), ", ..." if len(all_failed) > 5 else "")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1033,7 +1076,11 @@ def parse_args(argv=None):
                    help="Skip the nuccore->assembly elink lookup for contigs whose docsum "
                         "has no assembly")
     p.add_argument("--batch-size", type=int, default=200,
-                   help="Accessions per metadata / elink request (default 200)")
+                   help="Accessions per esearch/esummary metadata request (default 200)")
+    p.add_argument("--elink-batch-size", type=int, default=20,
+                   help="Records per nuccore->assembly elink request (default 20). Each id "
+                        "is a separate link computation at NCBI; large batches time out "
+                        "and are split automatically")
     p.add_argument("--max-bp", type=float, default=50e6,
                    help="Max total bp per efetch request / local write batch (default 50e6)")
     p.add_argument("--max-ids", type=int, default=500,
@@ -1163,7 +1210,7 @@ def main(argv=None):
         need = list(dict.fromkeys(need))
         if need:
             LOG.info("Assemblies: elink for %d record(s) without one in their docsum", len(need))
-            ncbi_assemblies(eu, need, state, args.batch_size)
+            ncbi_assemblies(eu, need, state, args.elink_batch_size)
 
     # 5) finalise FASTA + taxonomy
     keep = {state.by_requested[r] for r in requested if r in state.by_requested}

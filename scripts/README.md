@@ -4,12 +4,12 @@ Scripts that run **outside** the Nextflow workflow. Full usage: [Standalone Scri
 
 ## Reference building
 
-| Script | Purpose |
-| --- | --- |
-| `pull_contigs.py` | List of contig accessions → `--reference_fasta` + `--custom_accession_map` (local FASTA / NCBI, taxdump-normalised taxids, resumable). Standard library only. |
-| `pathogen_db/build_pathogen_db.sh` | Rebuild `pathogens.fasta(.gz)` + `pathogens.mapping.taxid.tsv` from `assets/pathogen_sheet.csv` (the reference `--get_pathogens` downloads). |
-| `pathogen_db/validate_names.py` | Sheet name vs. downloaded organism name per taxid. |
-| `pathogen_db/add_assembly_column.py` | Add `assembly_accession` to the pathogen sheet; write the next build's download input. |
+| Script                               | Purpose                                                                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pull_contigs.py`                    | List of contig accessions → `--reference_fasta` + `--custom_accession_map` (local FASTA / NCBI, taxdump-normalised taxids, resumable). Standard library only. |
+| `pathogen_db/build_pathogen_db.sh`   | Rebuild `pathogens.fasta(.gz)` + `pathogens.mapping.taxid.tsv` from `assets/pathogen_sheet.csv` (the reference `--get_pathogens` downloads).                  |
+| `pathogen_db/validate_names.py`      | Sheet name vs. downloaded organism name per taxid.                                                                                                            |
+| `pathogen_db/add_assembly_column.py` | Add `assembly_accession` to the pathogen sheet; write the next build's download input.                                                                        |
 
 ```bash
 python3 scripts/pull_contigs.py -i contigs.txt -o refs/ --taxdump taxdump/ -e you@org.org
