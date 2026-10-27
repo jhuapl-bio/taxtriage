@@ -8771,6 +8771,169 @@ body.report-pdf-printing #tt-admin-overlay {
   pointer-events: none;
   white-space: normal;
 }
+
+/* ── Region masking: before / after (53_mask_compare.js) ─────────────────── */
+#mcmp-section {
+  margin-bottom: 0.7em;
+}
+.mcmp-summary {
+  margin: 0.2em 0 0.45em;
+  padding: 0.4em 0.55em;
+  border-radius: 5px;
+  border: 1px solid #e2e8f2;
+  background: #f7f9fc;
+  color: #52606d;
+  font-size: 0.78em;
+  line-height: 1.45;
+}
+.mcmp-summary:empty {
+  display: none;
+}
+.mcmp-open-btn {
+  font-size: 0.78em;
+  padding: 3px 10px;
+  border: 1px solid #9aa5b1;
+  border-radius: 4px;
+  background: #fff;
+  color: #3e4c59;
+  cursor: pointer;
+  font-weight: 600;
+}
+.mcmp-open-btn:hover {
+  border-color: #1565c0;
+  color: #0d47a1;
+}
+.mcmp-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #eef0f3;
+  border: 1px solid #c3c8cf;
+  color: #4a4f57;
+  font-size: 0.72em;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.mcmp-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 28, 40, 0.42);
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 10050;
+  padding: 4vh 16px;
+}
+.mcmp-modal.show {
+  display: flex;
+}
+.mcmp-dialog {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  width: min(1180px, 100%);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: #26323d;
+}
+.mcmp-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.mcmp-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: #1565c0;
+}
+.mcmp-sub {
+  color: #6b7480;
+  font-size: 12px;
+  margin-top: 2px;
+}
+.mcmp-x {
+  border: none;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: #6b7480;
+}
+.mcmp-ctrls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.mcmp-ctrls .mcmp-csv {
+  margin-left: auto;
+  border: 1px solid #1565c0;
+  background: #fff;
+  color: #1565c0;
+  border-radius: 4px;
+  padding: 2px 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.mcmp-tablewrap {
+  overflow: auto;
+  flex: 1 1 auto;
+  border: 1px solid #e3e7ec;
+  border-radius: 5px;
+}
+.mcmp-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.mcmp-table th {
+  position: sticky;
+  top: 0;
+  background: #f4f6f9;
+  text-align: left;
+  padding: 5px 8px;
+  border-bottom: 1px solid #dde2e8;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mcmp-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid #f0f2f5;
+}
+.mcmp-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mcmp-stbl {
+  margin-bottom: 6px;
+  border: 1px solid #e3e7ec;
+}
+.mcmp-stbl th {
+  cursor: default;
+  position: static;
+}
+.mcmp-table td.mc-gain {
+  color: #2e7d32;
+  font-weight: 600;
+}
+.mcmp-table td.mc-loss {
+  color: #c62828;
+  font-weight: 600;
+}
+.mcmp-table tr.mc-removed td {
+  background: #fff6f5;
+}
+.mcmp-badge[hidden],
+#mcmp-section[hidden] {
+  display: none;
+}
     </style>
   </head>
   <body>
@@ -9524,7 +9687,10 @@ body.report-pdf-printing #tt-admin-overlay {
         <!-- HEATMAP -->
         <div class="pane" id="pane-heatmap">
           <div class="chart-wrap">
-            <div class="chart-title">Sample × Organism — value heat</div>
+            <div class="chart-title">
+              Sample × Organism — value heat
+              <span id="hm-mcmp-badge" class="mcmp-badge" hidden></span>
+            </div>
             <div class="tab-controls">
               <label>Value</label>
               <select id="hm-value-col">
@@ -10294,6 +10460,19 @@ body.report-pdf-printing #tt-admin-overlay {
                   "
                 />
                 contigs
+              </label>
+              <!-- Region masking: draw breadth over the whole genome or only the scored
+                   (kept / targeted) bases; shown only for masked organisms -->
+              <label
+                id="hist-scope-lbl"
+                style="display: none; align-items: center; gap: 4px"
+                title="Region masking: 'Scored regions only' joins the kept / targeted bases end to end so a genome that is mostly masked still gets a readable coverage track. Auto uses it when half or more of the genome was not scored."
+                >Breadth
+                <select id="hist-breadth-scope">
+                  <option value="auto" selected>Auto</option>
+                  <option value="full">Whole genome</option>
+                  <option value="scored">Scored regions only</option>
+                </select>
               </label>
             </div>
             <div
@@ -12571,6 +12750,37 @@ body.report-pdf-printing #tt-admin-overlay {
             >
             <div id="fk-clear-row"><button type="button" id="fk-clear-btn">Clear all</button></div>
           </div>
+        </div>
+
+        <!-- Region masking before / after (53_mask_compare.js); shown only when
+             the run carries match_paths --mask_compare results -->
+        <div id="mcmp-section" hidden>
+          <h3 style="display: flex; align-items: center; gap: 0.4em">
+            Masking: before / after
+            <button
+              class="info-tip-btn"
+              id="mcmp-tip-btn"
+              aria-label="Masking before / after help"
+              data-tip="&lt;b&gt;Region masking: TASS before / after&lt;/b&gt;&lt;br&gt;Masked samples were also scored &lt;b&gt;without&lt;/b&gt; the mask (--mask_compare). The masked TASS stays the report&#39;s score everywhere; this panel only lets you look at the other side.&lt;br&gt;&lt;br&gt;&lt;b&gt;Heatmap TASS&lt;/b&gt; switches the heatmap (Value = TASS) between the masked score, the unmasked score and the change (green = gained with the mask, red = lost).&lt;br&gt;&lt;b&gt;Show in tables&lt;/b&gt; adds a small grey ▴/▾ unmasked TASS after each TASS in the Summary table (green / red when the call flips at the cutoff).&lt;br&gt;Hovering any TASS in the Summary or Table tab, or a heatmap cell, always shows before → after.&lt;br&gt;&lt;br&gt;&lt;b&gt;Before / after table&lt;/b&gt; lists every organism with both scores, reads, breadth and pass/fail at the current cutoffs (CSV export)."
+            >
+              &#x24D8;
+            </button>
+          </h3>
+          <label for="mcmp-mode" style="font-size: 0.82em; font-weight: 600; color: #374151; display: block"
+            >Heatmap TASS</label
+          >
+          <select id="mcmp-mode" style="width: 100%">
+            <option value="masked" selected>Masked (scored)</option>
+            <option value="unmasked">Unmasked (before mask)</option>
+            <option value="delta">Change (masked − unmasked)</option>
+          </select>
+          <label style="display: flex; align-items: center; gap: 0.35em; font-size: 0.85em; margin: 0.35em 0">
+            <input type="checkbox" id="mcmp-show-tables" /> Show unmasked TASS in tables
+          </label>
+          <div id="mcmp-summary" class="mcmp-summary"></div>
+          <button type="button" id="mcmp-open-btn" class="mcmp-open-btn">
+            <i class="fas fa-table"></i> Before / after table
+          </button>
         </div>
 
         <h3 style="display: flex; align-items: center; gap: 0.4em">
@@ -17841,6 +18051,12 @@ function drawHeatmap() {
   wrap.innerHTML = "";
   const fd = filteredData();
   const col = document.getElementById("hm-value-col").value || "# Reads Aligned";
+  // Region masking before/after (53_mask_compare.js, right panel): with the
+  // value set to TASS the cells can show the unmasked TASS or the change.
+  const _mcMode = col === "TASS Score" && typeof ttMaskCmpMode === "function" ? ttMaskCmpMode() : "masked";
+  const _isDelta = _mcMode === "delta";
+  const _val = (r) => (_mcMode === "masked" ? num(r[col]) : ttMaskCmpValue(r, _mcMode));
+  const _colLbl = _mcMode === "unmasked" ? "TASS (unmasked)" : _isDelta ? "TASS change (masked \u2212 unmasked)" : col;
   const rank =
     (document.getElementById("hm-rank") || document.getElementById("tass-rank") || { value: "Genus" }).value || "Genus";
   const showVals = document.getElementById("hm-show-vals").checked;
@@ -17906,11 +18122,14 @@ function drawHeatmap() {
 
   const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H);
 
-  const vals = fd.map((r) => num(r[col])).filter((v) => v > 0);
-  const vmax = vals.length ? d3.max(vals) : 1;
+  const vals = fd.map((r) => _val(r)).filter((v) => (_isDelta ? v !== 0 && isFinite(v) : v > 0));
+  const vmax = _isDelta ? Math.max(1, d3.max(vals.map(Math.abs)) || 1) : vals.length ? d3.max(vals) : 1;
   const scaleMode = (document.getElementById("hm-scale") || { value: "linear" }).value;
   let color;
-  if (scaleMode === "log") {
+  if (_isDelta) {
+    // diverging: red = TASS lost to masking, green = gained
+    color = d3.scaleDiverging((t) => d3.interpolateRdYlGn(t)).domain([-vmax, 0, vmax]);
+  } else if (scaleMode === "log") {
     color = d3.scaleSequentialLog(d3.interpolateBlues).domain([Math.max(1, d3.min(vals) || 1), Math.max(1, vmax)]);
   } else if (scaleMode === "sqrt") {
     color = d3.scaleSequentialSqrt(d3.interpolateBlues).domain([0, vmax]);
@@ -18087,13 +18306,14 @@ function drawHeatmap() {
   const lookup = {};
   fd.forEach((r) => {
     const k = `${r["Specimen ID"]}|||${r["Detected Organism"]}`;
-    if (!lookup[k] || num(r[col]) > num(lookup[k][col])) lookup[k] = r;
+    if (!lookup[k] || (_isDelta ? Math.abs(_val(r)) > Math.abs(_val(lookup[k])) : _val(r) > _val(lookup[k])))
+      lookup[k] = r;
   });
 
   organisms.forEach((org) => {
     samples.forEach((sp) => {
       const r = lookup[`${sp}|||${org}`];
-      const v = r ? num(r[col]) : null;
+      const v = r ? _val(r) : null;
       // Organism QC flag for this cell (48_organism_flags.js).
       const _of = r && typeof ttOFlagStateFor === "function" ? ttOFlagStateFor(r) : null;
       const cell = svg
@@ -18102,7 +18322,7 @@ function drawHeatmap() {
         .attr("y", yScale(org))
         .attr("width", xScale.bandwidth())
         .attr("height", yScale.bandwidth())
-        .attr("fill", v !== null && v > 0 ? color(v) : "#f0f0f0")
+        .attr("fill", v !== null && (_isDelta ? v !== 0 : v > 0) ? color(v) : "#f0f0f0")
         .attr("rx", 2);
 
       cell
@@ -18114,9 +18334,10 @@ function drawHeatmap() {
           const tass = num(r["TASS Score"]);
           const hc = isTruthy(r["High Consequence"]) ? " 🔴 HC" : "";
           showTip(
-            `<b>${org}</b>${hc}<br>Sample: ${sp}<br>${col}: <b>${
-              v !== null ? v.toLocaleString() : "n/a"
+            `<b>${org}</b>${hc}<br>Sample: ${sp}<br>${_colLbl}: <b>${
+              v !== null ? (_isDelta ? (v > 0 ? "+" : "") + v.toFixed(1) : v.toLocaleString()) : "n/a"
             }</b><br>TASS: ${tass.toFixed(1)} · ${rankLabel(r, rank)}` +
+              (typeof ttMaskCmpTipHTML === "function" ? ttMaskCmpTipHTML(r) : "") +
               (_of
                 ? `<br><span style="color:#ffcc80"><i class="fas fa-flag"></i> Organism QC: ${_of.hits
                     .map((h) => _ttOFlagEsc(h.text))
@@ -18128,15 +18349,21 @@ function drawHeatmap() {
         .on("mousemove", moveTip)
         .on("mouseout", hideTip);
 
-      if (showVals && v !== null && v > 0) {
+      if (showVals && v !== null && (_isDelta ? Math.abs(v) >= 0.05 : v > 0)) {
         svg
           .append("text")
           .attr("x", xScale(sp) + xScale.bandwidth() / 2)
           .attr("y", yScale(org) + yScale.bandwidth() / 2 + 4)
           .attr("text-anchor", "middle")
-          .attr("fill", txtColor)
+          .attr("fill", _isDelta ? (Math.abs(v) > 0.65 * vmax ? "#fff" : "#222") : txtColor)
           .attr("font-size", 9)
-          .text(v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0));
+          .text(
+            _isDelta
+              ? (v > 0 ? "+" : "\u2212") + Math.abs(v).toFixed(Math.abs(v) < 10 ? 1 : 0)
+              : v >= 1000
+              ? `${(v / 1000).toFixed(1)}k`
+              : v.toFixed(0),
+          );
       }
 
       // Rescued-strain marker: top-right corner triangle when the strain
@@ -18238,7 +18465,7 @@ function drawHeatmap() {
     cbGrad
       .append("stop")
       .attr("offset", `${t * 100}%`)
-      .attr("stop-color", color(t * vmax));
+      .attr("stop-color", color(_isDelta ? -vmax + 2 * t * vmax : t * vmax));
   });
   svg
     .append("rect")
@@ -18254,14 +18481,14 @@ function drawHeatmap() {
     .attr("y", cbY - 4)
     .attr("text-anchor", "middle")
     .attr("font-size", 10)
-    .text(vmax.toFixed(0));
+    .text(_isDelta ? "+" + vmax.toFixed(0) : vmax.toFixed(0));
   svg
     .append("text")
     .attr("x", cbX + cbW / 2)
     .attr("y", cbY + cbH + 12)
     .attr("text-anchor", "middle")
     .attr("font-size", 10)
-    .text("0");
+    .text(_isDelta ? "\u2212" + vmax.toFixed(0) : "0");
 
   svg
     .append("text")
@@ -18269,7 +18496,13 @@ function drawHeatmap() {
     .attr("text-anchor", "middle")
     .attr("font-size", 9)
     .attr("fill", "#666")
-    .text(`Scale: ${scaleMode}`);
+    .text(
+      _isDelta
+        ? "TASS change from masking"
+        : _mcMode === "unmasked"
+        ? `Unmasked TASS \u00b7 ${scaleMode}`
+        : `Scale: ${scaleMode}`,
+    );
 
   // ── Frozen axes (spreadsheet-style) ────────────────────────────────
   // #heatmap-svg-wrap scrolls in BOTH directions, and on every scroll event
@@ -21975,6 +22208,76 @@ function renderTableHeaders() {
        -     wrapped in an IIFE that exposes its draw/clear callbacks. Driven
        -     by genome-coverage histogram data attached to organism rows.
 ═══════════════════════════════════════════════════════════════════════════ */
+
+// ── Region-mask helpers (match_paths --mask_bed / --mask_products) ─────────
+// breadth_histogram.mask_b64 = per-bin % of bases NOT scored (masked in
+// exclude mode, outside the targets in target mode). Shared with the Summary
+// sparkline (18_tab_summary.js).
+function ttMaskBins(bh) {
+  if (!bh || !bh.mask_b64) return null;
+  if (bh._maskBins === undefined) {
+    try {
+      const mraw = atob(bh.mask_b64);
+      bh._maskBins = Array.from({ length: mraw.length }, (_, i) => mraw.charCodeAt(i));
+    } catch (e) {
+      bh._maskBins = null;
+    }
+  }
+  return Array.isArray(bh._maskBins) && bh._maskBins.length ? bh._maskBins : null;
+}
+// % of the whole genome not scored: exact (bh.mask_pct from match_paths) when
+// present, else the length-weighted mean of the per-bin mask.
+function ttMaskPct(bh) {
+  if (!bh) return null;
+  if (bh.mask_pct !== undefined && bh.mask_pct !== null && Number.isFinite(+bh.mask_pct)) return +bh.mask_pct;
+  const mb = ttMaskBins(bh);
+  if (!mb) return null;
+  const binSz = bh.bin_size || 2000;
+  const totLen = bh.total_len || mb.length * binSz;
+  let w = 0,
+    acc = 0;
+  mb.forEach((m, i) => {
+    const len = Math.max(0, Math.min(binSz, totLen - i * binSz));
+    acc += m * len;
+    w += len;
+  });
+  return w > 0 ? acc / w : null;
+}
+// Scored-regions-only histogram (match_paths: breadth_histogram.scored): the
+// kept / targeted bases joined end to end. Decoded lazily into a histogram-
+// shaped object; orig_start maps each bin back to its contig position and
+// gap_bins marks the bins where one kept region ends and the next begins.
+function ttScoredHist(bh) {
+  const sc = bh && bh.scored;
+  if (!sc || !sc.b64) return null;
+  if (!sc._bins) {
+    try {
+      const raw = atob(sc.b64);
+      sc._bins = Array.from({ length: raw.length }, (_, i) => raw.charCodeAt(i));
+    } catch (e) {
+      return null;
+    }
+  }
+  return sc;
+}
+// Text width in px for a CSS font (layout before the SVG text exists).
+let _ttMeasureCtx = null;
+function _ttTextW(txt, font) {
+  try {
+    if (!_ttMeasureCtx) _ttMeasureCtx = document.createElement("canvas").getContext("2d");
+    _ttMeasureCtx.font = font;
+    return _ttMeasureCtx.measureText(String(txt)).width;
+  } catch (e) {
+    return String(txt).length * 6;
+  }
+}
+// Never round a partial mask to "0%" / "100%".
+function ttFmtMaskPct(v) {
+  return (
+    (v <= 0 || v >= 100 ? v.toFixed(0) : v < 1 || v > 99 ? v.toFixed(1) : v >= 10 ? v.toFixed(0) : v.toFixed(1)) + "%"
+  );
+}
+
 (function () {
   function _getOrgKey(cd) {
     return `${cd.organism}||${cd.taxon_id}`;
@@ -22218,6 +22521,8 @@ function renderTableHeaders() {
     const sample = sampleSel ? sampleSel.value : "";
     const metric = metricSel ? metricSel.value : "reads";
     const limitTo = top20El ? parseInt(top20El.value, 10) || 15 : 9999;
+    const scopeSel = document.getElementById("hist-breadth-scope");
+    const breadthScope = scopeSel ? scopeSel.value : "auto";
 
     if (!orgKey) {
       noData.style.display = "block";
@@ -22310,7 +22615,14 @@ function renderTableHeaders() {
       mB_reads = 30,
       mL_reads = 160,
       mR_reads = 36;
-    const mT_brd = 28,
+    // Extra headroom for the scored / not-scored strip when any row is masked
+    const _anyMaskHist = entries.some((cd) => cd && cd.breadth_histogram && cd.breadth_histogram.mask_b64);
+    const _scopeLbl = document.getElementById("hist-scope-lbl");
+    if (_scopeLbl)
+      _scopeLbl.style.display = entries.some((cd) => cd && cd.breadth_histogram && cd.breadth_histogram.scored)
+        ? "flex"
+        : "none";
+    const mT_brd = _anyMaskHist ? 52 : 28,
       mB_brd = 36,
       iH_brd_min = 110;
     const mT_dep = 22,
@@ -22542,7 +22854,23 @@ function renderTableHeaders() {
 
       entries.forEach((cd, ei) => {
         const rowH = rowHeights[ei];
-        const bh = cd.breadth_histogram;
+        const bhFull = cd.breadth_histogram;
+        // Scored-regions-only view (see ttScoredHist): whole genome vs only the
+        // kept / targeted bases. Auto = scored view when >= 50 % was not scored.
+        const _sc = ttScoredHist(bhFull);
+        const _fullMaskPct = _sc ? ttMaskPct(bhFull) : null;
+        const useScored =
+          !!_sc &&
+          (breadthScope === "scored" || (breadthScope === "auto" && _fullMaskPct !== null && _fullMaskPct >= 50));
+        const bh = useScored
+          ? {
+              bins: _sc._bins,
+              bin_size: _sc.bin_size,
+              total_len: _sc.total_len,
+              breaks: _sc.breaks,
+              contig_names: _sc.contig_names,
+            }
+          : bhFull;
         const hasBh = bh && Array.isArray(bh.bins) && bh.bins.length > 0;
 
         if (!hasBh) {
@@ -22566,20 +22894,21 @@ function renderTableHeaders() {
         // Top-N set — build filtered bins/breaks/names restricted to visible contigs
         const topContigSet = new Set((cd.contigs || []).slice(0, limitTo).map((c) => c.name));
 
-        // Region mask overlay (match_paths --mask_bed): per-bin % of bases that
-        // were masked (exclude mode) or lay outside the targets (target mode).
-        // Decoded lazily and cached on the histogram object.
-        if (bh.mask_b64 && !bh._maskBins) {
-          try {
-            const mraw = atob(bh.mask_b64);
-            bh._maskBins = Array.from({ length: mraw.length }, (_, i) => mraw.charCodeAt(i));
-          } catch (e) {
-            bh._maskBins = null;
-          }
-        }
+        // Region mask: per-bin % NOT scored (see ttMaskBins)
+        ttMaskBins(bh);
         const maskBins = Array.isArray(bh._maskBins) && bh._maskBins.length === nBins ? bh._maskBins : null;
         const maskMode = bh.mask_mode || "exclude";
 
+        // Scored view: each bin's original start + "a new kept region starts here"
+        let scOrig =
+          useScored && Array.isArray(_sc.orig_start) && _sc.orig_start.length === nBins ? _sc.orig_start : null;
+        let scGap = null;
+        if (useScored && Array.isArray(_sc.gap_bins)) {
+          scGap = new Array(nBins).fill(false);
+          _sc.gap_bins.forEach((b) => {
+            if (b > 0 && b < nBins) scGap[b] = true;
+          });
+        }
         // Remap breadth histogram to only the top-N contigs so grey sections disappear
         let filteredBins = bins,
           filteredBreaks = breaks,
@@ -22590,6 +22919,8 @@ function renderTableHeaders() {
           const remappedMask = [];
           const remappedBreaks = [];
           const remappedNames = [];
+          const remappedOrig = [];
+          const remappedGap = [];
           contigNames.forEach((cName, ci) => {
             if (!topContigSet.has(cName)) return;
             const bStart = breaks[ci] || 0;
@@ -22599,6 +22930,8 @@ function renderTableHeaders() {
             for (let b = bStart; b < bEnd; b++) {
               remappedBins.push(bins[b]);
               if (maskBins) remappedMask.push(maskBins[b]);
+              if (scOrig) remappedOrig.push(scOrig[b]);
+              if (scGap) remappedGap.push(scGap[b]);
             }
           });
           if (remappedBins.length > 0) {
@@ -22606,6 +22939,8 @@ function renderTableHeaders() {
             filteredBreaks = remappedBreaks;
             filteredContigNames = remappedNames;
             filteredMask = maskBins ? remappedMask : null;
+            if (scOrig) scOrig = remappedOrig;
+            if (scGap) scGap = remappedGap;
           }
         }
         const fNBins = filteredBins.length;
@@ -22633,7 +22968,27 @@ function renderTableHeaders() {
         const mL = 42,
           mR = 8;
         const iW = panelW - mL - mR;
-        const iH = Math.max(iH_brd_min, rowH - mT_brd - mB_brd);
+        // Whole-genome view of a masked organism: the not-scored badge sits top
+        // right. When it would run into the title (narrow panel / long name) it
+        // gets its own row under the title and this panel's plot gives up the
+        // 20 px. (The scored-only view has no strip, so its badge uses that row.)
+        let mT = mT_brd;
+        let _badgeOwnRow = false;
+        if (maskBins && !useScored) {
+          const _ff = getComputedStyle(document.body).fontFamily || "sans-serif";
+          const _tW = _ttTextW(`${cd.organism}${showAll ? ` \u2014 ${cd.sample}` : ""}`, `600 10px ${_ff}`);
+          const _mp = ttMaskPct(bhFull);
+          const _bTxt =
+            _mp === null
+              ? "Not scored (outside targets)"
+              : `Not scored: ${ttFmtMaskPct(_mp)} (outside targets) \u00b7 scored: ${ttFmtMaskPct(100 - _mp)}`;
+          const _bW = _ttTextW(_bTxt, `700 10px ${_ff}`) + 62 + 28;
+          if (_tW + 12 + _bW > iW + mR) {
+            _badgeOwnRow = true;
+            mT = mT_brd + 20;
+          }
+        }
+        const iH = Math.max(iH_brd_min - (mT - mT_brd), rowH - mT - mB_brd);
 
         const svg = d3
           .select(breadthWrap)
@@ -22643,17 +22998,18 @@ function renderTableHeaders() {
           .style("display", "block")
           .style("margin-bottom", "0");
 
-        svg
+        // Left-aligned when masked so the not-scored badge (top right) has room
+        const titleEl = svg
           .append("text")
-          .attr("x", mL + iW / 2)
+          .attr("x", _anyMaskHist ? mL : mL + iW / 2)
           .attr("y", 14)
-          .attr("text-anchor", "middle")
+          .attr("text-anchor", _anyMaskHist ? "start" : "middle")
           .attr("font-size", 10)
           .attr("font-weight", "600")
           .attr("fill", "#333")
           .text(`${cd.organism}${sLbl}`);
 
-        const g = svg.append("g").attr("transform", `translate(${mL},${mT_brd})`);
+        const g = svg.append("g").attr("transform", `translate(${mL},${mT})`);
         const xSc = d3.scaleLinear().domain([xDomStart, xDomEnd]).range([0, iW]);
         const ySc = d3.scaleLinear().domain([0, maxPct]).range([iH, 0]);
 
@@ -22704,25 +23060,78 @@ function renderTableHeaders() {
 
         const barsG = g.append("g").attr("clip-path", `url(#${clipId})`);
 
+        // Keep a top-right badge clear of the title on narrow panels. The
+        // scored-only view has no scope strip, so its badge drops into that row
+        // (just above the plot); the whole-genome view keeps the badge and
+        // shortens the title instead (full name on hover).
+        function _fitBadge(badgeSel, canDrop) {
+          if (_badgeOwnRow) {
+            // its own row between the subtitle and the scored strip
+            badgeSel.attr("transform", "translate(0,30)");
+            return;
+          }
+          try {
+            const bb = badgeSel.node().getBBox();
+            const tEl = titleEl.node();
+            const tW = tEl.getComputedTextLength ? tEl.getComputedTextLength() : 0;
+            if (!bb.width || bb.x >= mL + tW + 12) return;
+            if (canDrop) {
+              badgeSel.attr("transform", `translate(0,${mT_brd - 22})`);
+              return;
+            }
+            const full = titleEl.text();
+            const room = bb.x - mL - 12;
+            let txt = full;
+            while (txt.length > 4 && tEl.getComputedTextLength() > room) {
+              txt = txt.slice(0, -2);
+              titleEl.text(txt + "\u2026");
+            }
+            titleEl.append("title").text(full);
+          } catch (e) {
+            /* not rendered yet (hidden tab) - leave as is */
+          }
+        }
+
         // ── Mask layer (behind the coverage bars) ──────────────────────────
-        // exclude: grey = masked bases (not scored). target: amber = targeted
-        // bases (the only ones scored). Equal neighbouring bins merge into one
-        // rect so long masked spans draw as a solid band.
-        if (filteredMask) {
-          const layer = filteredMask.map((m) => {
-            const v = maskMode === "target" ? 100 - m : m;
-            return Math.round(v / 5) * 5;
-          });
+        // Bases that were NOT scored (masked in exclude mode, outside the
+        // targets in target mode) are hatched grey, darker the more of the bin
+        // is unscored; coverage bars there are faded. A strip above the plot
+        // shows the same split (blue = scored, hatched = not scored) and a
+        // badge gives the genome-wide %. Equal neighbouring bins merge into one
+        // rect so long spans draw as a solid band.
+        const _unscored = filteredMask ? filteredMask.map((m) => Math.max(0, Math.min(100, m))) : null;
+        if (_unscored) {
+          const hatchId = `brd-hatch-${ei}`;
+          const pat = svg
+            .select("defs")
+            .append("pattern")
+            .attr("id", hatchId)
+            .attr("patternUnits", "userSpaceOnUse")
+            .attr("width", 6)
+            .attr("height", 6)
+            .attr("patternTransform", "rotate(45)");
+          pat.append("rect").attr("width", 6).attr("height", 6).attr("fill", "#dcdce2");
+          pat
+            .append("line")
+            .attr("x1", 0)
+            .attr("y1", 0)
+            .attr("x2", 0)
+            .attr("y2", 6)
+            .attr("stroke", "#8d8d96")
+            .attr("stroke-width", 2.2);
+
+          const layer = _unscored.map((m) => Math.round(m / 5) * 5);
           const runs = [];
           for (let i = 0; i < layer.length; ) {
             let j = i;
             while (j + 1 < layer.length && layer[j + 1] === layer[i]) j++;
-            if (layer[i] > 0) runs.push({ i0: i, i1: j + 1, v: layer[i] });
+            runs.push({ i0: i, i1: j + 1, v: layer[i] });
             i = j + 1;
           }
+          const maskRuns = runs.filter((r) => r.v > 0);
           barsG
             .selectAll("rect.bh-mask")
-            .data(runs)
+            .data(maskRuns)
             .enter()
             .append("rect")
             .attr("class", "bh-mask")
@@ -22730,18 +23139,206 @@ function renderTableHeaders() {
             .attr("y", 0)
             .attr("width", (d) => Math.max(1, xSc(d.i1) - xSc(d.i0)))
             .attr("height", iH)
-            .attr("fill", maskMode === "target" ? "#f2b84b" : "#9a9aa1")
-            .attr("opacity", (d) => 0.12 + 0.38 * (d.v / 100))
+            .attr("fill", `url(#${hatchId})`)
+            .attr("opacity", (d) => Math.max(0.08, 0.9 * (d.v / 100)))
             .attr("shape-rendering", "crispEdges")
             .style("pointer-events", "none");
+
+          // Scope strip: scored vs not scored along the genome
+          const stripH = 9,
+            stripY = -17;
+          const stripG = g.append("g").attr("class", "bh-scope");
+          const stripClip = `brd-strip-clip-${ei}`;
+          svg
+            .select("defs")
+            .append("clipPath")
+            .attr("id", stripClip)
+            .append("rect")
+            .attr("y", stripY)
+            .attr("width", iW)
+            .attr("height", stripH);
+          // Partly-masked bins blend blue -> grey by their unscored share;
+          // bins mostly not scored are hatched.
+          const _stripMix = d3.interpolateRgb("#4f8fd6", "#8d8d96");
+          const stripInner = stripG.append("g").attr("clip-path", `url(#${stripClip})`);
+          stripInner
+            .append("rect")
+            .attr("x", 0)
+            .attr("y", stripY)
+            .attr("width", iW)
+            .attr("height", stripH)
+            .attr("fill", "#4f8fd6");
+          stripInner
+            .selectAll("rect.bh-scope-m")
+            .data(maskRuns)
+            .enter()
+            .append("rect")
+            .attr("class", "bh-scope-m")
+            .attr("x", (d) => xSc(d.i0))
+            .attr("y", stripY)
+            .attr("width", (d) => Math.max(1, xSc(d.i1) - xSc(d.i0)))
+            .attr("height", stripH)
+            .attr("fill", (d) => (d.v >= 50 ? `url(#${hatchId})` : _stripMix(d.v / 100)))
+            .attr("shape-rendering", "crispEdges");
+          stripG
+            .append("rect")
+            .attr("x", 0)
+            .attr("y", stripY)
+            .attr("width", iW)
+            .attr("height", stripH)
+            .attr("fill", "none")
+            .attr("stroke", "#9aa3ad")
+            .attr("stroke-width", 0.6);
           svg
             .append("text")
-            .attr("x", mL + iW)
-            .attr("y", 14)
+            .attr("x", mL - 4)
+            .attr("y", mT + stripY + stripH - 1)
             .attr("text-anchor", "end")
-            .attr("font-size", 9)
-            .attr("fill", maskMode === "target" ? "#a8741a" : "#77777e")
-            .text(maskMode === "target" ? "\u25A0 targeted (only scored region)" : "\u25A0 masked (not scored)");
+            .attr("font-size", 8)
+            .attr("fill", "#555")
+            .text("scored");
+
+          // Genome-wide badge (top right)
+          const mpct = ttMaskPct(bh);
+          const modeTxt = maskMode === "target" ? "outside targets" : "masked";
+          const badgeTxt =
+            mpct === null
+              ? `Not scored (${modeTxt})`
+              : `Not scored: ${ttFmtMaskPct(mpct)} (${modeTxt}) \u00b7 scored: ${ttFmtMaskPct(100 - mpct)}`;
+          const full = +bh.total_len || 0;
+          const badge = svg.append("g").attr("class", "bh-mask-badge").style("cursor", "help");
+          const bt = badge
+            .append("text")
+            .attr("y", 15)
+            .attr("font-size", 10)
+            .attr("font-weight", 700)
+            .attr("fill", "#4a4a52")
+            .text(badgeTxt);
+          const tw = bt.node().getComputedTextLength ? bt.node().getComputedTextLength() : badgeTxt.length * 5.5;
+          const bx = mL + iW - tw - 10;
+          badge
+            .insert("rect", "text")
+            .attr("x", bx - 62 - 8)
+            .attr("y", 2)
+            .attr("width", tw + 62 + 18)
+            .attr("height", 18)
+            .attr("rx", 9)
+            .attr("fill", "#f1f1f4")
+            .attr("stroke", "#a9a9b2");
+          // Mini 100% bar: blue = scored, hatched = not scored
+          const pbW = 56;
+          badge
+            .insert("rect", "text")
+            .attr("x", bx - pbW - 6)
+            .attr("y", 6)
+            .attr("width", pbW)
+            .attr("height", 10)
+            .attr("fill", "#4f8fd6");
+          if (mpct !== null && mpct > 0)
+            badge
+              .insert("rect", "text")
+              .attr("x", bx - 6 - (pbW * Math.min(100, mpct)) / 100)
+              .attr("y", 6)
+              .attr("width", Math.max(1, (pbW * Math.min(100, mpct)) / 100))
+              .attr("height", 10)
+              .attr("fill", `url(#${hatchId})`);
+          badge
+            .insert("rect", "text")
+            .attr("x", bx - pbW - 6)
+            .attr("y", 6)
+            .attr("width", pbW)
+            .attr("height", 10)
+            .attr("fill", "none")
+            .attr("stroke", "#7d7d86")
+            .attr("stroke-width", 0.6);
+          bt.attr("x", bx + 2);
+          _fitBadge(badge, false);
+          badge
+            .on("mouseover", (ev) =>
+              showTip(
+                `<b>${maskMode === "target" ? "Target mode" : "Exclude mode"}</b><br>` +
+                  (mpct === null
+                    ? ""
+                    : `<b>${ttFmtMaskPct(mpct)}</b> of the genome was not considered` +
+                      (full ? ` (\u2248${fmtLen(Math.round((full * mpct) / 100))} of ${fmtLen(full)})` : "") +
+                      `.<br>`) +
+                  (maskMode === "target"
+                    ? "Only the targeted regions (BED / CDS-exon products) are scored."
+                    : "Masked regions are excluded from scoring.") +
+                  `<br>Breadth, depth and TASS use the scored part only.<br>` +
+                  `<span style="color:#ccc">Hatched = not scored \u00b7 blue strip = scored</span>`,
+                ev,
+              ),
+            )
+            .on("mousemove", moveTip)
+            .on("mouseout", hideTip);
+        }
+
+        // ── Scored-regions-only view: region joins + badge ──────────────────
+        if (useScored) {
+          // where one kept / targeted region ends and the next begins
+          const gapIdx = [];
+          if (scGap)
+            scGap.forEach((f, i) => {
+              if (f && i >= xDomStart && i < xDomEnd) gapIdx.push(i);
+            });
+          const gapG = g.append("g").attr("class", "bh-scored-gaps").style("pointer-events", "none");
+          gapG
+            .selectAll("line.tick")
+            .data(gapIdx)
+            .enter()
+            .append("line")
+            .attr("x1", (i) => xSc(i))
+            .attr("x2", (i) => xSc(i))
+            .attr("y1", -5)
+            .attr("y2", gapIdx.length <= 60 ? iH : 0)
+            .attr("stroke", "#d08a1e")
+            .attr("stroke-width", 0.8)
+            .attr("stroke-dasharray", gapIdx.length <= 60 ? "2,3" : null)
+            .attr("opacity", gapIdx.length <= 60 ? 0.55 : 0.8);
+          const nReg = (_sc.gap_bins || []).length + (_sc.breaks || []).length;
+          const fullLen = +bhFull.total_len || 0;
+          const scPct = fullLen > 0 ? (100 * _sc.total_len) / fullLen : null;
+          const badgeTxt =
+            `Scored regions only: ${fmtLen(_sc.total_len)}` +
+            (fullLen ? ` of ${fmtLen(fullLen)} (${ttFmtMaskPct(scPct)} of genome)` : "") +
+            ` \u00b7 ${nReg.toLocaleString()}${_sc.gaps_truncated ? "+" : ""} region${nReg === 1 ? "" : "s"}`;
+          const badge = svg.append("g").attr("class", "bh-mask-badge").style("cursor", "help");
+          const bt = badge
+            .append("text")
+            .attr("y", 15)
+            .attr("font-size", 10)
+            .attr("font-weight", 700)
+            .attr("fill", "#7a4f0e")
+            .text(badgeTxt);
+          const tw = bt.node().getComputedTextLength ? bt.node().getComputedTextLength() : badgeTxt.length * 5.5;
+          const bx = mL + iW - tw - 10;
+          badge
+            .insert("rect", "text")
+            .attr("x", bx - 10)
+            .attr("y", 2)
+            .attr("width", tw + 20)
+            .attr("height", 18)
+            .attr("rx", 9)
+            .attr("fill", "#fff6e6")
+            .attr("stroke", "#e0b25c");
+          bt.attr("x", bx);
+          _fitBadge(badge, true);
+          badge
+            .on("mouseover", (ev) =>
+              showTip(
+                `<b>Scored regions only</b><br>The ${
+                  bhFull.mask_mode === "target" ? "targeted" : "unmasked"
+                } bases joined end to end: ${fmtLen(_sc.total_len)}` +
+                  (fullLen ? ` of the ${fmtLen(fullLen)} genome (${ttFmtMaskPct(100 - scPct)} not scored)` : "") +
+                  `.<br>Amber ticks mark where one region ends and the next begins (a jump in genome position); ` +
+                  `grey dashes are contig boundaries. Hover a bin for its genome position.<br>` +
+                  `<span style="color:#ccc">Breadth \u2192 Whole genome shows the real positions with the masked spans hatched.</span>`,
+                ev,
+              ),
+            )
+            .on("mousemove", moveTip)
+            .on("mouseout", hideTip);
         }
 
         barsG
@@ -22757,7 +23354,10 @@ function renderTableHeaders() {
           .attr("fill", ({ v, i }) => {
             return v > 0 ? colorFn(v) : "#ececec";
           })
-          .attr("opacity", ({ i }) => (selIdx < 0 ? 1 : i >= selBinStart && i < selBinEnd ? 1 : 0.15))
+          .attr("opacity", ({ i }) => {
+            const base = selIdx < 0 ? 1 : i >= selBinStart && i < selBinEnd ? 1 : 0.15;
+            return _unscored ? base * (1 - 0.6 * (_unscored[i] / 100)) : base;
+          })
           .attr("shape-rendering", "crispEdges")
           .style("cursor", "pointer")
           .on("click", function (ev, { v, i }) {
@@ -22773,17 +23373,27 @@ function renderTableHeaders() {
             const cName = filteredContigNames[ci] || "";
             const posStart = i * binSz;
             const posEnd = Math.min(totLen, posStart + binSz);
+            // scored view: genome position of the bin's first base (+ a note when
+            // the bin spans a jump between two kept regions)
+            const _gpos =
+              scOrig && scOrig[i] !== undefined
+                ? `Genome pos: \u2248${Number(scOrig[i]).toLocaleString()}` +
+                  (scGap && (scGap[i] || scGap[i + 1]) ? ` <span style="color:#e0b25c">(region boundary)</span>` : "") +
+                  `<br>`
+                : "";
             showTip(
               `<b>${cName || `Bin ${i + 1}`}</b><br>` +
                 `<span style="color:#aaa;font-size:0.9em">Click to filter</span><br>` +
-                `Pos: ${fmtLen(posStart)} \u2013 ${fmtLen(posEnd)}<br>` +
+                (useScored
+                  ? `Scored pos: ${fmtLen(posStart)} \u2013 ${fmtLen(posEnd)}<br>${_gpos}`
+                  : `Pos: ${fmtLen(posStart)} \u2013 ${fmtLen(posEnd)}<br>`) +
                 `Covered: <b>${v.toFixed(1)}%</b>` +
-                (filteredMask && filteredMask[i] > 0
-                  ? maskMode === "target"
-                    ? `<br>Targeted: <b>${(100 - filteredMask[i]).toFixed(0)}%</b> of bin`
-                    : `<br>Masked: <b>${filteredMask[i].toFixed(0)}%</b> of bin (not scored)`
-                  : maskMode === "target" && filteredMask
-                  ? `<br>Targeted: <b>100%</b> of bin`
+                (filteredMask
+                  ? filteredMask[i] > 0
+                    ? `<br><span style="color:#77777e">Not scored: <b>${filteredMask[i].toFixed(0)}%</b> of bin (${
+                        maskMode === "target" ? "outside targets" : "masked"
+                      })</span>`
+                    : `<br>Scored: <b>100%</b> of bin`
                   : ""),
               ev,
             );
@@ -22848,7 +23458,7 @@ function renderTableHeaders() {
           .tickFormat((d) => {
             const bp = (d - _xTickOffset) * binSz;
             if (_xRefLen >= 1e6) return (bp / 1e6).toFixed(1) + "M";
-            if (_xRefLen >= 1e3) return (bp / 1e3).toFixed(0) + "K";
+            if (_xRefLen >= 1e3) return (bp / 1e3).toFixed(_xRefLen < 2e4 ? 1 : 0) + "K";
             return bp;
           });
         g.append("g").attr("transform", `translate(0,${iH})`).call(xAxis).selectAll("text").attr("font-size", 8);
@@ -22858,6 +23468,10 @@ function renderTableHeaders() {
             ? `${filteredContigNames[selIdx] || "Contig"}  (bin\u202f=\u202f${fmtLen(
                 binSz,
               )}, len\u202f\u2248\u202f${fmtLen(visRange * binSz)})`
+            : useScored
+            ? `Scored positions only, joined end to end  (bin\u202f=\u202f${fmtLen(binSz)}, scored\u202f=\u202f${fmtLen(
+                totLen,
+              )})`
             : `Genomic position  (bin\u202f=\u202f${fmtLen(binSz)}, genome\u202f=\u202f${fmtLen(totLen)})`;
         g.append("text")
           .attr("x", iW / 2)
@@ -22879,7 +23493,7 @@ function renderTableHeaders() {
         svg
           .append("text")
           .attr("transform", "rotate(-90)")
-          .attr("x", -(mT_brd + iH / 2))
+          .attr("x", -(mT + iH / 2))
           .attr("y", 10)
           .attr("text-anchor", "middle")
           .attr("font-size", 9)
@@ -22889,13 +23503,15 @@ function renderTableHeaders() {
         const subLine =
           selIdx >= 0
             ? `Filtered: ${filteredContigNames[selIdx] || ""} \u00b7 max=${maxBin}% \u00b7 mean=${avgPct}%`
-            : `bin=${fmtLen(binSz)} \u00b7 genome=${fmtLen(totLen)} \u00b7 max=${maxBin}% \u00b7 mean=${avgPct}%` +
+            : `bin=${fmtLen(binSz)} \u00b7 ${useScored ? "scored" : "genome"}=${fmtLen(
+                totLen,
+              )} \u00b7 max=${maxBin}% \u00b7 mean=${avgPct}%` +
               (filteredBreaks.length > 1 ? ` \u00b7 ${filteredBreaks.length} contigs` : "");
         svg
           .append("text")
-          .attr("x", mL + iW / 2)
-          .attr("y", mT_brd - 4)
-          .attr("text-anchor", "middle")
+          .attr("x", _anyMaskHist ? mL : mL + iW / 2)
+          .attr("y", _anyMaskHist ? 27 : mT_brd - 4)
+          .attr("text-anchor", _anyMaskHist ? "start" : "middle")
           .attr("font-size", 8)
           .attr("fill", "#888")
           .text(subLine);
@@ -23020,7 +23636,7 @@ function renderTableHeaders() {
 
   // Wire histogram controls after DOM is ready (scripts are at end of body)
   _buildSelectors();
-  ["hist-sample-sel", "hist-metric-sel", "hist-merge-mode-sel"].forEach((id) => {
+  ["hist-sample-sel", "hist-metric-sel", "hist-merge-mode-sel", "hist-breadth-scope"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener("change", window.drawHistogram);
   });
@@ -23315,6 +23931,11 @@ function _renderOneRow(row) {
       }
       td.style.textAlign = "center";
       td.style.fontWeight = "600";
+      // Region masking: TASS before masking on hover (53_mask_compare.js)
+      if (typeof ttMaskCmpTitle === "function") {
+        const _mt = ttMaskCmpTitle(row);
+        if (_mt) td.title = _mt;
+      }
       // Species-rollup hit: mark the row with the rescued-row style.
       // The level badge in the Detected Organism column already identifies
       // this as a Species row — no duplicate text badge needed here.
@@ -25676,24 +26297,46 @@ function _posBins(cd) {
   return null;
 }
 // Sparkline: per-position coverage profile when available, else depth-bin bars.
+// Mostly-masked organisms (>= 50 % not scored, or Histograms → Breadth set to
+// "Scored regions only"): profile the scored bases only, like the Histograms tab.
+function _sparkScored(cd) {
+  const bh = cd && cd.breadth_histogram;
+  const sc = typeof ttScoredHist === "function" ? ttScoredHist(bh) : null;
+  if (!sc) return null;
+  const scope = (document.getElementById("hist-breadth-scope") || {}).value || "auto";
+  if (scope === "full") return null;
+  const mp = typeof ttMaskPct === "function" ? ttMaskPct(bh) : null;
+  return scope === "scored" || (mp !== null && mp >= 50) ? sc._bins : null;
+}
 function _sparkHtml(cd) {
-  const pos = _posBins(cd);
+  const _scBins = _sparkScored(cd);
+  const pos = _scBins ? _scBins.map((v) => num(v)) : _posBins(cd);
   if (pos && pos.length) {
     // Downsample to ~24 columns for a compact inline profile.
     const N = 24;
     const step = Math.max(1, Math.ceil(pos.length / N));
+    // Region mask: columns mostly NOT scored are drawn grey over a hatched
+    // underline so the masked share is visible at a glance.
+    const mb = !_scBins && typeof ttMaskBins === "function" ? ttMaskBins(cd.breadth_histogram) : null;
+    const mask = mb && mb.length === pos.length ? mb : null;
     const cols = [];
     for (let i = 0; i < pos.length; i += step) {
       const seg = pos.slice(i, i + step);
-      cols.push(seg.reduce((s, v) => s + v, 0) / seg.length);
+      const mseg = mask ? mask.slice(i, i + step) : null;
+      cols.push({
+        v: seg.reduce((s, v) => s + v, 0) / seg.length,
+        m: mseg ? mseg.reduce((s, v) => s + v, 0) / mseg.length : 0,
+      });
     }
     return (
-      '<span class="spark spark-pos">' +
+      `<span class="spark spark-pos${mask ? " spark-masked" : ""}${_scBins ? " spark-scored" : ""}">` +
       cols
-        .map((v) => {
+        .map(({ v, m }) => {
           const h = Math.max(1, Math.round((Math.min(100, v) / 100) * 16));
-          const c = v >= 50 ? "#1c7ed6" : v > 0 ? "#74c0fc" : "#dee2e6";
-          return `<i style="height:${h}px;background:${c}"></i>`;
+          const off = m >= 50;
+          const c = off ? (v > 0 ? "#a5a5ae" : "#d6d6dc") : v >= 50 ? "#1c7ed6" : v > 0 ? "#74c0fc" : "#dee2e6";
+          const ul = mask ? (m >= 50 ? "#8d8d96" : m > 0 ? "#c4c4cc" : "#4f8fd6") : null;
+          return `<i style="height:${h}px;background:${c}${ul ? `;box-shadow:0 2px 0 ${ul}` : ""}"></i>`;
         })
         .join("") +
       "</span>"
@@ -25712,8 +26355,48 @@ function _sparkHtml(cd) {
     "</span>"
   );
 }
+// Hatched overlay of the NOT-scored bins (region masking) for the hover preview.
+function _previewMaskSvg(cd, n, W, H) {
+  const bh = cd && cd.breadth_histogram;
+  const mb = typeof ttMaskBins === "function" ? ttMaskBins(bh) : null;
+  if (!mb || mb.length !== n) return "";
+  let out =
+    `<defs><pattern id="pv-hatch" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)">` +
+    `<rect width="5" height="5" fill="#e4e4e8"></rect><line x1="0" y1="0" x2="0" y2="5" stroke="#9a9aa1" stroke-width="1.8"></line></pattern></defs>`;
+  const bw = W / Math.max(1, n - 1);
+  for (let i = 0; i < n; ) {
+    let j = i;
+    const on = mb[i] >= 50;
+    while (j + 1 < n && mb[j + 1] >= 50 === on) j++;
+    if (on) {
+      const x0 = Math.max(0, (i / Math.max(1, n - 1)) * W - bw / 2);
+      const x1 = Math.min(W, (j / Math.max(1, n - 1)) * W + bw / 2);
+      out += `<rect x="${x0.toFixed(1)}" y="0" width="${Math.max(1, x1 - x0).toFixed(
+        1,
+      )}" height="${H}" fill="url(#pv-hatch)" opacity="0.8"></rect>`;
+    }
+    i = j + 1;
+  }
+  return out;
+}
+function _previewScoredNote(cd) {
+  const p = typeof ttMaskPct === "function" ? ttMaskPct(cd && cd.breadth_histogram) : null;
+  return `<text x="90" y="66" font-size="7" text-anchor="middle" fill="#7a4f0e">scored regions only${
+    p !== null ? ` (${ttFmtMaskPct(p)} of genome not scored)` : ""
+  }</text>`;
+}
+function _previewMaskNote(cd) {
+  const bh = cd && cd.breadth_histogram;
+  const p = typeof ttMaskPct === "function" ? ttMaskPct(bh) : null;
+  if (p === null) return "";
+  const W = 180;
+  return `<text x="${W / 2}" y="${(56 + 10).toFixed(
+    0,
+  )}" font-size="7" text-anchor="middle" fill="#6b6b73">hatched = not scored (${ttFmtMaskPct(p)} of genome)</text>`;
+}
 function _histPreviewHtml(r, cd) {
-  const pos = _posBins(cd);
+  const _scB = _sparkScored(cd);
+  const pos = _scB ? _scB.map((v) => num(v)) : _posBins(cd);
   const head = `<b><i>${r["Detected Organism"]}</i></b><br><span style="color:#aaa">${r["Specimen ID"]}</span><br>`;
   if (pos && pos.length) {
     const W = 180,
@@ -25742,9 +26425,11 @@ function _histPreviewHtml(r, cd) {
       `<line x1="0" y1="0" x2="0" y2="${H}" stroke="#ccc" stroke-width="0.8"></line>` +
       `<text x="2" y="7" font-size="6" fill="#999">100%</text>` +
       `<text x="2" y="${H - 1}" font-size="6" fill="#999">0%</text>` +
+      (_scB ? "" : _previewMaskSvg(cd, n, W, H)) +
       `<path d="${area}" fill="#d0ebff"></path>` +
       `<path d="${path}" fill="none" stroke="#1c7ed6" stroke-width="1"></path>` +
       `<text x="0" y="${H + 10}" font-size="7" fill="#666">start</text>` +
+      (_scB ? _previewScoredNote(cd) : _previewMaskNote(cd)) +
       `<text x="${W}" y="${H + 10}" font-size="7" text-anchor="end" fill="#666">end</text>` +
       `</svg>` +
       `<div style="color:#777;font-size:0.72em;margin-top:3px;line-height:1.4">Genomic coverage based on the percent of each bin with at least 1× coverage across the reference genome.${
@@ -26188,7 +26873,7 @@ const _SUM_COLS = [
     label: "TASS",
     align: "right",
     num: true,
-    tip: "<b>TASS Score</b><br>Taxonomic Assignment Scoring System confidence score for the row (higher is stronger evidence).<br><br><span style='color:#ccc'>This is the primary score used by the cutoff filter. Rows below cutoff are hidden unless rescued by rollup logic or VF/AMR exceptions.</span>",
+    tip: "<b>TASS Score</b><br>Taxonomic Assignment Scoring System confidence score for the row (higher is stronger evidence).<br><br><span style='color:#ccc'>This is the primary score used by the cutoff filter. Rows below cutoff are hidden unless rescued by rollup logic or VF/AMR exceptions. For region-masked samples this is the masked score; hover a value to see the TASS before masking.</span>",
   },
   {
     key: "_rescue",
@@ -26238,7 +26923,15 @@ const _SUM_COLS = [
     label: "Breadth %",
     align: "right",
     num: true,
-    tip: "<b>Breadth %</b><br>Percent of the reference breadth covered by reads for this row.<br><br><span style='color:#ccc'>Higher breadth generally increases confidence that the organism signal is real.</span>",
+    tip: "<b>Breadth %</b><br>Percent of the reference breadth covered by reads for this row.<br><br><span style='color:#ccc'>Higher breadth generally increases confidence that the organism signal is real. In a masked sample it is the breadth of the <b>scored</b> bases only (see Not scored %).</span>",
+  },
+  {
+    key: "Masked bp %",
+    label: "Not scored %",
+    align: "right",
+    num: true,
+    mask: true,
+    tip: "<b>Not scored %</b><br>Region masking: the share of this organism's genome that was <b>not considered</b> for TASS — masked bases (--mask_bed / --mask_fasta / --fcs) or, in target mode (--mask_products, target BEDs), everything outside the targets.<br><br><span style='color:#ccc'>Breadth %, depth and Gini are computed over the remaining bases. The bar shows the masked share; the hover gives bp and masked reads. Shown only when a sample in the report was masked.</span>",
   },
   {
     key: "Sample Type",
@@ -26254,6 +26947,28 @@ const _SUM_COLS = [
     tip: "<b>Keywords</b><br>Quick tags extracted from organism metadata and annotations (e.g., AMR, virulence, respiratory).<br><br><span style='color:#ccc'>A rapid scan aid for triage and communication.</span>",
   },
 ];
+
+// "Not scored %" cell: share of the genome left out of scoring by region
+// masking, as a number + a small bar; the hover gives bp and masked reads.
+function _maskCellHTML(r) {
+  const v = r["Masked bp %"];
+  if (v === null || v === undefined || v === "") return '<td style="text-align:right;color:#ccc">—</td>';
+  const pct = Math.max(0, Math.min(100, num(v)));
+  const full = num(r["Full Genome Length (bp)"]);
+  const mbp = num(r["Masked bp"]);
+  const mr = num(r["Masked Reads"]);
+  const mrp = num(r["Masked Reads %"]);
+  const tip =
+    `${pct.toFixed(2)}% of the genome not considered` +
+    (full > 0 ? ` (${_fmtInt(mbp)} of ${_fmtInt(full)} bp; ${_fmtInt(Math.max(0, full - mbp))} bp scored)` : "") +
+    (mr > 0 || mrp > 0 ? `. ${_fmtInt(mr)} reads (${mrp.toFixed(1)}%) fell in that space and were not scored.` : ".");
+  return (
+    `<td style="text-align:right;white-space:nowrap" title="${tip.replace(/"/g, "&quot;")}">` +
+    `${ttFmtMaskPct(pct).replace("%", "")}` +
+    `<span style="display:inline-block;width:34px;height:6px;margin-left:4px;vertical-align:middle;background:#eceae4;border-radius:2px;overflow:hidden">` +
+    `<span style="display:block;height:100%;width:${pct.toFixed(1)}%;background:#9a9aa1"></span></span></td>`
+  );
+}
 
 function _summaryRescueCellHTML(row, rowKey) {
   const pi = rowPassInfo(row);
@@ -26462,12 +27177,17 @@ function _renderSummaryTable(fd) {
   }
   const grouped = document.getElementById("summary-group-sample")?.checked;
   const _sumViewLevel = document.getElementById("view-level")?.value || "Strain";
+  // Region-masking column only when some row in the report was masked
+  const _anyMasked = (typeof DATA !== "undefined" ? DATA : fd).some(
+    (r) => r && r["Masked bp %"] !== null && r["Masked bp %"] !== undefined && r["Masked bp %"] !== "",
+  );
   const _visSumCols = _SUM_COLS.filter(
     (c) =>
       !(c.key === "_spark" && _sumViewLevel !== "Strain") &&
       !(c.key === "_vfamr" && !HAS_PROT) &&
       !(c.key === "_novelty" && !HAS_NOVELTY) &&
-      !(c.hmp && !(typeof ttHmpAvailable === "function" && ttHmpAvailable())),
+      !(c.hmp && !(typeof ttHmpAvailable === "function" && ttHmpAvailable())) &&
+      !(c.mask && !_anyMasked),
   );
   const _showHmpCol = _visSumCols.some((c) => c.hmp);
 
@@ -26644,7 +27364,16 @@ function _renderSummaryTable(fd) {
         typeof _mergedSampleBadgeHTML === "function" ? _mergedSampleBadgeHTML(r) : ""
       }</td>` +
       `<td><span style="color:${cc};font-weight:600">${cat}</span></td>` +
-      `<td style="text-align:right">${num(r["TASS Score"]).toFixed(1)}</td>` +
+      (function () {
+        // Region masking before/after (53_mask_compare.js): hover always, arrow on toggle
+        const _mt = typeof ttMaskCmpTitle === "function" ? ttMaskCmpTitle(r) : "";
+        return (
+          `<td style="text-align:right;white-space:nowrap"${_mt ? ` title="${_esc(_mt)}"` : ""}>` +
+          `${num(r["TASS Score"]).toFixed(1)}${
+            typeof ttMaskCmpInlineHTML === "function" ? ttMaskCmpInlineHTML(r) : ""
+          }</td>`
+        );
+      })() +
       `<td style="text-align:center">${_summaryRescueCellHTML(r, key)}</td>` +
       (HAS_PROT ? `<td style="text-align:center">${_vfamrCellHTML(r)}</td>` : "") +
       (HAS_NOVELTY ? `<td style="text-align:center">${_noveltyCellHTML(r)}</td>` : "") +
@@ -26665,8 +27394,15 @@ function _renderSummaryTable(fd) {
                 : "Combined (per-bin max) breadth across the merged samples"
             }" style="color:#1565c0;font-size:0.82em;margin-left:2px;">∪</span>`
           : "";
-        return `<td style="text-align:right">${_brd.toFixed(1)}${_mk}</td>`;
+        const _scoredMk =
+          _anyMasked && num(r["Masked bp %"]) > 0
+            ? `<span title="Breadth of the scored bases only: ${(100 - num(r["Masked bp %"])).toFixed(
+                1,
+              )}% of the genome was considered" style="color:#8a6d1a;font-size:0.82em;margin-left:2px;">\u2020</span>`
+            : "";
+        return `<td style="text-align:right">${_brd.toFixed(1)}${_mk}${_scoredMk}</td>`;
       })() +
+      (_anyMasked ? _maskCellHTML(r) : "") +
       `<td>${
         r["Sample Type"] && r["Sample Type"] !== "unknown" ? r["Sample Type"] : '<span style="color:#ccc">—</span>'
       }</td>` +
@@ -33775,6 +34511,8 @@ function redraw() {
   for (const k in _TAB_DIRTY) _TAB_DIRTY[k] = true;
   // Render the currently visible tab now.
   _drawTab(activeTab);
+  // Masking before/after panel (53_mask_compare.js): summary follows the cutoffs.
+  if (typeof ttMaskCmpRefreshPanel === "function") ttMaskCmpRefreshPanel();
   // Cheap shared updates that must reflect filter state immediately.
   // _refreshMapMarkerColors re-evaluates the filter-match set, so the map dims
   // / undims without a full marker rebuild (zoom and selection survive).
@@ -34655,6 +35393,7 @@ function _maskBannerNote(samples) {
   const count = `${masked.length}/${samples.length}`;
   const esc = typeof _esc === "function" ? _esc : (v) => String(v);
   const fmt = (v) => (Number(v) || 0).toLocaleString();
+  const anyCmp = masked.some((s) => meta[s].masking.compare);
   const rows = masked
     .map((s) => {
       const m = meta[s].masking;
@@ -34662,7 +35401,17 @@ function _maskBannerNote(samples) {
       return (
         `<tr><td>${esc(s)}</td><td>${esc(m.mode || "exclude")}</td><td class="num">${fmt(m.references_masked)}</td>` +
         `<td class="num">${fmt(m.masked_bp)}</td><td class="num">${fmt(m.reads_masked)} (${pct}%)</td>` +
-        `<td>${m.penalty_power ? esc(m.penalty_power) : "\u2014"}</td></tr>`
+        `<td>${m.penalty_power ? esc(m.penalty_power) : "\u2014"}</td>` +
+        (anyCmp
+          ? `<td>${
+              m.compare
+                ? `<span style="color:#2e7d32">\u25b4${m.compare.strains_up}</span> ` +
+                  `<span style="color:#c62828">\u25be${m.compare.strains_down}</span> ` +
+                  `(mean ${(m.compare.mean_delta >= 0 ? "+" : "\u2212") + Math.abs(m.compare.mean_delta).toFixed(1)})`
+                : "\u2014"
+            }</td>`
+          : "") +
+        `</tr>`
       );
     })
     .join("");
@@ -34677,9 +35426,16 @@ function _maskBannerNote(samples) {
     pop.innerHTML =
       `<div class="bmp-title">Region masking: ${esc(text)}</div>` +
       `<div class="bmp-note">Breadth, depth, Gini and TASS were computed only over unmasked bases.</div>` +
-      `<table><thead><tr><th>Sample</th><th>Mode</th><th>Refs</th><th>bp masked</th><th>Reads removed</th><th>Penalty</th></tr></thead>` +
+      `<table><thead><tr><th>Sample</th><th>Mode</th><th>Refs</th><th>bp masked</th><th>Reads removed</th><th>Penalty</th>${
+        anyCmp
+          ? '<th title="Strain TASS moved up / down by masking (vs. scoring without the mask)">TASS vs unmasked</th>'
+          : ""
+      }</tr></thead>` +
       `<tbody>${rows}</tbody></table>` +
-      (bams.length ? `<div class="bmp-note">Masked BAMs: ${bams.map(esc).join(", ")}</div>` : "");
+      (bams.length ? `<div class="bmp-note">Masked BAMs: ${bams.map(esc).join(", ")}</div>` : "") +
+      (anyCmp
+        ? `<div class="bmp-note">Before / after TASS: right panel \u2192 <b>Masking: before / after</b>.</div>`
+        : "");
     pill.setAttribute("aria-label", `Region masking: ${text}`);
   }
   return { text };
@@ -61656,6 +62412,462 @@ admin:
   window.drawAlignTrends = drawAlignTrends;
   window.drawAlignTrendsPipeline = drawAlignTrendsPipeline;
   window._alignTrendsAnalyse = _analyse; // exposed for tests / console use
+})();
+    </script>
+    <script>
+/* ═══════════════════════════════════════════════════════════════════════════
+       -  §  REGION MASKING — BEFORE / AFTER TASS   (match_paths --mask_compare)
+       -     With --mask_compare (on by default when a mask is used) every masked
+       -     sample is also scored WITHOUT the mask. Rows then carry
+       -     "TASS (unmasked)" / "TASS Change (mask)" / "Reads (unmasked)" /
+       -     "Breadth % (unmasked)" and SAMPLE_META[s].masking.compare holds the
+       -     per-sample summary (+ organisms only detected without the mask).
+       -
+       -     Kept deliberately quiet: the masked TASS stays the headline number.
+       -       • hover: Summary / Table TASS cells and heatmap cells
+       -       • right panel "Masking: before / after": heatmap TASS mode
+       -         (masked / unmasked / change), optional inline arrows in the
+       -         Summary table, a one-line summary and a before/after table.
+═══════════════════════════════════════════════════════════════════════════ */
+let _ttMaskCmpModeVal = "masked";
+let _ttMaskCmpShowTables = false;
+let _ttMaskCmpAvail = null;
+let _ttMaskCmpAvailN = -1;
+
+function ttMaskCmpHas(r) {
+  return !!r && r["TASS (unmasked)"] !== null && r["TASS (unmasked)"] !== undefined && r["TASS (unmasked)"] !== "";
+}
+function ttMaskCmpAvailable() {
+  const n = typeof DATA !== "undefined" ? DATA.length : 0;
+  if (_ttMaskCmpAvailN !== n) {
+    _ttMaskCmpAvailN = n;
+    _ttMaskCmpAvail = n > 0 && DATA.some(ttMaskCmpHas);
+  }
+  return _ttMaskCmpAvail;
+}
+function ttMaskCmpMode() {
+  return ttMaskCmpAvailable() ? _ttMaskCmpModeVal : "masked";
+}
+function ttMaskCmpShowInTables() {
+  return _ttMaskCmpShowTables && ttMaskCmpAvailable();
+}
+// Value of a row under a mode. Rows from samples scored without a mask have
+// no unmasked field: their TASS is the same either way (change 0).
+function ttMaskCmpValue(r, mode) {
+  const after = num(r["TASS Score"]);
+  if (!ttMaskCmpHas(r)) return mode === "delta" ? 0 : after;
+  const before = num(r["TASS (unmasked)"]);
+  return mode === "unmasked" ? before : mode === "delta" ? after - before : after;
+}
+function _mcSigned(v, d) {
+  if (!isFinite(v)) return "—";
+  const a = Math.abs(v).toFixed(d === undefined ? 1 : d);
+  return (v > 0 ? "+" : v < 0 ? "−" : "±") + a;
+}
+function _mcCall(r, before, after) {
+  const thr = typeof thresholdForRow === "function" ? thresholdForRow(r) : NaN;
+  if (!isFinite(thr)) return null;
+  const b = before >= thr,
+    a = after >= thr;
+  return { thr, b, a, changed: a !== b };
+}
+// Tooltip block (heatmap cells and other d3 tips).
+function ttMaskCmpTipHTML(r) {
+  if (!ttMaskCmpHas(r)) return "";
+  const before = num(r["TASS (unmasked)"]),
+    after = num(r["TASS Score"]);
+  const c = _mcCall(r, before, after);
+  const rb = num(r["Reads (unmasked)"]),
+    ra = num(r["# Reads Aligned"]);
+  const bb = num(r["Breadth % (unmasked)"]),
+    ba = num(r["Breadth %"]);
+  return (
+    `<div style="margin-top:4px;padding-top:3px;border-top:1px solid rgba(255,255,255,.25);color:#cfd8dc;font-size:.92em">` +
+    `Masking: TASS <b>${before.toFixed(1)}</b> → <b>${after.toFixed(1)}</b> (${_mcSigned(after - before)})` +
+    `<br>reads ${_fmtInt(rb)} → ${_fmtInt(ra)} · breadth ${bb.toFixed(1)}% → ${ba.toFixed(1)}%` +
+    (c && c.changed
+      ? `<br><b style="color:${c.a ? "#a5d6a7" : "#ffab91"}">${
+          c.a ? "passes only with" : "passes only without"
+        } the mask</b> (cutoff ${c.thr})`
+      : "") +
+    `</div>`
+  );
+}
+// Plain-text version for native title= tooltips (Summary / Table cells).
+function ttMaskCmpTitle(r) {
+  if (!ttMaskCmpHas(r)) return "";
+  const before = num(r["TASS (unmasked)"]),
+    after = num(r["TASS Score"]);
+  const c = _mcCall(r, before, after);
+  return (
+    `Before masking: TASS ${before.toFixed(1)}  →  after: ${after.toFixed(1)} (${_mcSigned(after - before)})\n` +
+    `Reads ${_fmtInt(num(r["Reads (unmasked)"]))} → ${_fmtInt(num(r["# Reads Aligned"]))} · ` +
+    `breadth ${num(r["Breadth % (unmasked)"]).toFixed(1)}% → ${num(r["Breadth %"]).toFixed(1)}%` +
+    (c && c.changed ? `\n${c.a ? "Passes only WITH" : "Passes only WITHOUT"} the mask (cutoff ${c.thr})` : "")
+  );
+}
+// Small grey arrow after a TASS value (only with "Show in tables" on).
+function ttMaskCmpInlineHTML(r) {
+  if (!ttMaskCmpShowInTables() || !ttMaskCmpHas(r)) return "";
+  const before = num(r["TASS (unmasked)"]),
+    d = num(r["TASS Score"]) - before;
+  const c = _mcCall(r, before, num(r["TASS Score"]));
+  const col = c && c.changed ? (c.a ? "#2e7d32" : "#c62828") : "#8a8f98";
+  const arrow = Math.abs(d) < 0.05 ? "=" : d > 0 ? "▴" : "▾";
+  return (
+    `<span class="mcmp-inline" style="color:${col};font-size:.78em;margin-left:3px;white-space:nowrap">` +
+    `${arrow}${before.toFixed(1)}</span>`
+  );
+}
+
+/* ── Rows for the before / after table ─────────────────────────────────── */
+function _mcRows(level) {
+  const lvl = level || "Strain";
+  const out = [];
+  const seen = new Set();
+  (typeof DATA !== "undefined" ? DATA : []).forEach((r) => {
+    if (!ttMaskCmpHas(r)) return;
+    if ((r["Level"] || "Strain") !== lvl) return;
+    const before = num(r["TASS (unmasked)"]),
+      after = num(r["TASS Score"]);
+    const c = _mcCall(r, before, after);
+    seen.add(r["Specimen ID"]);
+    out.push({
+      sample: r["Specimen ID"],
+      organism: r["Detected Organism"],
+      level: lvl,
+      before,
+      after,
+      delta: after - before,
+      readsB: num(r["Reads (unmasked)"]),
+      readsA: num(r["# Reads Aligned"]),
+      brdB: num(r["Breadth % (unmasked)"]),
+      brdA: num(r["Breadth %"]),
+      notScored: r["Masked bp %"] === null || r["Masked bp %"] === undefined ? null : num(r["Masked bp %"]),
+      call: c,
+      removed: false,
+    });
+  });
+  // organisms only detected without the mask (all their evidence masked away)
+  const meta = (typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {};
+  Object.keys(meta).forEach((s) => {
+    const cmp = ((meta[s] || {}).masking || {}).compare;
+    if (!cmp || !Array.isArray(cmp.dropped)) return;
+    cmp.dropped.forEach((d) => {
+      const dl = (d.level || "").toLowerCase();
+      // a dropped genus/species hides everything below it, so list it at every level view
+      const want = lvl.toLowerCase();
+      const order = { genus: 0, species: 1, strain: 2 };
+      if (order[dl] === undefined || order[dl] > order[want]) return;
+      const ref = (typeof DATA !== "undefined" ? DATA : []).find((r) => r["Specimen ID"] === s) || {
+        "Sample Type": (meta[s] || {}).sample_type,
+      };
+      const thr = typeof thresholdForRow === "function" ? thresholdForRow(ref) : NaN;
+      out.push({
+        sample: s,
+        organism: d.name + (dl !== want ? ` (${dl})` : ""),
+        level: lvl,
+        before: num(d.tass_unmasked),
+        after: null,
+        delta: -num(d.tass_unmasked),
+        readsB: num(d.reads_unmasked),
+        readsA: 0,
+        brdB: null,
+        brdA: null,
+        notScored: null,
+        call: isFinite(thr)
+          ? { thr, b: num(d.tass_unmasked) >= thr, a: false, changed: num(d.tass_unmasked) >= thr }
+          : null,
+        removed: true,
+      });
+    });
+  });
+  return out;
+}
+
+function _mcSummaryLine() {
+  const rows = _mcRows("Strain");
+  const real = rows.filter((x) => !x.removed);
+  if (!real.length && !rows.length) return "";
+  const eps = 0.5;
+  const up = real.filter((x) => x.delta >= eps).length;
+  const down = real.filter((x) => x.delta <= -eps).length;
+  const mean = real.length ? real.reduce((s, x) => s + x.delta, 0) / real.length : 0;
+  const gained = rows.filter((x) => x.call && x.call.changed && x.call.a).length;
+  const lost = rows.filter((x) => x.call && x.call.changed && !x.call.a).length;
+  const removed = rows.filter((x) => x.removed).length;
+  return (
+    `<b>${real.length}</b> strain${real.length === 1 ? "" : "s"} rescored without the mask: ` +
+    `<span style="color:#2e7d32">${up} up</span>, <span style="color:#c62828">${down} down</span>, ` +
+    `${real.length - up - down} within ±${eps} (mean ${_mcSigned(mean)}).` +
+    `<br>Calls at the current cutoffs: <span style="color:#2e7d32">${gained} gained</span>, ` +
+    `<span style="color:#c62828">${lost} lost</span>` +
+    (removed ? ` · ${removed} only detected without the mask` : "") +
+    "."
+  );
+}
+
+function ttMaskCmpRefreshPanel() {
+  const sec = document.getElementById("mcmp-section");
+  if (!sec) return;
+  const on = ttMaskCmpAvailable();
+  sec.hidden = !on;
+  if (!on) return;
+  const line = document.getElementById("mcmp-summary");
+  if (line) line.innerHTML = _mcSummaryLine();
+  const sel = document.getElementById("mcmp-mode");
+  if (sel && sel.value !== _ttMaskCmpModeVal) sel.value = _ttMaskCmpModeVal;
+  const badge = document.getElementById("hm-mcmp-badge");
+  if (badge) {
+    const m = ttMaskCmpMode();
+    badge.hidden = m === "masked";
+    badge.textContent = m === "unmasked" ? "TASS before masking" : m === "delta" ? "TASS change from masking" : "";
+  }
+}
+
+/* ── Before / after modal ───────────────────────────────────────────────── */
+let _mcSort = { key: "absdelta", dir: -1 };
+function _mcOpenModal() {
+  let ov = document.getElementById("mcmp-modal");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "mcmp-modal";
+    ov.className = "mcmp-modal";
+    ov.innerHTML =
+      `<div class="mcmp-dialog" role="dialog" aria-modal="true" aria-label="Masking before / after">` +
+      `<div class="mcmp-head"><div><div class="mcmp-title">Region masking — TASS before / after</div>` +
+      `<div class="mcmp-sub">Each masked sample was scored twice: without the mask (<b>before</b>) and with it (<b>after</b>, the TASS used everywhere else in this report).</div></div>` +
+      `<button type="button" class="mcmp-x" aria-label="Close">×</button></div>` +
+      `<div class="mcmp-samples"></div>` +
+      `<div class="mcmp-ctrls">` +
+      `<label>Level <select class="mcmp-level"><option>Strain</option><option>Species</option><option>Genus</option></select></label>` +
+      `<label>Sample <select class="mcmp-sample"><option value="">All</option></select></label>` +
+      `<label><input type="checkbox" class="mcmp-only"> Only changed (|change| ≥ 0.5, call changed or removed)</label>` +
+      `<button type="button" class="mcmp-csv"><i class="fas fa-download"></i> CSV</button></div>` +
+      `<div class="mcmp-tablewrap"><table class="mcmp-table"><thead></thead><tbody></tbody></table></div></div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener("click", (e) => {
+      if (e.target === ov || e.target.closest(".mcmp-x")) ov.classList.remove("show");
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") ov.classList.remove("show");
+    });
+    ov.querySelectorAll(".mcmp-level,.mcmp-sample,.mcmp-only").forEach((el) =>
+      el.addEventListener("change", _mcRenderModal),
+    );
+    ov.querySelector(".mcmp-csv").addEventListener("click", _mcCsv);
+  }
+  const ssel = ov.querySelector(".mcmp-sample");
+  const samples = uniq(_mcRows("Genus").map((x) => x.sample)).sort();
+  ssel.innerHTML =
+    `<option value="">All</option>` + samples.map((s) => `<option value="${_esc(s)}">${_esc(s)}</option>`).join("");
+  _mcRenderModal();
+  ov.classList.add("show");
+}
+
+const _MC_COLS = [
+  { key: "sample", label: "Sample" },
+  { key: "organism", label: "Organism" },
+  { key: "before", label: "TASS before", num: true, tip: "Scored without the mask" },
+  { key: "after", label: "TASS after", num: true, tip: "Scored with the mask (the report's TASS)" },
+  { key: "delta", label: "Change", num: true },
+  {
+    key: "call",
+    label: "Call (before → after)",
+    tip: "Pass / fail against the current TASS cutoff for the sample type",
+  },
+  { key: "readsB", label: "Reads before", num: true },
+  { key: "readsA", label: "Reads after", num: true },
+  { key: "brdB", label: "Breadth % before", num: true },
+  { key: "brdA", label: "Breadth % after", num: true, tip: "Over the scored bases only" },
+  { key: "notScored", label: "Not scored %", num: true },
+];
+
+function _mcFiltered() {
+  const ov = document.getElementById("mcmp-modal");
+  const lvl = ov.querySelector(".mcmp-level").value;
+  const smp = ov.querySelector(".mcmp-sample").value;
+  const only = ov.querySelector(".mcmp-only").checked;
+  let rows = _mcRows(lvl).filter((x) => !smp || x.sample === smp);
+  if (only) rows = rows.filter((x) => x.removed || Math.abs(x.delta) >= 0.5 || (x.call && x.call.changed));
+  const k = _mcSort.key,
+    dir = _mcSort.dir;
+  const val = (x) =>
+    k === "absdelta"
+      ? Math.abs(x.delta)
+      : k === "call"
+      ? x.call
+        ? (x.call.changed ? 2 : 0) + (x.call.a ? 1 : 0)
+        : -1
+      : x[k];
+  rows.sort((a, b) => {
+    const va = val(a),
+      vb = val(b);
+    if (va === vb) return 0;
+    if (va === null || va === undefined) return 1;
+    if (vb === null || vb === undefined) return -1;
+    return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * dir;
+  });
+  return rows;
+}
+
+function _mcCallTxt(c, removed) {
+  if (!c) return removed ? "removed" : "—";
+  const t = (p) => (p ? "pass" : "fail");
+  return `${t(c.b)} → ${removed ? "removed" : t(c.a)}`;
+}
+
+function _mcRenderModal() {
+  const ov = document.getElementById("mcmp-modal");
+  if (!ov) return;
+  // per-sample summary from the JSON metadata
+  const meta = (typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {};
+  const sRows = Object.keys(meta)
+    .filter((s) => ((meta[s] || {}).masking || {}).compare)
+    .sort()
+    .map((s) => {
+      const m = meta[s].masking,
+        c = m.compare;
+      const g = c.max_gain,
+        l = c.max_loss;
+      return (
+        `<tr><td>${_esc(s)}</td><td>${_esc(m.mode || "exclude")}</td><td class="num">${c.strains_compared}</td>` +
+        `<td class="num" style="color:#2e7d32">${c.strains_up}</td><td class="num" style="color:#c62828">${c.strains_down}</td>` +
+        `<td class="num">${_mcSigned(c.mean_delta)}</td>` +
+        `<td>${g ? `${_esc(g.name)} (${_mcSigned(g.delta)})` : "—"}</td>` +
+        `<td>${l ? `${_esc(l.name)} (${_mcSigned(l.delta)})` : "—"}</td>` +
+        `<td class="num">${c.n_dropped || 0}</td></tr>`
+      );
+    })
+    .join("");
+  ov.querySelector(".mcmp-samples").innerHTML = sRows
+    ? `<table class="mcmp-table mcmp-stbl"><thead><tr><th>Sample</th><th>Mode</th><th>Strains</th><th>Up</th><th>Down</th>` +
+      `<th>Mean change</th><th>Largest gain</th><th>Largest loss</th><th title="Detected without the mask only">Removed</th></tr></thead>` +
+      `<tbody>${sRows}</tbody></table>`
+    : "";
+
+  const rows = _mcFiltered();
+  const head = ov.querySelector(".mcmp-table:not(.mcmp-stbl) thead");
+  head.innerHTML =
+    "<tr>" +
+    _MC_COLS
+      .map(
+        (c) =>
+          `<th data-k="${c.key}" class="${c.num ? "num" : ""}"${c.tip ? ` title="${_esc(c.tip)}"` : ""}>${c.label}${
+            _mcSort.key === c.key ? (_mcSort.dir > 0 ? " ▴" : " ▾") : ""
+          }</th>`,
+      )
+      .join("") +
+    "</tr>";
+  head.querySelectorAll("th").forEach((th) =>
+    th.addEventListener("click", () => {
+      const k = th.dataset.k;
+      _mcSort = { key: k, dir: _mcSort.key === k ? -_mcSort.dir : k === "sample" || k === "organism" ? 1 : -1 };
+      _mcRenderModal();
+    }),
+  );
+  const f1 = (v) => (v === null || v === undefined ? "—" : (+v).toFixed(1));
+  ov.querySelector(".mcmp-table:not(.mcmp-stbl) tbody").innerHTML = rows.length
+    ? rows
+        .map((x) => {
+          const cc = x.call && x.call.changed ? (x.call.a ? "mc-gain" : "mc-loss") : x.removed ? "mc-loss" : "";
+          const dc = x.delta >= 0.5 ? "#2e7d32" : x.delta <= -0.5 ? "#c62828" : "#666";
+          return (
+            `<tr class="${x.removed ? "mc-removed" : ""}"><td>${_esc(x.sample)}</td><td><i>${_esc(
+              x.organism,
+            )}</i></td>` +
+            `<td class="num">${f1(x.before)}</td><td class="num"><b>${x.removed ? "—" : f1(x.after)}</b></td>` +
+            `<td class="num" style="color:${dc}">${_mcSigned(x.delta)}</td>` +
+            `<td class="${cc}">${_mcCallTxt(x.call, x.removed)}</td>` +
+            `<td class="num">${_fmtInt(x.readsB)}</td><td class="num">${_fmtInt(x.readsA)}</td>` +
+            `<td class="num">${f1(x.brdB)}</td><td class="num">${f1(x.brdA)}</td>` +
+            `<td class="num">${x.notScored === null ? "—" : x.notScored.toFixed(1)}</td></tr>`
+          );
+        })
+        .join("")
+    : `<tr><td colspan="${_MC_COLS.length}" style="color:#888;padding:10px">No rows.</td></tr>`;
+}
+
+function _mcCsv() {
+  const rows = _mcFiltered();
+  const q = (v) => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [
+    [
+      "sample",
+      "organism",
+      "level",
+      "tass_before",
+      "tass_after",
+      "change",
+      "call_before",
+      "call_after",
+      "cutoff",
+      "reads_before",
+      "reads_after",
+      "breadth_pct_before",
+      "breadth_pct_after",
+      "not_scored_pct",
+    ].join(","),
+  ];
+  rows.forEach((x) =>
+    lines.push(
+      [
+        x.sample,
+        x.organism,
+        x.level,
+        x.before,
+        x.removed ? "" : x.after,
+        x.delta.toFixed(4),
+        x.call ? (x.call.b ? "pass" : "fail") : "",
+        x.call ? (x.removed ? "removed" : x.call.a ? "pass" : "fail") : x.removed ? "removed" : "",
+        x.call ? x.call.thr : "",
+        x.readsB,
+        x.readsA,
+        x.brdB,
+        x.brdA,
+        x.notScored,
+      ]
+        .map(q)
+        .join(","),
+    ),
+  );
+  const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "masking_before_after.csv";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 0);
+}
+
+/* ── wiring ────────────────────────────────────────────────────────────── */
+(function () {
+  const sel = document.getElementById("mcmp-mode");
+  if (sel)
+    sel.addEventListener("change", () => {
+      _ttMaskCmpModeVal = sel.value;
+      const hv = document.getElementById("hm-value-col");
+      // the mode applies to the TASS value; switch the heatmap to it
+      if (_ttMaskCmpModeVal !== "masked" && hv && hv.value !== "TASS Score") hv.value = "TASS Score";
+      ttMaskCmpRefreshPanel();
+      if (typeof redraw === "function") redraw();
+    });
+  const cb = document.getElementById("mcmp-show-tables");
+  if (cb)
+    cb.addEventListener("change", () => {
+      _ttMaskCmpShowTables = cb.checked;
+      if (typeof redraw === "function") redraw();
+    });
+  const btn = document.getElementById("mcmp-open-btn");
+  if (btn) btn.addEventListener("click", _mcOpenModal);
+  // SAMPLE_META / DATA arrive during init (or a later file drop): refresh then
+  window.addEventListener("load", () => setTimeout(ttMaskCmpRefreshPanel, 0));
 })();
     </script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
