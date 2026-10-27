@@ -150,6 +150,7 @@ function _maskBannerNote(samples) {
   const count = `${masked.length}/${samples.length}`;
   const esc = typeof _esc === "function" ? _esc : (v) => String(v);
   const fmt = (v) => (Number(v) || 0).toLocaleString();
+  const anyCmp = masked.some((s) => meta[s].masking.compare);
   const rows = masked
     .map((s) => {
       const m = meta[s].masking;
@@ -157,7 +158,17 @@ function _maskBannerNote(samples) {
       return (
         `<tr><td>${esc(s)}</td><td>${esc(m.mode || "exclude")}</td><td class="num">${fmt(m.references_masked)}</td>` +
         `<td class="num">${fmt(m.masked_bp)}</td><td class="num">${fmt(m.reads_masked)} (${pct}%)</td>` +
-        `<td>${m.penalty_power ? esc(m.penalty_power) : "\u2014"}</td></tr>`
+        `<td>${m.penalty_power ? esc(m.penalty_power) : "\u2014"}</td>` +
+        (anyCmp
+          ? `<td>${
+              m.compare
+                ? `<span style="color:#2e7d32">\u25b4${m.compare.strains_up}</span> ` +
+                  `<span style="color:#c62828">\u25be${m.compare.strains_down}</span> ` +
+                  `(mean ${(m.compare.mean_delta >= 0 ? "+" : "\u2212") + Math.abs(m.compare.mean_delta).toFixed(1)})`
+                : "\u2014"
+            }</td>`
+          : "") +
+        `</tr>`
       );
     })
     .join("");
@@ -172,9 +183,16 @@ function _maskBannerNote(samples) {
     pop.innerHTML =
       `<div class="bmp-title">Region masking: ${esc(text)}</div>` +
       `<div class="bmp-note">Breadth, depth, Gini and TASS were computed only over unmasked bases.</div>` +
-      `<table><thead><tr><th>Sample</th><th>Mode</th><th>Refs</th><th>bp masked</th><th>Reads removed</th><th>Penalty</th></tr></thead>` +
+      `<table><thead><tr><th>Sample</th><th>Mode</th><th>Refs</th><th>bp masked</th><th>Reads removed</th><th>Penalty</th>${
+        anyCmp
+          ? '<th title="Strain TASS moved up / down by masking (vs. scoring without the mask)">TASS vs unmasked</th>'
+          : ""
+      }</tr></thead>` +
       `<tbody>${rows}</tbody></table>` +
-      (bams.length ? `<div class="bmp-note">Masked BAMs: ${bams.map(esc).join(", ")}</div>` : "");
+      (bams.length ? `<div class="bmp-note">Masked BAMs: ${bams.map(esc).join(", ")}</div>` : "") +
+      (anyCmp
+        ? `<div class="bmp-note">Before / after TASS: right panel \u2192 <b>Masking: before / after</b>.</div>`
+        : "");
     pill.setAttribute("aria-label", `Region masking: ${text}`);
   }
   return { text };

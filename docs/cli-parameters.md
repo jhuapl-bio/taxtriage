@@ -676,35 +676,36 @@ Cross-sample frequency of zero, low and high depth windows along each reference,
 
 Restrict TASS scoring to part of each reference: ignore NCBI FCS contaminant spans or your own regions (`exclude`), or score only targeted sub-regions (`target`). Off unless one of `--fcs`, `--fcs_details`, `--mask_bed`, `--mask_fasta`, `--mask_feature_table`, `--mask_gff`, `--fcs_gx_report`, `--fcs_adaptor_report` is set. Full description: [Region Masking](masking.md).
 
-| Parameter               | Default            | Description                                                                                              |
-| ----------------------- | ------------------ | -------------------------------------------------------------------------------------------------------- |
-| `--fcs`                 | `false`            | Mask NCBI FCS contaminant spans; downloads NCBI's reports into `--fcs_db` unless `--fcs_details` is set. |
-| `--fcs_details`         | –                  | Comma-separated local `fcs_details_*.txt[.gz]` (or a previous run's `masking/fcs_subset.txt`).           |
-| `--fcs_summary`         | –                  | Comma-separated `fcs_summary_*.txt[.gz]`: per-assembly FCS table + organism flag.                        |
-| `--fcs_gx_report`       | –                  | Comma-separated FCS-GX reports (your own runs, or an assembly's `*_fcs_report.txt`).                     |
-| `--fcs_adaptor_report`  | –                  | Comma-separated FCS-adaptor reports.                                                                     |
-| `--fcs_actions`         | `EXCLUDE,TRIM,FIX` | FCS actions to mask; `all` for every row.                                                                |
-| `--fcs_divisions`       | –                  | Regex on the FCS contaminant division.                                                                   |
-| `--fcs_min_len`         | –                  | Ignore FCS spans shorter than this (bp).                                                                 |
-| `--fcs_db`              | `<outdir>/fcs_db`  | Cache directory for downloaded FCS reports.                                                              |
-| `--mask_bed`            | –                  | Comma-separated BED(s): regions to ignore (exclude) or to score (target).                                |
-| `--mask_fasta`          | –                  | Comma-separated masked FASTA(s) of the references; masked bases are never scored.                        |
-| `--mask_fasta_case`     | `hard`             | Read `hard` (N runs), `soft` (lowercase) or `both` from `--mask_fasta`.                                  |
-| `--mask_fasta_min_run`  | `1`                | Ignore masked runs shorter than N bp in `--mask_fasta`.                                                  |
-| `--mask_mode`           | `exclude`          | `exclude` or `target`.                                                                                   |
-| `--mask_feature_table`  | –                  | Target mode: NCBI feature tables to select genes from.                                                   |
-| `--mask_gff`            | –                  | Target mode: GFF3 files to select genes from.                                                            |
-| `--mask_feature_select` | –                  | Target mode: regex on gene / locus_tag / product / Name / ID.                                            |
-| `--mask_feature_types`  | `CDS,gene`         | Feature types considered for targets.                                                                    |
-| `--mask_untargeted`     | `drop`             | Target mode: `drop` references with no target, or `keep` them scored whole.                              |
-| `--mask_read_overlap`   | `0.5`              | Drop a read when at least this fraction of it is masked.                                                 |
-| `--mask_penalty_power`  | `0`                | `TASS × (1 − masked read fraction)^p`; 0 = masked reads are just ignored.                                |
-| `--mask_pad`            | `0`                | Pad every interval by N bp.                                                                              |
-| `--mask_min_region`     | `0`                | Ignore intervals shorter than N bp.                                                                      |
-| `--mask_report`         | `true`             | Write `<outdir>/masking/all.masking.html` when masking is on.                                            |
-| `--mask_compare`        | `false`            | Also score every sample unmasked so the masking report shows TASS before/after (2× scoring time).        |
-| `--mask_write_bam`      | `false`            | Also write `masking/bam/<sample>.masked.bam` (+ `.bai`) with the masked alignments removed.              |
-| `--mask_report_top`     | `24`               | Coverage tracks drawn in the masking report.                                                             |
+| Parameter                 | Default            | Description                                                                                                                   |
+| ------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `--fcs`                   | `false`            | Mask NCBI FCS contaminant spans; downloads NCBI's reports into `--fcs_db` unless `--fcs_details` is set.                      |
+| `--fcs_details`           | –                  | Comma-separated local `fcs_details_*.txt[.gz]` (or a previous run's `masking/fcs_subset.txt`).                                |
+| `--fcs_summary`           | –                  | Comma-separated `fcs_summary_*.txt[.gz]`: per-assembly FCS table + organism flag.                                             |
+| `--fcs_gx_report`         | –                  | Comma-separated FCS-GX reports (your own runs, or an assembly's `*_fcs_report.txt`).                                          |
+| `--fcs_adaptor_report`    | –                  | Comma-separated FCS-adaptor reports.                                                                                          |
+| `--fcs_actions`           | `EXCLUDE,TRIM,FIX` | FCS actions to mask; `all` for every row.                                                                                     |
+| `--fcs_divisions`         | –                  | Regex on the FCS contaminant division.                                                                                        |
+| `--fcs_min_len`           | –                  | Ignore FCS spans shorter than this (bp).                                                                                      |
+| `--fcs_db`                | `<outdir>/fcs_db`  | Cache directory for downloaded FCS reports.                                                                                   |
+| `--mask_bed`              | –                  | Comma-separated BED(s): regions to ignore (exclude) or to score (target).                                                     |
+| `--mask_fasta`            | –                  | Comma-separated masked FASTA(s) of the references; masked bases are never scored.                                             |
+| `--mask_fasta_case`       | `hard`             | Read `hard` (N runs), `soft` (lowercase) or `both` from `--mask_fasta`.                                                       |
+| `--mask_fasta_min_run`    | `1`                | Ignore masked runs shorter than N bp in `--mask_fasta`.                                                                       |
+| `--mask_mode`             | `exclude`          | `exclude` or `target`.                                                                                                        |
+| `--mask_feature_table`    | –                  | Target mode: NCBI feature tables to select genes from.                                                                        |
+| `--mask_gff`              | –                  | Target mode: GFF3 files to select genes from.                                                                                 |
+| `--mask_feature_select`   | –                  | Target mode: regex on gene / locus_tag / product / Name / ID.                                                                 |
+| `--mask_feature_types`    | `CDS,gene`         | Feature types considered for targets.                                                                                         |
+| `--mask_untargeted`       | `drop`             | Target mode: `drop` references with no target, or `keep` them scored whole.                                                   |
+| `--mask_read_overlap`     | `0.5`              | Drop a read when at least this fraction of it is masked.                                                                      |
+| `--mask_penalty_power`    | `0`                | `TASS × (1 − masked read fraction)^p`; 0 = masked reads are just ignored.                                                     |
+| `--mask_pad`              | `0`                | Pad every interval by N bp.                                                                                                   |
+| `--mask_min_region`       | `0`                | Ignore intervals shorter than N bp.                                                                                           |
+| `--mask_report`           | `true`             | Write `<outdir>/masking/all.masking.html` when masking is on.                                                                 |
+| `--mask_compare`          | `true`             | Also score every masked sample without the mask: before/after TASS in the JSON, report and masking report (~2× scoring time). |
+| `--mask_compare_parallel` | `false`            | Run that unmasked scoring alongside the masked one (faster, ~2× peak memory).                                                 |
+| `--mask_write_bam`        | `false`            | Also write `masking/bam/<sample>.masked.bam` (+ `.bai`) with the masked alignments removed.                                   |
+| `--mask_report_top`       | `24`               | Coverage tracks drawn in the masking report.                                                                                  |
 
 ## Deprecated Parameters
 

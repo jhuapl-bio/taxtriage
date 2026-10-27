@@ -685,7 +685,10 @@
         <!-- HEATMAP -->
         <div class="pane" id="pane-heatmap">
           <div class="chart-wrap">
-            <div class="chart-title">Sample × Organism — value heat</div>
+            <div class="chart-title">
+              Sample × Organism — value heat
+              <span id="hm-mcmp-badge" class="mcmp-badge" hidden></span>
+            </div>
             <div class="tab-controls">
               <label>Value</label>
               <select id="hm-value-col">
@@ -1455,6 +1458,19 @@
                   "
                 />
                 contigs
+              </label>
+              <!-- Region masking: draw breadth over the whole genome or only the scored
+                   (kept / targeted) bases; shown only for masked organisms -->
+              <label
+                id="hist-scope-lbl"
+                style="display: none; align-items: center; gap: 4px"
+                title="Region masking: 'Scored regions only' joins the kept / targeted bases end to end so a genome that is mostly masked still gets a readable coverage track. Auto uses it when half or more of the genome was not scored."
+                >Breadth
+                <select id="hist-breadth-scope">
+                  <option value="auto" selected>Auto</option>
+                  <option value="full">Whole genome</option>
+                  <option value="scored">Scored regions only</option>
+                </select>
               </label>
             </div>
             <div
@@ -3734,6 +3750,37 @@
           </div>
         </div>
 
+        <!-- Region masking before / after (53_mask_compare.js); shown only when
+             the run carries match_paths --mask_compare results -->
+        <div id="mcmp-section" hidden>
+          <h3 style="display: flex; align-items: center; gap: 0.4em">
+            Masking: before / after
+            <button
+              class="info-tip-btn"
+              id="mcmp-tip-btn"
+              aria-label="Masking before / after help"
+              data-tip="&lt;b&gt;Region masking: TASS before / after&lt;/b&gt;&lt;br&gt;Masked samples were also scored &lt;b&gt;without&lt;/b&gt; the mask (--mask_compare). The masked TASS stays the report&#39;s score everywhere; this panel only lets you look at the other side.&lt;br&gt;&lt;br&gt;&lt;b&gt;Heatmap TASS&lt;/b&gt; switches the heatmap (Value = TASS) between the masked score, the unmasked score and the change (green = gained with the mask, red = lost).&lt;br&gt;&lt;b&gt;Show in tables&lt;/b&gt; adds a small grey ▴/▾ unmasked TASS after each TASS in the Summary table (green / red when the call flips at the cutoff).&lt;br&gt;Hovering any TASS in the Summary or Table tab, or a heatmap cell, always shows before → after.&lt;br&gt;&lt;br&gt;&lt;b&gt;Before / after table&lt;/b&gt; lists every organism with both scores, reads, breadth and pass/fail at the current cutoffs (CSV export)."
+            >
+              &#x24D8;
+            </button>
+          </h3>
+          <label for="mcmp-mode" style="font-size: 0.82em; font-weight: 600; color: #374151; display: block"
+            >Heatmap TASS</label
+          >
+          <select id="mcmp-mode" style="width: 100%">
+            <option value="masked" selected>Masked (scored)</option>
+            <option value="unmasked">Unmasked (before mask)</option>
+            <option value="delta">Change (masked − unmasked)</option>
+          </select>
+          <label style="display: flex; align-items: center; gap: 0.35em; font-size: 0.85em; margin: 0.35em 0">
+            <input type="checkbox" id="mcmp-show-tables" /> Show unmasked TASS in tables
+          </label>
+          <div id="mcmp-summary" class="mcmp-summary"></div>
+          <button type="button" id="mcmp-open-btn" class="mcmp-open-btn">
+            <i class="fas fa-table"></i> Before / after table
+          </button>
+        </div>
+
         <h3 style="display: flex; align-items: center; gap: 0.4em">
           Sample QC / Flags
           <button
@@ -4594,6 +4641,7 @@
     <script src="src/js/50_hmp_outliers.js"></script>
     <script src="src/js/51_admin_panel.js"></script>
     <script src="src/js/52_tab_align_trends.js"></script>
+    <script src="src/js/53_mask_compare.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

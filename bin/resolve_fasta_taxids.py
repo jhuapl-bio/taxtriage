@@ -42,7 +42,8 @@ ESUMMARY = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 
 def headers(path):
     """[(id, description, length_bp)] for every record."""
-    op = gzip.open if path.endswith(".gz") else open
+    with open(path, "rb") as fh:
+        op = gzip.open if fh.read(2) == b"\x1f\x8b" else open
     out = []
     with op(path, "rt") as fh:
         for line in fh:

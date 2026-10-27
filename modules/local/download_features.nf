@@ -11,11 +11,13 @@ process FEATURES_DOWNLOAD {
     tuple val(meta), path(gcfs)
     path(assembly)
     val(get_aas)
+    val(product_types)   // --mask_products: feature types for <id>.products.bed ('' = no BED)
 
     output:
     tuple val(meta), path("${meta.id}_features.txt"), emit: features, optional: false
     tuple val(meta), path("${meta.id}_proteins.faa"), emit: proteins, optional: true
     tuple val(meta), path("${meta.id}.map.txt"), emit: mapfile, optional: true
+    tuple val(meta), path("${meta.id}.products.bed"), emit: products, optional: true
     path "versions.yml"           , emit: versions
 
     when:
@@ -29,6 +31,7 @@ process FEATURES_DOWNLOAD {
     def aa_output = "${meta.id}_proteins.faa"
     def mapfile = "${meta.id}.map.txt"
     def geta = get_aas ? "-p" : ""
+    def bed  = product_types ? "-b ${meta.id}.products.bed -t '${product_types}'" : ""
 
     """
     download_features.py \\
@@ -36,7 +39,7 @@ process FEATURES_DOWNLOAD {
         -a ${assembly} \\
         -o ${outputdir} \\
         -m ${mapfile} \\
-        -d ${geta}
+        -d ${geta} ${bed}
 
     for f in \$(find ${outputdir} -name "*feature_table.txt"); do
         cat \$f

@@ -42,6 +42,84 @@
                         "maxLength": 0
                     }
                 ]
+            },
+            "fasta": {
+                "errorMessage": "Per-sample alignment reference: one FASTA (.fa/.fasta/.fna, .gz ok), no spaces. Replaces --reference_fasta for this row.",
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern": "^\\S+\\.(fa|fasta|fna|fas|fsa)(\\.gz)?$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+            },
+            "mask_fasta": {
+                "errorMessage": "Per-sample masked FASTA(s) (';'-separated, .gz ok): masked bases are not scored for this row.",
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern": "^\\S+\\.(fa|fasta|fna|fas|fsa)(\\.gz)?(;\\S+\\.(fa|fasta|fna|fas|fsa)(\\.gz)?)*$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+            },
+            "mask_bed": {
+                "errorMessage": "Per-sample BED(s) (';'-separated): regions to ignore (exclude) or score (target) for this row.",
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern": "^\\S+\\.bed(\\.gz)?(;\\S+\\.bed(\\.gz)?)*$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+            },
+            "mask_mode": {
+                "errorMessage": "mask_mode must be 'exclude' or 'target'",
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern": "^(?i:exclude|target)$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+            },
+            "mask_fasta_case": {
+                "errorMessage": "mask_fasta_case must be hard, soft or both",
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern": "^(?i:hard|soft|both)$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+            },
+            "mask_penalty_power": {
+                "errorMessage": "mask_penalty_power must be a number >= 0",
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern": "^[0-9]*\\.?[0-9]+$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
             }
         },
         "anyOf": [

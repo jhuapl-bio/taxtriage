@@ -30,12 +30,20 @@ process BCFTOOLS_MPILEUP {
     def mpileup = save_mpileup ? "| tee ${prefix}.mpileup" : ""
     def bgzip_mpileup = save_mpileup ? "bgzip ${prefix}.mpileup" : ""
     def intervals_cmd = intervals ? "-T ${intervals}" : ""
+    // --fasta-ref must be faidx-able (plain FASTA). A gzip/bgzip reference is
+    // unpacked inside this task only (detected by magic bytes, not extension).
     """
     echo "${meta.id}" > sample_name.list
 
+    REF="$fasta"
+    if [ "\$(head -c 2 "\$REF" | od -An -tx1 | tr -d ' \\n')" = "1f8b" ]; then
+        gzip -dc "\$REF" > ${prefix}.mpileup_ref.fa
+        REF=${prefix}.mpileup_ref.fa
+    fi
+
     bcftools \\
         mpileup \\
-        --fasta-ref $fasta \\
+        --fasta-ref \$REF \\
         $args \\
         $bam \\
         $intervals_cmd \\
@@ -47,6 +55,7 @@ process BCFTOOLS_MPILEUP {
     $bgzip_mpileup
 
     tabix -p vcf -f ${prefix}.vcf.gz
+    rm -f ${prefix}.mpileup_ref.fa ${prefix}.mpileup_ref.fa.fai
 
     bcftools stats ${prefix}.vcf.gz > ${prefix}.bcftools_stats.txt
 

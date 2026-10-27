@@ -24,7 +24,7 @@ process DOWNLOAD_PATHOGENS {
         'biocontainers/gnu-wget:1.18--h36e9172_9' }"
 
     output:
-        path("pathogens.fasta"), optional: false, emit: fasta
+        path("pathogens.fasta.gz"), optional: false, emit: fasta
 
     when:
     task.ext.when == null || task.ext.when
@@ -33,7 +33,8 @@ process DOWNLOAD_PATHOGENS {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     def url = "https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz"
     """
-    wget $url -O pathogens.fasta.gz && gzip -d pathogens.fasta.gz
+    # Kept gzip-compressed: every consumer reads or streams .gz (see workflows/taxtriage.nf).
+    wget $url -O pathogens.fasta.gz
 
     """
 }

@@ -43,6 +43,10 @@ Sources (any combination; everything is merged into one BED):
     --feature_select  case-insensitive regex matched against gene/locus_tag/
                     product/name/Name/ID attributes, e.g. "^(stx[12][ab]?|eae)$"
     --feature_types   feature types to consider (default CDS,gene)
+    --feature_exact   only annotation / BED rows whose sequence id equals a
+                    reference exactly (accession.version) and fits inside it
+                    (--mask_products: annotation of the assembly a reference
+                    was matched to)
 
   Anything else
     --bed           your own BED files, merged in as-is
@@ -124,6 +128,14 @@ def parse_args(argv=None):
     ann.add_argument("--feature_select", default=None,
                      help="Case-insensitive regex on gene / locus_tag / product / Name / ID")
     ann.add_argument("--feature_types", default="CDS,gene", help="Feature types to keep (default CDS,gene)")
+    ann.add_argument("--select_bed_names", action="store_true",
+                     help="Also apply --feature_select to the name column (4) of --bed rows (BEDs made from "
+                          "annotation, e.g. the --mask_products BED)")
+    ann.add_argument("--feature_exact", action="store_true",
+                     help="Only use annotation / BED rows whose sequence id matches a reference EXACTLY (accession "
+                          "and version) and that fit inside it. Used for --mask_products, where the annotation comes "
+                          "from the assembly a reference was matched to: a different version or a renamed contig "
+                          "would put the coordinates on the wrong sequence.")
 
     other = p.add_argument_group("Other")
     other.add_argument("--bed", nargs="+", default=[], help="Extra BED files merged in as-is")
@@ -352,7 +364,21 @@ def _attrs_gff(s):
     return d
 
 
-def parse_feature_table(path, uni, sel_re, ftypes, stats):
+def _feature_ok(seq_id, ref, start0, end, exact, refs, stats):
+    """--feature_exact: same accession.version and inside the reference."""
+    if not exact:
+        return True
+    if ref != seq_id:
+        stats["feature_id_mismatch"] += 1
+        return False
+    ln = refs.get(ref)
+    if ln is not None and end > ln:
+        stats["feature_out_of_range"] += 1
+        return False
+    return True
+
+
+def parse_feature_table(path, uni, sel_re, ftypes, stats, exact=False, refs=None):
     with open_text(path) as fh:
         header = None
         for line in fh:
@@ -376,12 +402,14 @@ def parse_feature_table(path, uni, sel_re, ftypes, stats):
                 a, b = int(f["start"]) - 1, int(f["end"])
             except (KeyError, ValueError):
                 continue
+            if not _feature_ok(acc, ref, a, b, exact, refs or {}, stats):
+                continue
             label = f.get("symbol") or f.get("locus_tag") or f.get("name") or "feature"
             stats["features"] += 1
             yield ref, a, b, f"target:{f.get('feature')}:{label}"[:120].replace(" ", "_"), os.path.basename(path)
 
 
-def parse_gff(path, uni, sel_re, ftypes, stats):
+def parse_gff(path, uni, sel_re, ftypes, stats, exact=False, refs=None):
     with open_text(path) as fh:
         for line in fh:
             if line.startswith("##FASTA"):
@@ -399,6 +427,8 @@ def parse_gff(path, uni, sel_re, ftypes, stats):
             at = _attrs_gff(f[8])
             names = [at.get(k, "") for k in ("gene", "Name", "locus_tag", "ID", "product", "gene_synonym")]
             if sel_re is not None and not any(sel_re.search(x) for x in names if x):
+                continue
+            if not _feature_ok(f[0], ref, int(f[3]) - 1, int(f[4]), exact, refs or {}, stats):
                 continue
             label = at.get("gene") or at.get("Name") or at.get("locus_tag") or at.get("ID") or "feature"
             stats["features"] += 1
@@ -477,7 +507,7 @@ def parse_masked_fasta(path, uni, case, min_run, stats):
             yield r
 
 
-def parse_bed(path, uni, stats):
+def parse_bed(path, uni, stats, exact=False, refs=None, sel_re=None):
     with open_text(path) as fh:
         for line in fh:
             if not line.strip() or line.startswith(("#", "track", "browser")):
@@ -490,6 +520,10 @@ def parse_bed(path, uni, stats):
             ref = uni.resolve(f[0])
             if ref is None:
                 stats["bed_unmatched"] += 1
+                continue
+            if not _feature_ok(f[0], ref, int(f[1]), int(f[2]), exact, refs or {}, stats):
+                continue
+            if sel_re is not None and not sel_re.search(f[3] if len(f) > 3 else ""):
                 continue
             yield ref, int(f[1]), int(f[2]), (f[3] if len(f) > 3 else "bed"), os.path.basename(path)
 
@@ -538,6 +572,7 @@ def main(argv=None):
         "rows_scanned": 0, "by_action": Counter(), "skipped_action": Counter(),
         "skipped_division": 0, "assemblies_hit": set(), "features": 0, "bed_unmatched": 0,
         "masked_fasta_runs": 0, "masked_fasta_seqs": 0,
+        "feature_id_mismatch": 0, "feature_out_of_range": 0,
     }
     subset_fh = open(args.subset_out, "w") if args.subset_out else None
 
@@ -563,13 +598,13 @@ def main(argv=None):
     for p in args.fcs_adaptor_report:
         add(parse_fcs_adaptor(p, uni, actions, stats))
     for p in args.feature_table:
-        add(parse_feature_table(p, uni, sel_re, ftypes, stats))
+        add(parse_feature_table(p, uni, sel_re, ftypes, stats, args.feature_exact, refs))
     for p in args.gff:
-        add(parse_gff(p, uni, sel_re, ftypes, stats))
+        add(parse_gff(p, uni, sel_re, ftypes, stats, args.feature_exact, refs))
     for p in args.masked_fasta:
         add(parse_masked_fasta(p, uni, args.masked_fasta_case, args.masked_fasta_min_run, stats))
     for p in args.bed:
-        add(parse_bed(p, uni, stats))
+        add(parse_bed(p, uni, stats, args.feature_exact, refs, sel_re if args.select_bed_names else None))
     if subset_fh is not None:
         subset_fh.close()
 
@@ -658,6 +693,8 @@ def main(argv=None):
         "fcs_rows_skipped_by_division": stats["skipped_division"],
         "fcs_assemblies_hit": sorted(stats["assemblies_hit"]),
         "annotation_features": stats["features"],
+        "annotation_rows_id_mismatch": stats["feature_id_mismatch"],
+        "annotation_rows_out_of_range": stats["feature_out_of_range"],
         "bed_rows_unmatched": stats["bed_unmatched"],
         "masked_fasta_sequences_matched": stats["masked_fasta_seqs"],
         "masked_fasta_runs": stats["masked_fasta_runs"],
@@ -673,6 +710,10 @@ def main(argv=None):
             json.dump(summary, fh, indent=2)
     print(f"[build_mask] {len(per_ref):,} references with mask intervals, {tot_bp:,} bp, "
           f"{n_lines:,} BED lines -> {args.out}", file=sys.stderr)
+    if args.feature_exact and (stats["feature_id_mismatch"] or stats["feature_out_of_range"]):
+        print(f"[build_mask] --feature_exact: skipped {stats['feature_id_mismatch']:,} annotation rows on sequences "
+              f"not named exactly like an aligned reference and {stats['feature_out_of_range']:,} that run past "
+              "the end of one", file=sys.stderr)
     if refs and not per_ref:
         print("[build_mask] NOTE: none of the references matched any source row. For FCS this is "
               "normal for RefSeq (already screened/cleaned) references -- see the --assembly_out table.",

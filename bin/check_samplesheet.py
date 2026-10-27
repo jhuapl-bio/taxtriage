@@ -211,6 +211,7 @@ class RowChecker:
 
         """
         self._validate_sample(row)
+        self._validate_reference_columns(row)
 
         # ── Pre-aligned (BAM/CRAM) input ──────────────────────────────────────
         # When the `bam` column is populated the sample bypasses every upfront
@@ -319,6 +320,63 @@ class RowChecker:
                 # uppercase the trim value
                 # row[key] = row[key].upper()
         self.modified.append(row)
+
+    # ── Per-sample reference / mask columns (all optional) ────────────────────
+    # fasta               alignment reference for THIS row only (replaces
+    #                     --reference_fasta for it). One FASTA, .gz allowed.
+    # mask_fasta          masked copy of the reference(s): masked bases are not
+    #                     scored for this row (post-alignment, match_paths.py).
+    # mask_bed            BED of regions to ignore (exclude) or to score (target).
+    #                     mask_fasta / mask_bed accept several ';'-separated files.
+    # mask_mode           exclude | target          (default: --mask_mode)
+    # mask_fasta_case     hard | soft | both        (default: --mask_fasta_case)
+    # mask_penalty_power  float >= 0                (default: --mask_penalty_power)
+    # See docs/samplesheet.md "Per-sample references and masks".
+    BED_FORMATS = (".bed", ".bed.gz")
+
+    def _validate_reference_columns(self, row):
+        sample = row.get(self._sample_col, '')
+
+        def paths(col):
+            return [p.strip() for p in (row.get(col) or '').split(';') if p.strip()]
+
+        fa = paths('fasta')
+        if fa:
+            assert len(fa) == 1, (
+                f"Sample '{sample}': the fasta column takes ONE reference FASTA "
+                f"(concatenate several into one file): {row.get('fasta')}")
+            assert any(fa[0].lower().endswith(ext) for ext in self.FASTA_FORMATS), (
+                f"Sample '{sample}': fasta must end with one of {', '.join(self.FASTA_FORMATS)}: {fa[0]}")
+            row['fasta'] = fa[0]
+        for p in paths('mask_fasta'):
+            assert any(p.lower().endswith(ext) for ext in self.FASTA_FORMATS), (
+                f"Sample '{sample}': mask_fasta must end with one of {', '.join(self.FASTA_FORMATS)}: {p}")
+        for p in paths('mask_bed'):
+            assert any(p.lower().endswith(ext) for ext in self.BED_FORMATS), (
+                f"Sample '{sample}': mask_bed must end with .bed or .bed.gz: {p}")
+        if 'mask_fasta' in row:
+            row['mask_fasta'] = ';'.join(paths('mask_fasta'))
+        if 'mask_bed' in row:
+            row['mask_bed'] = ';'.join(paths('mask_bed'))
+        mode = (row.get('mask_mode') or '').strip().lower()
+        if mode:
+            assert mode in ('exclude', 'target'), (
+                f"Sample '{sample}': mask_mode must be 'exclude' or 'target', got '{row.get('mask_mode')}'")
+            assert mode != 'target' or paths('mask_bed'), (
+                f"Sample '{sample}': mask_mode 'target' needs the regions to score in mask_bed")
+            row['mask_mode'] = mode
+        case = (row.get('mask_fasta_case') or '').strip().lower()
+        if case:
+            assert case in ('hard', 'soft', 'both'), (
+                f"Sample '{sample}': mask_fasta_case must be hard, soft or both, got '{row.get('mask_fasta_case')}'")
+            row['mask_fasta_case'] = case
+        pen = (row.get('mask_penalty_power') or '').strip()
+        if pen:
+            try:
+                assert float(pen) >= 0
+            except (ValueError, AssertionError):
+                raise AssertionError(
+                    f"Sample '{sample}': mask_penalty_power must be a number >= 0, got '{pen}'")
 
     def _validate_bam(self, row):
         """Handle a pre-aligned row.
@@ -460,7 +518,9 @@ def sniff_format(handle):
 # Columns that belong to the pipeline infrastructure, not sample metadata
 _PIPELINE_COLS = {"fastq_1", "fastq_2", "platform", "type", "sequencing_summary", "negative", "trim", "positive", "background",
                   "single_end", "directory", "needscompressing", "is_fasta", "is_sra", "minimap2_preset",
-                  "bam", "is_bam"}
+                  "bam", "is_bam",
+                  # per-sample reference / mask columns (see _validate_reference_columns)
+                  "fasta", "mask_fasta", "mask_bed", "mask_mode", "mask_fasta_case", "mask_penalty_power"}
 
 
 def check_samplesheet(file_in, file_out, file_meta=None):

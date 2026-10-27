@@ -19,10 +19,12 @@ process MINIMAP2_INDEX {
 
     script:
     def args = task.ext.args ?: ''
+    // minimap2 reads gzip FASTA directly: no decompression. x.fa.gz -> x.mmi
+    def stem = WorkflowTaxtriage.fastaStem(fasta.name)
     """
     minimap2 \\
         -t $task.cpus \\
-        -d ${fasta.baseName}.mmi \\
+        -d ${stem}.mmi \\
         $args \\
         $fasta
 

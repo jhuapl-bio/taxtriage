@@ -58,7 +58,8 @@ workflow BAM_PREP {
     // FASTA that every sketch step would silently skip.
     ch_consensus = Channel.empty()
     if (val_consensus) {
-        BAM_CONSENSUS(ch_bams)
+        // rows that bring their own reference (samplesheet `fasta`) need no consensus
+        BAM_CONSENSUS(ch_bams.filter { it[0].sample_fasta ? false : true })
         ch_versions = ch_versions.mix(BAM_CONSENSUS.out.versions)
         ch_consensus = BAM_CONSENSUS.out.fasta.filter { meta, fasta -> fasta.size() > 0 }
     }

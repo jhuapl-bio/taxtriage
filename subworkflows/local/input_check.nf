@@ -303,6 +303,22 @@ def create_fastq_channel(LinkedHashMap row, List resolved = null) {
     // and the main alignment step.  Leave blank to keep the existing behaviour.
     meta.minimap2_preset = (row.containsKey('minimap2_preset') && row.minimap2_preset) ? row.minimap2_preset.trim() : null
 
+    // ── Per-sample reference + post-alignment mask (optional columns) ───────
+    // fasta              -> this row's alignment reference; REPLACES --reference_fasta
+    //                       for this row only (rows without it keep --reference_fasta).
+    // mask_fasta/mask_bed -> this row's region mask, applied in match_paths.py after
+    //                       alignment, on top of any run-wide mask (--mask_*/--fcs).
+    // mask_mode / mask_fasta_case / mask_penalty_power -> per-row overrides of the
+    //                       matching --mask_* params.
+    // Paths are stored as absolute strings so meta stays a plain, cache-stable map.
+    // See docs/samplesheet.md "Per-sample references and masks" (helpers below).
+    meta.sample_fasta       = sheet_paths(row, 'fasta')
+    meta.mask_fasta         = sheet_paths(row, 'mask_fasta')
+    meta.mask_bed           = sheet_paths(row, 'mask_bed')
+    meta.mask_mode          = sheet_col(row, 'mask_mode')?.toLowerCase()
+    meta.mask_fasta_case    = sheet_col(row, 'mask_fasta_case')?.toLowerCase()
+    meta.mask_penalty_power = sheet_col(row, 'mask_penalty_power')
+
     // Control sample columns
     meta.control = (row.control && row.control.toString().toUpperCase() == "TRUE") ? true : false
     // `background` nominates this sample as the source for a dilution / spike-in
@@ -371,6 +387,33 @@ def create_fastq_channel(LinkedHashMap row, List resolved = null) {
     }
 
     return fastq_meta
+}
+
+// ── Optional samplesheet columns (per-sample reference / mask) ──────────────
+// Top-level functions rather than local closures: Nextflow's strict syntax
+// (default from 25.10) does not allow calling a closure variable like a function.
+//
+// Trimmed value of an optional column, or null when the column is absent/blank.
+def sheet_col(Map row, String name) {
+    def v = row.containsKey(name) ? row[name] : null
+    return (v != null && v.toString().trim()) ? v.toString().trim() : null
+}
+
+// ';'-separated file column -> ';'-joined absolute paths (null when blank).
+// A missing file stops the run with the column and sample named.
+def sheet_paths(Map row, String name) {
+    def v = sheet_col(row, name)
+    if (!v) {
+        return null
+    }
+    def checked = v.split(';').collect { it.trim() }.findAll { it }.collect { p ->
+        def f = file(p)
+        if (!f.exists()) {
+            exit 1, "ERROR: Please check input samplesheet -> ${name} file for sample '${row.sample}' does not exist!\n${p}"
+        }
+        f.toString()
+    }
+    return checked ? checked.join(';') : null
 }
 
 // Second pass: infer which samples are controls by checking whether their

@@ -21,6 +21,21 @@ Command error:
   [CRITICAL] At least the first FASTQ file is required. On line 2.
 ```
 
+### Troubleshooting Links at the End of a Run
+
+When any step fails, TaxTriage prints a **Troubleshooting** block after the run summary. That includes steps that are allowed to fail without stopping the run. Each failed task gets one line with its exit code, the last line of its error output, its work directory, and a link to the matching section of this page:
+
+```
+-[jhuapl-bio/taxtriage] Troubleshooting: 2 failed task(s)
+  ✗ ALIGNMENT:BCFTOOLS_MPILEUP (S1.refs)  exit 255  [ignored]
+      error: [E::fai_build3_core] Cannot index files compressed with gzip, please use bgzip
+      work:  /path/to/work/87/95eae9cb3396e51f2d7a5eec883278
+      help:  https://jhuapl-bio.github.io/taxtriage/stable/troubleshooting/#compressed-gz-reference-fastas
+  Full list with links: /path/to/results/pipeline_info/troubleshooting_<timestamp>.html
+```
+
+Most terminals open a URL on Cmd/Ctrl-click. The same list is written to `pipeline_info/troubleshooting_<timestamp>.html` (clickable, and safe to share) and `pipeline_info/troubleshooting_<timestamp>.tsv`. Use `--troubleshooting_url <base>` to point the links at another copy of these docs (for example a mirror inside your network), or `--troubleshooting_url false` to turn the block off.
+
 ### Why Does My Pipeline Run Slowly?
 
 Several steps are inherently slow:
@@ -138,23 +153,42 @@ If it still fails:
 
 Every reference input (`--reference_fasta`, `--remove_reference_file`, `--cram_reference`, `--mask_fasta`, a `--genome` FASTA) can be plain or compressed. Accepted names are `.fa`, `.fasta`, `.fna`, `.fas`, `.fsa`, `.ffn`, `.frn` or `.mfa`, each optionally followed by `.gz` or `.bgz` (case-insensitive). Anything else (a FASTQ, a BAM, a `.zip`, a typo) stops the run at startup with a message naming the parameter, before any work is queued. `--reference_fasta` directories are scanned for the same extensions.
 
-Compressed references are passed through **compressed** wherever the consumer can read them; nothing is decompressed up front.
+Compressed references are passed through **compressed** end to end; nothing is decompressed up front (`--get_pathogens` also keeps its download as `pathogens.fasta.gz`). Tools that cannot read gzip unpack it inside their own task only.
 
-| Consumer                                                       | Reads `.gz`?                  | What TaxTriage does                                                                                                                                    |
-| -------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| minimap2 (alignment, host removal)                             | yes                           | passes the `.gz` as is                                                                                                                                 |
-| Deacon index build                                             | yes                           | passes the `.gz` as is (several files are concatenated, decompressing as needed)                                                                       |
-| `fuzzy_match_assembly.py` (accession mapping)                  | yes                           | reads the `.gz` directly                                                                                                                               |
-| `match_paths.py`, `conflict_regions.py`, simulation scripts    | yes, via `bin/fasta_utils.py` | plain and bgzip FASTA open with pysam; ordinary gzip is **streamed directly** (no decompressed copy; only a few-KB name/length/offset index is cached) |
-| bowtie2-build, hisat2-build                                    | no                            | decompressed inside the build task only (temporary)                                                                                                    |
-| in-silico simulation merge                                     | n/a                           | concatenates references with `gzip -dc` for compressed ones                                                                                            |
-| bcftools / bedtools (`--get_variants`, `--reference_assembly`) | no                            | only with these options, `--reference_fasta` `.gz` files are decompressed once into the work directory (`DECOMPRESS_REFERENCE`, never published)       |
-| CRAM decoding (`--cram_reference`)                             | plain or bgzip only           | an ordinary-gzip `--cram_reference` is decompressed once                                                                                               |
-| `samtools stats` in host removal                               | plain or bgzip only           | a gzipped host reference is left out of the stats call (read counts are unaffected)                                                                    |
+| Consumer                                                                         | Reads `.gz`?                  | What TaxTriage does                                                                                                                                    |
+| -------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| minimap2 (alignment, host removal)                                               | yes                           | passes the `.gz` as is                                                                                                                                 |
+| Deacon index build                                                               | yes                           | passes a single `.gz` as is; several files are streamed (decompressed on the fly) into `deacon index build -`, nothing written to disk                 |
+| `fuzzy_match_assembly.py`, `resolve_fasta_taxids.py` (accession → taxid mapping) | yes                           | reads gzip/bgzip directly (detected from the file's magic bytes, so `.bgz` or a mis-named file also works)                                             |
+| `match_paths.py`, `conflict_regions.py`, simulation scripts                      | yes, via `bin/fasta_utils.py` | plain and bgzip FASTA open with pysam; ordinary gzip is **streamed directly** (no decompressed copy; only a few-KB name/length/offset index is cached) |
+| bowtie2-build, hisat2-build                                                      | no                            | decompressed inside the build task only (temporary)                                                                                                    |
+| in-silico simulation merge                                                       | n/a                           | concatenates references with `gzip -dc` for compressed ones                                                                                            |
+| bcftools mpileup (`--get_variants`, `--reference_assembly`)                      | plain or bgzip+index only     | a compressed reference is unpacked to a temporary copy **inside that task only** and removed afterwards                                                |
+| bcftools consensus, bedtools maskfasta (`--reference_assembly`)                  | no                            | the reference is decompressed on the fly through a pipe (bedtools2#985) — no copy on disk                                                              |
+| CRAM decoding (`--cram_reference`)                                               | plain or bgzip only           | an ordinary-gzip `--cram_reference` is decompressed once                                                                                               |
+| `samtools stats` in host removal                                                 | plain or bgzip only           | a gzipped host reference is left out of the stats call (read counts are unaffected)                                                                    |
 
 For a very large gzip reference read with heavy random access by the Python steps, `export TAXTRIAGE_GZ_FASTA=decompress` switches them to one plain copy (`<name>.taxtriage.fasta` + `.fai`) instead of streaming. Converting the file to bgzip (`gunzip -c x.fa.gz | bgzip > x.fa.bgz`) gives indexed access with no plain copy at all.
 
 **`OSError: error when opening file 'x.fasta.gz'` from pysam (running a script by hand):** that is htslib refusing an ordinary-gzip FASTA. Current `bin/` scripts handle it automatically; with an older copy, either `gunzip` the file or recompress it with `bgzip` (`gunzip -c x.fasta.gz | bgzip > x.fasta.gz.bgz`).
+
+### Host Removal (minimap2 / Deacon)
+
+Covers `FILTER_MINIMAP2`, `REMOVE_HOSTREADS`, `DEACON_INDEX_BUILD`, `DEACON_FILTER`, `FETCH_HOST_REFS` and `CHECK_GZIPPED_READS`.
+
+- **The host FASTA cannot be found or read:** `--remove_reference_file` takes plain or `.gz` FASTA files, comma-separated. Deacon also accepts one prebuilt `.idx`. Check the path from the machine that runs the tasks.
+- **Every read was removed:** the sample continues with its original reads, and the log says so. A wrong host (for example a pathogen genome given as the host) produces this.
+- **`FETCH_HOST_REFS` / `DEACON_INDEX_FETCH` fail:** these download from NCBI or the Deacon index host. See [Assemblies Not Downloading](#assemblies-not-downloading). With no network access, pass a local FASTA or `.idx` instead.
+- **Out of memory** while minimap2 loads a large host genome: see [Out of Memory or Killed](#out-of-memory-or-killed-exit-137--143). Deacon (`--use_deacon`) needs far less memory for human-sized hosts.
+
+### Variant Calling and Reference Assembly (BCFTOOLS / BEDTOOLS_MASKFASTA)
+
+These steps only run with `--get_variants` or `--reference_assembly`.
+
+- **`Cannot index files compressed with gzip` / `std::out_of_range` (bedtools):** an older TaxTriage gave bcftools/bedtools the compressed reference. Current versions decompress it inside these tasks. See [Compressed reference FASTAs](#compressed-gz-reference-fastas).
+- **`head: cannot open '<ref> bowtie2'` / `<ref> hisat2`:** with `--use_bt2` or `--use_hisat2`, an older TaxTriage gave these steps the reference _and_ its index directory. Update TaxTriage.
+- **`Expected -c or -m option`:** a custom config dropped the `ext.args2 = ' -c '` that `BCFTOOLS_MPILEUP` needs for `bcftools call`.
+- **The VCF is empty:** no position reached the calling thresholds. That is normal for low-coverage hits, and the consensus then equals the reference.
 
 ### SAMTOOLS_HIST_COVERAGE
 
@@ -175,6 +209,34 @@ Usually CPU-intensive, but can fail if RAM is insufficient. Ensure you have suff
 ### SAMTOOLS_VIEW
 
 Typically fails only due to insufficient disk space or timeout. Check available storage on your system.
+
+---
+
+## Resource and Environment Errors
+
+### Out of Memory or Killed (exit 137 / 143)
+
+Exit `137` means the task was killed. Usually the operating system or the container ran out of memory. `143` means the scheduler stopped it (memory or time limit). TaxTriage retries these automatically with more memory. If a task still fails:
+
+- Raise the ceiling with `--max_memory` (and `--max_time` for `143` on a scheduler), or give Docker Desktop more memory (Settings → Resources)
+- Lower `--top_hits_count` / `--top_per_taxa` so fewer references are aligned
+- For Kraken2 use `--low_memory`. For minimap2 see [Bowtie2 / Minimap2](#bowtie2--minimap2-alignment)
+
+### Process Requirement Exceeds Available CPUs or Memory
+
+```
+Process requirement exceeds available CPUs -- req: 10; avail: 8
+```
+
+A step asked for more than the machine has. Cap requests with `--max_cpus` and `--max_memory` (for example `--max_cpus 8 --max_memory 14.GB`). Requests above these caps are clamped automatically.
+
+### Command Not Found (exit 127) or Container Errors
+
+`command not found` (exit `127`) means the tool is not installed where the task ran. Usually no container profile was given. Add `-profile docker` (or `singularity`, `apptainer`, `conda`). For `Cannot connect to the Docker daemon`, start Docker Desktop (or the docker service) and re-run with `-resume`. If an image cannot be pulled, check network or proxy access to `quay.io` / `docker.io` / `community.wave.seqera.io`.
+
+### No Space Left on Device
+
+The work directory or a temporary directory is full. Free space, move the work directory to a larger disk with `-w /big/disk/work`, and re-run with `-resume`. After a successful run, `nextflow clean -f -k` removes old work directories.
 
 ---
 
@@ -267,6 +329,18 @@ alignments looks like.
 If the flags were not something you configured, they came from the pipeline -
 see [Report Sample-QC Flags](cli-parameters.md#report-sample-qc-flags) for the
 `--report_flag_*` parameters that seed them.
+
+---
+
+## Steps That Failed but the Run Still Finished
+
+Many optional steps are allowed to fail without stopping the run: per-sample alignment, coverage, variant calling, plots and parts of the report. When one fails, Nextflow prints
+
+```
+NOTE: Process `...` terminated with an error exit status (1) -- Error is ignored
+```
+
+The run ends with _Pipeline completed successfully, but with errored process(es)_. The affected output for that sample is missing or partial. Everything else is still valid. The end-of-run [Troubleshooting block](#troubleshooting-links-at-the-end-of-a-run) lists each ignored task with a link to its section here. To look at one, follow [Debugging a Specific Step](#debugging-a-specific-step).
 
 ---
 

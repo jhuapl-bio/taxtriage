@@ -3632,6 +3632,8 @@ function redraw() {
   for (const k in _TAB_DIRTY) _TAB_DIRTY[k] = true;
   // Render the currently visible tab now.
   _drawTab(activeTab);
+  // Masking before/after panel (53_mask_compare.js): summary follows the cutoffs.
+  if (typeof ttMaskCmpRefreshPanel === "function") ttMaskCmpRefreshPanel();
   // Cheap shared updates that must reflect filter state immediately.
   // _refreshMapMarkerColors re-evaluates the filter-match set, so the map dims
   // / undims without a full marker rebuild (zoom and selection survive).

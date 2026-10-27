@@ -54,6 +54,9 @@ process ALIGNMENT_PER_SAMPLE {
         tuple val(meta), path("*_removal_stats_by_taxid.xlsx")    , optional:true, emit: removal_by_taxid
         // --mask_write_bam: the input BAM with masked alignments removed (+ .bai)
         tuple val(meta), path("*.masked.bam*")    , optional:true, emit: masked_bam
+        // --mask_compare: the same sample scored WITHOUT the mask (before/after TASS);
+        // a sub-directory so it never matches the "*.json" detections above
+        tuple val(meta), path("unmasked/*.json")    , optional:true, emit: unmasked
     when:
     task.ext.when == null || task.ext.when
 
@@ -74,8 +77,7 @@ process ALIGNMENT_PER_SAMPLE {
     // preserves the previous behaviour of always emitting the per-taxid report.
     def no_read_removal = params.no_read_removal ? " --no_read_removal " : " "
     def taxid_removal_stats = params.taxid_removal_stats ? " --taxid_removal_stats " : " "
-    // ext.suffix lets the --mask_compare unmasked baseline publish alongside
-    // the masked run without a file-name clash (see conf/modules.config).
+    // ext.suffix: optional output-name suffix for aliased runs (conf/modules.config).
     def output = "${meta.id}${task.ext.suffix ?: ''}.paths.json"
     def id = meta.id
     def minmapq_arg = minmapq ? " --minmapq ${minmapq} " :  ""
@@ -141,19 +143,32 @@ process ALIGNMENT_PER_SAMPLE {
     def _excl_bed   = _mfiles.find { _mbase.call(it) == 'mask.exclude.bed' }
     def _tgt_bed    = _mfiles.find { _mbase.call(it) == 'mask.target.bed' }
     def _fcs_asm    = _mfiles.find { _mbase.call(it) == 'fcs_assemblies.tsv' }
-    def _is_target  = (params.mask_mode ?: 'exclude') == 'target' && _tgt_bed
+    // per-sample overrides (samplesheet mask_mode / mask_penalty_power) win over the params
+    // --mask_products scores the annotated coding regions (target mode) unless the row sets its own mask_mode
+    def _is_target  = (meta.mask_mode ?: ((params.mask_products && params.mask_products.toString() != 'false') ? 'target' : params.mask_mode) ?: 'exclude') == 'target' && _tgt_bed
+    // references with no target: --mask_products defaults to keeping them whole (viral segments,
+    // contigs whose assembly has no annotation); --mask_mode target defaults to dropping them
+    def _untargeted = ((params.mask_products && params.mask_products.toString() != 'false') && (params.mask_mode ?: 'exclude') != 'target')
+        ? (params.mask_products_untargeted ?: 'keep') : (params.mask_untargeted ?: 'drop')
+    def _penalty    = meta.mask_penalty_power != null && meta.mask_penalty_power != '' ? meta.mask_penalty_power : params.mask_penalty_power
     def mask_args   = ''
     if (_is_target) {
-        mask_args = " --mask_bed ${_tgt_bed} --mask_mode target --mask_untargeted ${params.mask_untargeted ?: 'drop'} " +
+        mask_args = " --mask_bed ${_tgt_bed} --mask_mode target --mask_untargeted ${_untargeted} " +
                     (_excl_bed ? " --mask_exclude_bed ${_excl_bed} " : '')
     } else if (_excl_bed) {
         mask_args = " --mask_bed ${_excl_bed} --mask_mode exclude "
     }
     if (mask_args) {
         mask_args += (params.mask_read_overlap != null ? " --mask_read_overlap ${params.mask_read_overlap} " : '') +
-                     (params.mask_penalty_power ? " --mask_penalty_power ${params.mask_penalty_power} " : '') +
+                     (_penalty ? " --mask_penalty_power ${_penalty} " : '') +
                      (params.mask_min_region ? " --mask_min_region ${params.mask_min_region} " : '') +
                      (params.mask_write_bam ? " --mask_write_bam ${meta.id}.masked.bam " : '')
+    }
+    // --mask_compare (default on): match_paths also scores the sample WITHOUT the mask and
+    // folds the before/after TASS into the JSON; the unmasked JSON goes to unmasked/
+    if (mask_args && params.mask_compare && params.mask_compare.toString() != 'false') {
+        mask_args += " --mask_compare --mask_compare_out unmasked/${meta.id}.unmasked.paths.json " +
+                     ((params.mask_compare_parallel && params.mask_compare_parallel.toString() != 'false') ? " --mask_compare_parallel " : '')
     }
     // the assembly-level FCS annotation is useful even when nothing is masked
     mask_args += _fcs_asm ? " --fcs_assembly_table ${_fcs_asm} " : ''
