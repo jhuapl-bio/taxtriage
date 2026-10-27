@@ -194,6 +194,10 @@ For every genome pulled into the pipeline, TaxTriage needs to resolve the sequen
 
 > **Air-gapped tip:** Use `--assembly` + `--assembly_summary_genbank` (if needed) to supply pre-downloaded summary files, and `--custom_accession_map` for any accessions not covered by those summaries. This fully replaces all network-dependent taxid resolution.
 
+### Aligning to a fixed list of contigs
+
+There is no pipeline input for a list of individual contigs; `--organisms` / `--organisms_file` pull whole assemblies. Build the reference first with [`scripts/pull_contigs.py`](standalone-scripts.md#scriptspull_contigspy---a-fasta-from-a-list-of-contigs), then run with `--reference_fasta <prefix>.fasta --custom_accession_map <prefix>.accession_map.tsv`. Other scripts that run outside Nextflow are listed in [Standalone Scripts](standalone-scripts.md).
+
 ### Assembly Selection Order
 
 The [Taxid Resolution Order](#taxid-resolution-order) above runs **accession → taxid**. This section is the reverse direction - **taxid → assembly** - i.e. deciding _which_ genome to download for each top-hit organism (`download_fastas.py`, used by the `DOWNLOAD_ASSEMBLY` module). TaxTriage picks an assembly in this order, stopping at the first that resolves:

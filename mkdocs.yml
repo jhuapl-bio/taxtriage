@@ -171,6 +171,7 @@ nav:
           - Pre-Aligned Input: pre-aligned-input.md
           - Running the Pipeline: running-the-pipeline.md
           - CLI Parameters: cli-parameters.md
+          - Standalone Scripts: standalone-scripts.md
       - Pipeline Reference:
           - Pipeline Modules: pipeline-modules.md
           - Output: output.md
