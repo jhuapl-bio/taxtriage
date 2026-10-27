@@ -1204,6 +1204,17 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
             "Masked bp %":             round(100.0 * float(org.get("mask_bp_fraction", 0) or 0), 3),
             "Mask Penalty":            round(float(org.get("mask_penalty", 1.0) or 0), 4),
         }
+    # Before/after TASS (match_paths --mask_compare): the same organism scored
+    # WITHOUT the mask. The report shows these on hover / behind a right-panel
+    # toggle; the Table tab lists them with the other masking columns.
+    _mc = org.get("mask_compare")
+    if isinstance(_mc, dict):
+        _mask_cols.update({
+            "TASS (unmasked)":       round(float(_mc.get("tass_unmasked", 0) or 0), 4),
+            "TASS Change (mask)":    round(float(_mc.get("tass_delta", 0) or 0), 4),
+            "Reads (unmasked)":      int(float(_mc.get("reads_unmasked", 0) or 0)),
+            "Breadth % (unmasked)":  round(float(_mc.get("breadth_unmasked", 0) or 0), 2),
+        })
     _fcs = org.get("fcs_assembly") or {}
     if _fcs:
         _mask_cols["FCS Assembly"] = _fcs.get("assembly", "")
@@ -1302,7 +1313,8 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
 # organisms. main() back-fills them on every row when any row has them, so
 # they appear in the table (whose column list comes from the first row).
 _MASK_COLS = ["Masked Reads", "Masked Reads %", "Full Genome Length (bp)", "Masked bp",
-              "Masked bp %", "Mask Penalty", "FCS Assembly", "FCS Contaminated bp"]
+              "Masked bp %", "Mask Penalty", "FCS Assembly", "FCS Contaminated bp",
+              "TASS (unmasked)", "TASS Change (mask)", "Reads (unmasked)", "Breadth % (unmasked)"]
 
 
 def _iter_organisms(json_data, sample_name, mintass=0, microbial_cats=None):

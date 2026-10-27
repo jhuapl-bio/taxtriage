@@ -772,9 +772,20 @@ def calculate_normalized_groups(
             _n_total_contigs = _member_total
             _n_covered_contigs = _member_covered
         else:
-            _n_total_contigs = len(entries)
+            # Region masking: a contig masked end to end has a kept (scored)
+            # length of 0 and can never be covered, so it is not part of the
+            # genome being scored. Counting it would let post-alignment masking
+            # punish many-contig assemblies (Toxoplasma: 11 of 2,264 contigs
+            # "covered" when 2,253 are fully masked) where trimming the same
+            # contigs out of the reference would not. Only masked runs carry
+            # 'length_full', so unmasked scoring is unchanged.
+            _live = [
+                _e for _e in entries
+                if not ('length_full' in _e and _to_float(_e.get('length', 0)) <= 0)
+            ] or entries
+            _n_total_contigs = len(_live)
             _n_covered_contigs = sum(
-                1 for _e in entries
+                1 for _e in _live
                 if _e.get('numreads', 0) > 0 or len(_e.get('covered_regions', [])) > 0
             )
         _contig_frac = (

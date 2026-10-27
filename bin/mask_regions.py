@@ -254,6 +254,16 @@ class RefMask:
             i += 1
         return orig, comp, kb
 
+    def to_original(self, cpos: int) -> int:
+        """Map a COMPRESSED (scored-space) coordinate back to the original reference."""
+        if not self.kept:
+            return 0
+        i = bisect.bisect_right(self._cum, cpos) - 1
+        if i < 0:
+            i = 0
+        a, b = self.kept[i]
+        return min(b, a + (cpos - self._cum[i]))
+
     def to_compressed(self, pos: int) -> int:
         """Map an ORIGINAL coordinate inside kept space to compressed space.
         Positions inside a masked gap snap to the next kept base."""

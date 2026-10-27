@@ -22,8 +22,10 @@ process CHECK_GZIPPED_READS {
     }.join('; ')
 
     """
-    echo 'Checking if FASTQ.gz files contain more than ${ minimum_reads_check } reads...' > minimum_reads_check.tmp
-    $checks > minimum_reads_check.tmp
+    # One write only: the pipeline shell runs with noclobber (-C), so a second '>'
+    # to the same file aborts the task. The file is non-empty when any FASTQ passes.
+    echo 'Checking if FASTQ.gz files contain more than ${ minimum_reads_check } reads...'
+    { $checks; } > minimum_reads_check.tmp
     if [ -s minimum_reads_check.tmp ]; then
         mv minimum_reads_check.tmp minimum_reads_check.txt
     else

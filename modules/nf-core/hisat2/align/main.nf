@@ -36,7 +36,7 @@ process HISAT2_ALIGN {
     }
     def mmq = minmapq ? " -q ${minmapq}" : ''
     def S_value = "${(task.memory.toMega() * Math.min(0.15 / task.cpus, 0.15)).longValue()}M"
-    ss = "$splicesites" ? "--known-splicesite-infile $splicesites" : ''
+    def ss = splicesites ? "--known-splicesite-infile $splicesites" : ''
     def seq_center = params.seq_center ? "--rg-id ${prefix} --rg SM:$prefix --rg CN:${params.seq_center.replaceAll('\\s','_')}" : "--rg-id ${prefix} --rg SM:$prefix"
     if (meta.single_end) {
         def unaligned = params.save_unaligned ? "--un-gz ${prefix}.unmapped.fastq.gz" : ''
@@ -52,7 +52,7 @@ process HISAT2_ALIGN {
             $seq_center \\
             $unaligned \\
             $args \\
-            | samtools sort -@ ${task.cpus} -m $S_value | samtools view $minmapq -bS -F 4 -F 256 $mmq  - > ${prefix}.bam
+            | samtools sort -@ ${task.cpus} -m $S_value | samtools view -bS -F 4 -F 256 $mmq - > ${prefix}.bam
 
         cat <<-END_VERSIONS > versions.yml
         "${task.process}":
@@ -77,7 +77,7 @@ process HISAT2_ALIGN {
             --no-mixed \\
             --no-discordant \\
             $args \\
-            | samtools sort -@ ${task.cpus} -m $S_value | samtools view $minmapq -bS -F 4 -F 8 -F 256 $mmq - > ${prefix}.bam
+            | samtools sort -@ ${task.cpus} -m $S_value | samtools view -bS -F 4 -F 8 -F 256 $mmq - > ${prefix}.bam
 
         if [ -f ${prefix}.unmapped.fastq.1.gz ]; then
             mv ${prefix}.unmapped.fastq.1.gz ${prefix}.unmapped_1.fastq.gz

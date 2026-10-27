@@ -33,6 +33,12 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 | `trim`               | OPTIONAL                            | `TRUE` or `FALSE` - whether to run adapter trimming on this sample. No CLI flag is needed; `--skip_trimming` turns trimming off for every row.                                                                                                                                                                                                                                                                                                         |
 | `type`               | OPTIONAL (Recommended)              | Sample body site (e.g., `blood`, `stool`). Used for HMP-based filtering and pathogen annotation. See [Sample Types](#sample-types) below.                                                                                                                                                                                                                                                                                                              |
 | `minimap2_preset`    | OPTIONAL                            | Override the minimap2 alignment preset for this sample. See [minimap2 Presets](#minimap2-presets) below.                                                                                                                                                                                                                                                                                                                                               |
+| `fasta`              | OPTIONAL                            | Alignment reference for **this row only** (one FASTA, `.gz` ok). Replaces `--reference_fasta` for the row; rows without it keep `--reference_fasta`. See [Per-Sample References and Masks](#per-sample-references-and-masks).                                                                                                                                                                                                                          |
+| `mask_fasta`         | OPTIONAL                            | Masked copy of the reference(s) for this row: masked bases are not scored (post-alignment, in `match_paths.py`). Several files: `;`-separated.                                                                                                                                                                                                                                                                                                         |
+| `mask_bed`           | OPTIONAL                            | BED of regions to ignore (`exclude`) or to score (`target`) for this row. Several files: `;`-separated.                                                                                                                                                                                                                                                                                                                                                |
+| `mask_mode`          | OPTIONAL                            | `exclude` or `target` for this row's mask. Default: `--mask_mode`.                                                                                                                                                                                                                                                                                                                                                                                     |
+| `mask_fasta_case`    | OPTIONAL                            | `hard` (N), `soft` (lowercase) or `both` for this row's `mask_fasta`. Default: `--mask_fasta_case`.                                                                                                                                                                                                                                                                                                                                                    |
+| `mask_penalty_power` | OPTIONAL                            | TASS × (1 − masked read fraction)^p for this row. Default: `--mask_penalty_power`.                                                                                                                                                                                                                                                                                                                                                                     |
 | `positive`           | OPTIONAL                            | Name of the positive control sample (matching `sample` column) to compare against.                                                                                                                                                                                                                                                                                                                                                                     |
 | `negative`           | OPTIONAL                            | Name of the negative control sample to compare against.                                                                                                                                                                                                                                                                                                                                                                                                |
 | `background`         | OPTIONAL                            | `TRUE` marks this sample as the background for an in-silico dilution or spike-in series (often the negative control). **Inert unless a simulation param is set**, so a sheet carrying it still runs normally. Enabled by `--background_from_sheet`, or implied when `--spikein_sheet` is given. See [In-Silico](in-silico.md).                                                                                                                         |
@@ -105,6 +111,43 @@ prealigned,ILLUMINA,,/data/prealigned.bam,stool
 The FASTQ rows run the full pipeline; only the pre-aligned rows take the short path. `trim` is forced to `false` on pre-aligned rows, and the file does not need to be sorted or indexed beforehand.
 
 Supply `--reference_fasta` (the reference the alignment was made against) whenever you have it. Without it TaxTriage reconstructs the reference from the alignment, which works but biases conflict-based read removal. See [Pre-Aligned Input](pre-aligned-input.md) for the full guide, including CRAM handling and the consensus parameters.
+
+---
+
+## Per-Sample References and Masks
+
+`--reference_fasta` and the `--mask_*` parameters apply to **every** sample. To give each row its own alignment reference and/or its own region mask, add these optional columns:
+
+| Column               | What it does for that row                                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fasta`              | The reads are aligned to this FASTA **instead of** `--reference_fasta` (one file, `.gz` ok). Accessions are mapped to taxids the same way as for `--reference_fasta`. |
+| `mask_fasta`         | Masked copy of the reference: masked bases are never scored. Applied after alignment, in `match_paths.py`, exactly like `--mask_fasta`.                               |
+| `mask_bed`           | Regions to ignore (`exclude`) or to score (`target`), exactly like `--mask_bed`.                                                                                      |
+| `mask_mode`          | `exclude` (default) or `target`.                                                                                                                                      |
+| `mask_fasta_case`    | `hard` (default), `soft` or `both`.                                                                                                                                   |
+| `mask_penalty_power` | TASS × (1 − masked read fraction)^p.                                                                                                                                  |
+
+Rows that leave a column blank fall back to the matching parameter, and a row's mask is merged with any run-wide mask (`--fcs`, `--mask_bed`, ...). A run-wide mask is matched by contig name and coordinate, so it only makes sense for rows whose `fasta` keeps the original contigs; for a trimmed or rebuilt reference, give that row its own `mask_fasta` / `mask_bed` (TaxTriage warns when both are combined). Per-row masks are built by `BUILD_SAMPLE_MASK` and published to `masking/samples/<sample>/`; each sample's JSON records what was applied in `metadata.masking`.
+
+This makes like-for-like comparisons a single run: the same reads on every row, a different reference or mask per row, one `all.odr.html` with every variant side by side.
+
+```
+sample,platform,fastq_1,fastq_2,fasta,mask_fasta,mask_bed,mask_mode,mask_fasta_case
+unmasked,ILLUMINA,R1.fastq.gz,R2.fastq.gz,panel.fasta,,,,
+post_mask,ILLUMINA,R1.fastq.gz,R2.fastq.gz,panel.fasta,panel.masked.fasta.gz,,,
+post_targets,ILLUMINA,R1.fastq.gz,R2.fastq.gz,panel.fasta,,targets.bed,target,
+post_softmask,ILLUMINA,R1.fastq.gz,R2.fastq.gz,panel.fasta,panel.softmasked.fasta,,,soft
+pre_N,ILLUMINA,R1.fastq.gz,R2.fastq.gz,panel.masked.fasta,,,,
+pre_trimmed,ILLUMINA,R1.fastq.gz,R2.fastq.gz,panel.trimmed.fasta,,,,
+```
+
+```bash
+nextflow run main.nf -profile test,docker -resume --skip_kraken2 --input samplesheet.csv --outdir out -w work
+```
+
+With `--skip_kraken2`, `--reference_fasta` is not needed when **every** row has a `fasta`. Per-row references are aligned with minimap2 (the default aligner) or, with `--use_bt2`, bowtie2: each distinct row FASTA is then indexed once by its own `BOWTIE2_BUILD`. `--use_hisat2` is not supported with the `fasta` column. A pre-aligned (`bam`) row with a `fasta` uses it as its reference instead of a reconstructed consensus.
+
+> Using a **masked FASTA as the alignment reference** (the `pre_N` row above) is not the same as masking it after alignment: reads from N-masked spans go unaligned or land on the next-best match (a relative or another repeat copy) and are scored there, and the N bases still count towards genome length. See [Region Masking](masking.md#pre-alignment-vs-post-alignment-masking).
 
 ---
 

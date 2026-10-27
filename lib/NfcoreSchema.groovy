@@ -272,6 +272,18 @@ class NfcoreSchema {
             }
         }
 
+        // A samplesheet whose EVERY row has its own `fasta` column satisfies the
+        // "--skip_kraken2 needs --reference_fasta/--organisms" rule, which the JSON
+        // schema cannot see (it only knows params). Stand in for --reference_fasta
+        // on this local validation copy only; WorkflowTaxtriage.requireDatabases
+        // re-checks the real requirement once the samplesheet is read.
+        if (!params_json.has('reference_fasta') && params.input) {
+            def ref_scan = WorkflowTaxtriage.scanSampleReferenceColumns(params.input)
+            if (ref_scan.fasta_all && ref_scan.first_fasta) {
+                params_json.put('reference_fasta', ref_scan.first_fasta.toString())
+            }
+        }
+
         // Validate
         try {
             schema.validate(params_json)

@@ -21,8 +21,13 @@ process BCFTOOLS_CONSENSUS {
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
     def masking = mask ? "-m $mask" : ""
+    // Reference streamed on stdin, so a gzip/bgzip FASTA is decompressed on the fly.
     """
-    cat $fasta \\
+    if [ "\$(head -c 2 $fasta | od -An -tx1 | tr -d ' \\n')" = "1f8b" ]; then
+        gzip -dc $fasta
+    else
+        cat $fasta
+    fi \\
         | bcftools \\
             consensus \\
             $vcf \\

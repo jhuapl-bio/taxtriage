@@ -11,6 +11,12 @@ function drawHeatmap() {
   wrap.innerHTML = "";
   const fd = filteredData();
   const col = document.getElementById("hm-value-col").value || "# Reads Aligned";
+  // Region masking before/after (53_mask_compare.js, right panel): with the
+  // value set to TASS the cells can show the unmasked TASS or the change.
+  const _mcMode = col === "TASS Score" && typeof ttMaskCmpMode === "function" ? ttMaskCmpMode() : "masked";
+  const _isDelta = _mcMode === "delta";
+  const _val = (r) => (_mcMode === "masked" ? num(r[col]) : ttMaskCmpValue(r, _mcMode));
+  const _colLbl = _mcMode === "unmasked" ? "TASS (unmasked)" : _isDelta ? "TASS change (masked \u2212 unmasked)" : col;
   const rank =
     (document.getElementById("hm-rank") || document.getElementById("tass-rank") || { value: "Genus" }).value || "Genus";
   const showVals = document.getElementById("hm-show-vals").checked;
@@ -76,11 +82,14 @@ function drawHeatmap() {
 
   const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H);
 
-  const vals = fd.map((r) => num(r[col])).filter((v) => v > 0);
-  const vmax = vals.length ? d3.max(vals) : 1;
+  const vals = fd.map((r) => _val(r)).filter((v) => (_isDelta ? v !== 0 && isFinite(v) : v > 0));
+  const vmax = _isDelta ? Math.max(1, d3.max(vals.map(Math.abs)) || 1) : vals.length ? d3.max(vals) : 1;
   const scaleMode = (document.getElementById("hm-scale") || { value: "linear" }).value;
   let color;
-  if (scaleMode === "log") {
+  if (_isDelta) {
+    // diverging: red = TASS lost to masking, green = gained
+    color = d3.scaleDiverging((t) => d3.interpolateRdYlGn(t)).domain([-vmax, 0, vmax]);
+  } else if (scaleMode === "log") {
     color = d3.scaleSequentialLog(d3.interpolateBlues).domain([Math.max(1, d3.min(vals) || 1), Math.max(1, vmax)]);
   } else if (scaleMode === "sqrt") {
     color = d3.scaleSequentialSqrt(d3.interpolateBlues).domain([0, vmax]);
@@ -257,13 +266,14 @@ function drawHeatmap() {
   const lookup = {};
   fd.forEach((r) => {
     const k = `${r["Specimen ID"]}|||${r["Detected Organism"]}`;
-    if (!lookup[k] || num(r[col]) > num(lookup[k][col])) lookup[k] = r;
+    if (!lookup[k] || (_isDelta ? Math.abs(_val(r)) > Math.abs(_val(lookup[k])) : _val(r) > _val(lookup[k])))
+      lookup[k] = r;
   });
 
   organisms.forEach((org) => {
     samples.forEach((sp) => {
       const r = lookup[`${sp}|||${org}`];
-      const v = r ? num(r[col]) : null;
+      const v = r ? _val(r) : null;
       // Organism QC flag for this cell (48_organism_flags.js).
       const _of = r && typeof ttOFlagStateFor === "function" ? ttOFlagStateFor(r) : null;
       const cell = svg
@@ -272,7 +282,7 @@ function drawHeatmap() {
         .attr("y", yScale(org))
         .attr("width", xScale.bandwidth())
         .attr("height", yScale.bandwidth())
-        .attr("fill", v !== null && v > 0 ? color(v) : "#f0f0f0")
+        .attr("fill", v !== null && (_isDelta ? v !== 0 : v > 0) ? color(v) : "#f0f0f0")
         .attr("rx", 2);
 
       cell
@@ -284,9 +294,10 @@ function drawHeatmap() {
           const tass = num(r["TASS Score"]);
           const hc = isTruthy(r["High Consequence"]) ? " 🔴 HC" : "";
           showTip(
-            `<b>${org}</b>${hc}<br>Sample: ${sp}<br>${col}: <b>${
-              v !== null ? v.toLocaleString() : "n/a"
+            `<b>${org}</b>${hc}<br>Sample: ${sp}<br>${_colLbl}: <b>${
+              v !== null ? (_isDelta ? (v > 0 ? "+" : "") + v.toFixed(1) : v.toLocaleString()) : "n/a"
             }</b><br>TASS: ${tass.toFixed(1)} · ${rankLabel(r, rank)}` +
+              (typeof ttMaskCmpTipHTML === "function" ? ttMaskCmpTipHTML(r) : "") +
               (_of
                 ? `<br><span style="color:#ffcc80"><i class="fas fa-flag"></i> Organism QC: ${_of.hits
                     .map((h) => _ttOFlagEsc(h.text))
@@ -298,15 +309,21 @@ function drawHeatmap() {
         .on("mousemove", moveTip)
         .on("mouseout", hideTip);
 
-      if (showVals && v !== null && v > 0) {
+      if (showVals && v !== null && (_isDelta ? Math.abs(v) >= 0.05 : v > 0)) {
         svg
           .append("text")
           .attr("x", xScale(sp) + xScale.bandwidth() / 2)
           .attr("y", yScale(org) + yScale.bandwidth() / 2 + 4)
           .attr("text-anchor", "middle")
-          .attr("fill", txtColor)
+          .attr("fill", _isDelta ? (Math.abs(v) > 0.65 * vmax ? "#fff" : "#222") : txtColor)
           .attr("font-size", 9)
-          .text(v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0));
+          .text(
+            _isDelta
+              ? (v > 0 ? "+" : "\u2212") + Math.abs(v).toFixed(Math.abs(v) < 10 ? 1 : 0)
+              : v >= 1000
+              ? `${(v / 1000).toFixed(1)}k`
+              : v.toFixed(0),
+          );
       }
 
       // Rescued-strain marker: top-right corner triangle when the strain
@@ -408,7 +425,7 @@ function drawHeatmap() {
     cbGrad
       .append("stop")
       .attr("offset", `${t * 100}%`)
-      .attr("stop-color", color(t * vmax));
+      .attr("stop-color", color(_isDelta ? -vmax + 2 * t * vmax : t * vmax));
   });
   svg
     .append("rect")
@@ -424,14 +441,14 @@ function drawHeatmap() {
     .attr("y", cbY - 4)
     .attr("text-anchor", "middle")
     .attr("font-size", 10)
-    .text(vmax.toFixed(0));
+    .text(_isDelta ? "+" + vmax.toFixed(0) : vmax.toFixed(0));
   svg
     .append("text")
     .attr("x", cbX + cbW / 2)
     .attr("y", cbY + cbH + 12)
     .attr("text-anchor", "middle")
     .attr("font-size", 10)
-    .text("0");
+    .text(_isDelta ? "\u2212" + vmax.toFixed(0) : "0");
 
   svg
     .append("text")
@@ -439,7 +456,13 @@ function drawHeatmap() {
     .attr("text-anchor", "middle")
     .attr("font-size", 9)
     .attr("fill", "#666")
-    .text(`Scale: ${scaleMode}`);
+    .text(
+      _isDelta
+        ? "TASS change from masking"
+        : _mcMode === "unmasked"
+        ? `Unmasked TASS \u00b7 ${scaleMode}`
+        : `Scale: ${scaleMode}`,
+    );
 
   // ── Frozen axes (spreadsheet-style) ────────────────────────────────
   // #heatmap-svg-wrap scrolls in BOTH directions, and on every scroll event

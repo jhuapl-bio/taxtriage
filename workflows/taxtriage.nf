@@ -75,7 +75,6 @@ include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
 include { COUNT_READS  } from '../modules/local/count_reads'
 include { PIGZ_COMPRESS } from '../modules/nf-core/pigz/compress/main'
-include { DECOMPRESS_FASTA as DECOMPRESS_REFERENCE } from '../modules/local/decompress_fasta'
 include { DECOMPRESS_FASTA as DECOMPRESS_CRAM_REFERENCE } from '../modules/local/decompress_fasta'
 include { FASTP } from '../modules/nf-core/fastp/main'
 include { FASTPLONG } from '../modules/nf-core/fastplong/main'
@@ -188,6 +187,7 @@ def fallbackOnFailure(ch_in, ch_out, ch_ran, String stage) {
 
 
 workflow TAXTRIAGE {
+    TroubleshootingLinks.registerOnError(workflow, params, log)  // setup-time failures -> doc links
     // ── Initialisation ───────────────────────────────────────────────────────────
     // The param coercion / validation / resolution that used to sit inline here now
     // lives in lib/WorkflowTaxtriage.groovy. Nextflow stores each workflow body's
@@ -206,6 +206,9 @@ workflow TAXTRIAGE {
     def bam_only_run       = bam_scan.all
     def bam_consensus_mode = WorkflowTaxtriage.resolveBamConsensusMode(params, has_bam_samples)
     WorkflowTaxtriage.applyBamOnlyOverrides(params, bam_only_run, has_bam_samples)
+    // Per-row `fasta` / `mask_*` samplesheet columns (docs/samplesheet.md)
+    def ref_scan = params.bam ? [fasta_any: false, fasta_all: false, mask_any: false] : WorkflowTaxtriage.scanSampleReferenceColumns(params.input)
+    WorkflowTaxtriage.checkSampleFastaAligner(params, ref_scan.fasta_any)
 
     if (params.minq) {
         ch_minq_shortreads = params.minq
@@ -220,7 +223,7 @@ workflow TAXTRIAGE {
     ch_kraken_reference      = false
     ch_empty_file            = file("$projectDir/assets/NO_FILE")
 
-    WorkflowTaxtriage.requireDatabases(params, has_bam_samples)
+    WorkflowTaxtriage.requireDatabases(params, has_bam_samples, ref_scan.fasta_all)
 
     ch_pathogens          = Channel.fromPath(WorkflowTaxtriage.resolvePathogensSheet(params, projectDir), checkIfExists: true)
     ch_assembly_txt       = WorkflowTaxtriage.resolveAssemblyFiles(params)
@@ -343,29 +346,14 @@ workflow TAXTRIAGE {
     .set { ch_reference_fasta_raw }
 
     // ── gzip-compressed references ─────────────────────────────────────────
-    // Passed through COMPRESSED by default: minimap2 and Deacon read .gz
-    // natively, bowtie2-build / hisat2-build decompress inside their own task,
-    // fuzzy_match_assembly.py reads gzip, and match_paths.py / conflict_regions.py
-    // stream gzip directly via bin/fasta_utils.py (no decompressed copy).
-    // Only bcftools mpileup/consensus and bedtools maskfasta (--get_variants,
-    // --reference_assembly) need plain FASTA, so only then is a .gz reference
-    // decompressed -- once, into the work directory (never published).
-    def _needs_plain_reference = params.get_variants || params.reference_assembly
-    if (_needs_plain_reference) {
-        ch_reference_fasta_raw
-            .branch { f ->
-                gz: WorkflowTaxtriage.isGzName(f.name)
-                plain: true
-            }
-            .set { ch_reference_split }
-        DECOMPRESS_REFERENCE(
-            ch_reference_split.gz.map { f -> [ [id: f.name], f ] }
-        )
-        ch_reference_fasta = ch_reference_split.plain
-            .mix(DECOMPRESS_REFERENCE.out.fasta.map { meta, f -> f })
-    } else {
-        ch_reference_fasta = ch_reference_fasta_raw
-    }
+    // Always passed through COMPRESSED -- nothing is decompressed up front.
+    // minimap2 (alignment + host removal) and Deacon read .gz natively;
+    // fuzzy_match_assembly.py / resolve_fasta_taxids.py and match_paths.py /
+    // conflict_regions.py (bin/fasta_utils.py) stream gzip directly. Tools that
+    // cannot read gzip unpack it inside their own task only: bowtie2-build,
+    // hisat2-build, bcftools mpileup (temporary plain copy) and bcftools
+    // consensus / bedtools maskfasta (decompressed on the fly through a pipe).
+    ch_reference_fasta = ch_reference_fasta_raw
 
     if (params.get_pathogens){
         DOWNLOAD_PATHOGENS()
@@ -1051,18 +1039,23 @@ workflow TAXTRIAGE {
     // comparison, but nothing is ever downloaded on their behalf (REFERENCE_PREP
     // filters meta.is_bam out of DOWNLOAD_ASSEMBLY).  The per-sample FASTA channel
     // carries the BAM consensus when --reference_fasta was not supplied.
+    // Per-sample reference: a row's own `fasta` column rides the same per-sample
+    // path as the BAM consensus (replacing --reference_fasta for that row).
+    ch_samplesheet_fastas = ch_organisms_to_download.mix(ch_bam_inputs)
+        .filter { it[0].sample_fasta }.map { [it[0], file(it[0].sample_fasta)] }
     REFERENCE_PREP(
         ch_organisms_to_download.mix(ch_bam_inputs.map { meta, bam -> [meta, []] }),
         ch_reference_fasta,
         ch_assembly_txt,
         ch_pathogens,
-        BAM_PREP.out.consensus
+        BAM_PREP.out.consensus.mix(ch_samplesheet_fastas)
     )
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
     // todo - add alignment for contigs
     ch_mapped_assemblies = Channel.empty()
     ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
+    ch_products = REFERENCE_PREP.out.products   // [meta, products.bed] with --mask_products
     ch_mapped_assemblies = ch_preppedfiles.map{ meta, fastas, map, gcfids -> [meta, map] }
     ch_accessions = Channel.empty()
     ch_bedfiles = Channel.empty()
@@ -1397,7 +1390,8 @@ workflow TAXTRIAGE {
                 ch_novelty_candidates,  // [meta, *.novelty.candidates.tsv]
                 ch_annotate_report_tsv, // [meta, *.annotate_report.tsv] de-novo VF/AMR for unaligned samples
                 ch_insilico_manifests,  // *_subsample_manifest.tsv (empty unless --sim_subsample)
-                ch_versions             // software versions so far -> report Admin dialog
+                ch_versions,            // software versions so far -> report Admin dialog
+                ch_products             // [meta, products.bed] per sample (empty unless --mask_products)
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }
@@ -1439,6 +1433,7 @@ workflow TAXTRIAGE {
             NfcoreTemplate.email(wf_meta, run_params, run_summary_params, projectDir, log, run_multiqc_report)
         }
         NfcoreTemplate.summary(wf_meta, run_params, log)
+        TroubleshootingLinks.report(wf_meta, run_params, log)  // failed tasks -> doc links
     }
 }
 

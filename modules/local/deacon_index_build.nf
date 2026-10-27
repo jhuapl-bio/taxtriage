@@ -27,29 +27,32 @@ process DEACON_INDEX_BUILD {
     script:
     def args = task.ext.args ?: ''
     def out  = "${name}.k${params.deacon_kmer}w${params.deacon_window}.idx"
+    // deacon reads gzip/zstd/xz FASTA itself, so nothing is decompressed to disk.
+    // Several references are streamed (decompressed on the fly) into stdin ('-').
     """
+    set -o pipefail
     N=\$(ls ref/ | wc -l)
     if [ "\$N" -eq 1 ]; then
-        INPUT=\$(ls ref/*)
+        deacon index build \\
+            -k ${params.deacon_kmer} \\
+            -w ${params.deacon_window} \\
+            -t ${task.cpus} \\
+            ${args} \\
+            "\$(ls ref/*)" > ${out}
     else
-        # Several references: concatenate (decompressing as needed) into one.
         for f in ref/*; do
-            case "\$f" in
-                *.gz) gzip -dc "\$f" ;;
-                *)    cat "\$f" ;;
-            esac
-        done > combined_host.fa
-        INPUT=combined_host.fa
+            if [ "\$(head -c 2 "\$f" | od -An -tx1 | tr -d ' \\n')" = "1f8b" ]; then
+                gzip -dc "\$f"
+            else
+                cat "\$f"
+            fi
+        done | deacon index build \\
+            -k ${params.deacon_kmer} \\
+            -w ${params.deacon_window} \\
+            -t ${task.cpus} \\
+            ${args} \\
+            - > ${out}
     fi
-
-    deacon index build \\
-        -k ${params.deacon_kmer} \\
-        -w ${params.deacon_window} \\
-        -t ${task.cpus} \\
-        ${args} \\
-        "\$INPUT" > ${out}
-
-    rm -f combined_host.fa
     """
 
     stub:

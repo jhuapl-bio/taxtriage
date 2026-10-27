@@ -56,7 +56,7 @@ process MASK_REPORT {
     def bj   = real.call(baseline_jsons)
     def mf   = real.call(mask_files)
     def asm  = mf.find { base.call(it) == 'fcs_assemblies.tsv' }
-    def pref = (params.mask_mode ?: 'exclude') == 'target' ? 'target' : 'exclude'
+    def pref = ((params.mask_mode ?: 'exclude') == 'target' || (params.mask_products && params.mask_products.toString() != 'false')) ? 'target' : 'exclude'
     def summ = mf.find { base.call(it) == "mask.${pref}.summary.tsv" } ?: mf.find { base.call(it).endsWith('.summary.tsv') }
     def bjs  = mf.find { base.call(it) == "mask.${pref}.build.json" } ?: mf.find { base.call(it).endsWith('.build.json') }
     def top  = params.mask_report_top ?: 24

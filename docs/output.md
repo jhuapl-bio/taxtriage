@@ -151,7 +151,7 @@ Written by default (turn off with `--alignment_trends false`): cross-sample tabl
 
 ### Region Masking (`masking/`) - Optional
 
-Written only when masking is on (`--fcs`, `--mask_bed`, …): the mask BEDs actually used (`mask.exclude.bed`, `mask.target.bed` - load them in IGV next to the BAMs), per-reference mask summaries, `fcs_assemblies.tsv` (NCBI FCS status of every assembly in the run), `fcs_subset.txt` (the matching FCS rows, reusable as `--fcs_details`), and `all.masking.html` / `.tsv`, a visual report of what masking changed. With `--mask_compare`, `unmasked/` holds the baseline per-sample JSONs; with `--mask_write_bam`, `bam/` holds each sample's BAM with the masked alignments removed. See [Region Masking](masking.md#outputs).
+Written only when masking is on (`--fcs`, `--mask_bed`, …): the mask BEDs actually used (`mask.exclude.bed`, `mask.target.bed` - load them in IGV next to the BAMs), per-reference mask summaries, `fcs_assemblies.tsv` (NCBI FCS status of every assembly in the run), `fcs_subset.txt` (the matching FCS rows, reusable as `--fcs_details`), and `all.masking.html` / `.tsv`, a visual report of what masking changed. With `--mask_compare` (default), `unmasked/` holds the baseline per-sample JSONs (the before/after TASS is also folded into each `alignment/<sample>.paths.json`); with `--mask_write_bam`, `bam/` holds each sample's BAM with the masked alignments removed. See [Region Masking](masking.md#outputs).
 
 ### Microbial Sheet (`report/<sample>.odr.txt`)
 

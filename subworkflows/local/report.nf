@@ -32,8 +32,8 @@ include { MICROBERT_PREDICT } from '../../modules/local/microbert_predict'
 include { MICROBERT_PARSE } from '../../modules/local/microbert_parse'
 include { FCS_DOWNLOAD } from '../../modules/local/fcs_download'
 include { BUILD_MASK } from '../../modules/local/build_mask'
+include { BUILD_SAMPLE_MASK } from '../../modules/local/build_sample_mask'
 include { MASK_REPORT } from '../../modules/local/mask_report'
-include { ALIGNMENT_PER_SAMPLE as ALIGNMENT_PER_SAMPLE_UNMASKED } from '../../modules/local/alignment_per_sample'
 
 workflow REPORT {
     take:
@@ -51,6 +51,7 @@ workflow REPORT {
         ch_annotate_reports    // [meta, *.annotate_report.tsv]    (de-novo VF/AMR; NO_FILE unless --annotate)
         ch_insilico_manifests  // [*_subsample_manifest.tsv]       (empty unless --sim_subsample)
         ch_versions_in         // versions.yml files from upstream processes (report Admin dialog)
+        ch_products            // [meta, <sample>.products.bed] (empty unless --mask_products)
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
@@ -115,7 +116,7 @@ workflow REPORT {
         // ── Region masking: NCBI FCS and/or BED / annotation targets ─────────
         // One mask is built for the whole run (BUILD_MASK) from the references
         // the samples aligned to, then handed to every ALIGNMENT_PER_SAMPLE call.
-        // Off unless --fcs, --mask_bed, --mask_feature_table/--mask_gff or
+        // Off unless --fcs, --mask_bed, --mask_feature_table/--mask_gff,
         // --fcs_gx_report/--fcs_adaptor_report is given. See docs/masking.md.
         def _csv_files = { v -> v ? v.toString().tokenize(',')*.trim().findAll { it }.collect { file(it, checkIfExists: true) } : [] }
         def _mask_on = params.fcs || params.mask_bed || params.mask_fasta || params.mask_feature_table || params.mask_gff ||
@@ -163,6 +164,61 @@ workflow REPORT {
                 .ifEmpty { file("$projectDir/assets/NO_FILE_mask") }
         }
 
+        // ── Per-sample masks (samplesheet mask_fasta / mask_bed columns) ─────
+        // A row with its own mask gets it built here (BUILD_SAMPLE_MASK, merged
+        // with the run-wide mask above); every other row keeps the run-wide mask.
+        // ch_mask_by_id = [sample id, [mask files]] for EVERY sample, joined onto
+        // each ALIGNMENT_PER_SAMPLE input below so each call gets its own mask.
+        def _ref_scan = WorkflowTaxtriage.scanSampleReferenceColumns(params.input)
+        // --mask_products: every sample is scored over its product regions only
+        // (default CDS). They come from --mask_products_features (local BED /
+        // NCBI feature table / GFF3, applied to every sample) or, by default, from
+        // the sample's own FEATURES_DOWNLOAD in REFERENCE_PREP. In-silico datasets
+        // use their parent sample's. Built per sample by BUILD_SAMPLE_MASK.
+        def _products = (params.mask_products && params.mask_products.toString() != 'false') ? true : false
+        def _sample_masks_on = _ref_scan.mask_any || _products
+        ch_products_by_id = Channel.empty()
+        if (_products) {
+            def _local_feats = _csv_files.call(params.mask_products_features)
+            if (_local_feats) {
+                ch_products_by_id = alignments.map { it -> [it[0].id, _local_feats] }
+            } else {
+                ch_products_by_id = alignments
+                    .map { it -> [(it[0].insilico && it[0].parent_id) ? it[0].parent_id : it[0].id, it[0].id] }
+                    .combine(ch_products.map { m, f -> [m.id, f instanceof List ? f : [f]] }, by: 0)
+                    .map { key, id, f -> [id, f] }
+            }
+        }
+        if (_mask_on && _ref_scan.fasta_any) {
+            log.warn "Run-wide region mask (--mask_*/--fcs) + samplesheet `fasta` column: the run-wide mask is applied " +
+                     "to EVERY row by contig name and coordinate. Rows aligned to a modified reference (trimmed or " +
+                     "re-ordered contigs) need a mask built for that reference -> use the per-row mask_fasta/mask_bed instead."
+        }
+        if (!_mask_on) {
+            ch_mask_report_files = Channel.value(file("$projectDir/assets/NO_FILE_mask"))
+        }
+        alignments.branch {
+            own: (it[0].mask_fasta || it[0].mask_bed || _products) ? true : false
+            run: true
+        }.set { aln_by_mask }
+        BUILD_SAMPLE_MASK(
+            aln_by_mask.own
+                .map { it -> [it[0].id, it] }
+                .join(ch_products_by_id, remainder: true)
+                .map { row -> [row[1], row.size() > 2 ? row[2] : null] }
+                .filter { it[0] != null }
+                .map { aln, prods ->
+                    def m = aln[0]
+                    def srcs = ((m.mask_fasta ?: '').tokenize(';') + (m.mask_bed ?: '').tokenize(';')).collect { p -> file(p) }
+                    [m, aln[1], srcs, prods ?: [file("$projectDir/assets/NO_FILE_products")]]
+                },
+            ch_mask_files
+        )
+        ch_mask_by_id = aln_by_mask.run
+            .map { it -> [it[0].id] }
+            .combine(ch_mask_files.map { f -> [f instanceof List ? f : [f]] })
+            .mix(BUILD_SAMPLE_MASK.out.files.map { m, f -> [m.id, f instanceof List ? f : [f]] })
+
         // Perform the difference operation
         missing_samples = all_samples - accepted_list
         missing_samples = missing_samples.flatten().toSortedList()
@@ -177,10 +233,11 @@ workflow REPORT {
             }.set { split_alns }
 
             // ── Step 1: Run control samples FIRST ──────────────────────────────
-            ALIGNMENT_PER_SAMPLE_CONTROLS(
-                split_alns.control
+            ctrl_in = with_mask(split_alns.control
                     .combine(pathogens_list)
-                    .combine(ch_sampletype_thresholds),
+                    .combine(ch_sampletype_thresholds), ch_mask_by_id)
+            ALIGNMENT_PER_SAMPLE_CONTROLS(
+                ctrl_in.map { it[0] },
                 assemblyfile,
                 params.minmapq,
                 ch_taxdump_dir,
@@ -188,14 +245,15 @@ workflow REPORT {
                 ch_no_pos_ctrl,
                 ch_no_insilico_ctrl,
                 ch_meta_csv,
-                ch_mask_files,
+                ctrl_in.map { it[1] },
             )
 
             // ── Step 1b: Run insilico samples (no controls for them) ────────────
-            ALIGNMENT_PER_SAMPLE_INSILICO(
-                split_alns.insilico
+            insilico_in = with_mask(split_alns.insilico
                     .combine(pathogens_list)
-                    .combine(ch_sampletype_thresholds),
+                    .combine(ch_sampletype_thresholds), ch_mask_by_id)
+            ALIGNMENT_PER_SAMPLE_INSILICO(
+                insilico_in.map { it[0] },
                 assemblyfile,
                 params.minmapq,
                 ch_taxdump_dir,
@@ -203,7 +261,7 @@ workflow REPORT {
                 ch_no_pos_ctrl,
                 ch_no_insilico_ctrl,
                 ch_meta_csv,
-                ch_mask_files,
+                insilico_in.map { it[1] },
             )
 
             // ── Step 2: Collect control JSON outputs into a value channel ──────
@@ -284,6 +342,9 @@ workflow REPORT {
                 return aln_tuple + [neg_json, pos_json, insilico_jsons]
             }
 
+            // + this sample's mask files as element 16
+            noncontrol_tuple = with_mask(noncontrol_tuple, ch_mask_by_id).map { t, m -> t + [m] }
+
             // Split the resolved channel into the process inputs
             noncontrol_aln_input = noncontrol_tuple.map { it[0..12] }
             noncontrol_neg_json = noncontrol_tuple.map { it[13] ?: file("$projectDir/assets/NO_FILE_neg_ctrl") }
@@ -295,6 +356,7 @@ workflow REPORT {
                 }
                 return file("$projectDir/assets/NO_FILE_insilico_ctrl")
             }
+            noncontrol_mask = noncontrol_tuple.map { it[16] }
             ALIGNMENT_PER_SAMPLE(
                 noncontrol_aln_input,
                 assemblyfile,
@@ -304,28 +366,19 @@ workflow REPORT {
                 noncontrol_pos_json,
                 noncontrol_insilico_json,
                 ch_meta_csv,
-                ch_mask_files,
+                noncontrol_mask,
             )
 
-            // ── Masking report (+ optional unmasked baseline) ──────────────────
-            // --mask_compare re-scores the real samples WITHOUT the mask so the
-            // report can show how every TASS moved. The baseline JSONs publish to
-            // <outdir>/masking/unmasked/ and never reach the main reports.
-            if (_mask_on && params.mask_report != false) {
+            // ── Masking report (+ unmasked baseline) ───────────────────────────
+            // --mask_compare (default on): match_paths re-scores every masked sample
+            // WITHOUT the mask inside ALIGNMENT_PER_SAMPLE, folds the before/after
+            // TASS into the main JSON, and also emits the unmasked JSON, which the
+            // masking report uses as its baseline. Published to
+            // <outdir>/masking/unmasked/; never part of the main reports.
+            if ((_mask_on || _sample_masks_on) && params.mask_report != false) {
                 ch_mask_baseline = Channel.value(file("$projectDir/assets/NO_FILE_mask_baseline"))
-                if (params.mask_compare) {
-                    ALIGNMENT_PER_SAMPLE_UNMASKED(
-                        noncontrol_aln_input,
-                        assemblyfile,
-                        params.minmapq,
-                        ch_taxdump_dir,
-                        noncontrol_neg_json,
-                        noncontrol_pos_json,
-                        noncontrol_insilico_json,
-                        ch_meta_csv,
-                        Channel.value(file("$projectDir/assets/NO_FILE_mask")),
-                    )
-                    ch_mask_baseline = ALIGNMENT_PER_SAMPLE_UNMASKED.out.txt
+                if (params.mask_compare && params.mask_compare.toString() != 'false') {
+                    ch_mask_baseline = ALIGNMENT_PER_SAMPLE.out.unmasked
                         .map { meta, json -> json }
                         .collect()
                         .ifEmpty { file("$projectDir/assets/NO_FILE_mask_baseline") }
@@ -600,4 +653,13 @@ workflow REPORT {
         }
     emit:
         merged_report_txt = ch_pathogens_report
+}
+
+// [tuple] -> [tuple, this sample's mask files]: joins one ALIGNMENT_PER_SAMPLE input
+// channel with ch_mask_by_id ([sample id, [mask files]]) on meta.id. A top-level
+// function, not a closure: Nextflow's strict syntax cannot call closure variables.
+def with_mask(ch, ch_mask_by_id) {
+    return ch.map { t -> [t[0].id, t] }
+        .join(ch_mask_by_id)
+        .map { id, t, m -> [t, m] }
 }

@@ -63,14 +63,14 @@ workflow ALIGNMENT {
                 if (fastaItem instanceof List) {
                     // If the item is a list of files, return each file separately
                     def fasta = fastaItem[0]
-                    def id = "${meta.id}.${fasta.getBaseName()}"
+                    def id = "${meta.id}.${WorkflowTaxtriage.fastaStem(fasta.name)}"
                     def mm = meta.collectEntries{ k, v -> [k, v] }
                     mm.id = id
                     mm.oid = meta.id
                     outputs << [mm, fastq, fastaItem]
                 } else {
                     // If the item is a single file, return it as is
-                    def id = "${meta.id}.${fastaItem.getBaseName()}"
+                    def id = "${meta.id}.${WorkflowTaxtriage.fastaStem(fastaItem.name)}"
                     def mm = meta.collectEntries{ k, v -> [k, v] }
                     mm.id = id
                     mm.oid = meta.id
@@ -91,11 +91,11 @@ workflow ALIGNMENT {
         collected_bams = BOWTIE2_ALIGN.out.aligned
         ch_versions = ch_versions.mix(BOWTIE2_ALIGN.out.versions)
     } else if (params.use_hisat2) {
-        // Set null for hisat2 splicesites
+        // index = [fasta, hisat2/ index dir] built in REFERENCE_PREP; no splice sites
         HISAT2_ALIGN(
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
-            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, null ] },
+            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, [] ] },
             params.minmapq ?: 0,
         )
         ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
@@ -122,7 +122,12 @@ workflow ALIGNMENT {
         .set{ merged_bams_channel }
 
     if (params.get_variants || params.reference_assembly){
-        ch_bam_with_fasta = sorted_bams.join(ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] })
+        // With --use_bt2 / --use_hisat2 each reference travels as [fasta, index_dir];
+        // bcftools / bedtools must only ever see the FASTA itself.
+        ch_reference_only = ch_fasta_files_for_alignment.map { m, fastq, ref ->
+            [m, ref instanceof List ? ref[0] : ref]
+        }
+        ch_bam_with_fasta = sorted_bams.join(ch_reference_only)
 
         BEDTOOLS_BAMTOBED(
             ch_bam_with_fasta.map{ m, bam, _unused -> [m, bam] },
@@ -137,7 +142,7 @@ workflow ALIGNMENT {
         ).set{ transposed_fastas }
 
         ch_merged_mpileup = BCFTOOLS_MPILEUP.out.vcf.join(BCFTOOLS_MPILEUP.out.tbi)
-        ch_merged_mpileup = ch_merged_mpileup.join(ch_fasta_files_for_alignment.map{ m, bam, fasta -> [m, fasta] })
+        ch_merged_mpileup = ch_merged_mpileup.join(ch_reference_only)
 
 
         if (params.reference_assembly){

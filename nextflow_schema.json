@@ -500,6 +500,12 @@
                     "description": "Dont use minimap2 for short reads, use hisat2 instead. This process takes much much longer than bt2 or minimap2",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "hisat2_build_memory": {
+                    "type": "string",
+                    "description": "Only use splice sites and exons when building the HISAT2 index if at least this much memory is available (e.g. '200.GB').",
+                    "fa_icon": "fas fa-memory",
+                    "hidden": true
+                },
                 "use_diamond": {
                     "type": "boolean",
                     "description": "Use DIAMOND BLASTX on the following BAM from the alignment step(s)",
@@ -1147,6 +1153,12 @@
                     "type": "boolean",
                     "description": "Monochrome logs",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "troubleshooting_url": {
+                    "type": ["string", "boolean"],
+                    "default": "https://jhuapl-bio.github.io/taxtriage/stable/troubleshooting/",
+                    "description": "Base URL for the troubleshooting links printed at the end of a run (also written to pipeline_info/troubleshooting_*.html). Set to false to disable.",
+                    "fa_icon": "fas fa-life-ring"
                 },
                 "help": {
                     "type": "boolean",
@@ -1855,6 +1867,31 @@
                     "default": "drop",
                     "fa_icon": "fas fa-filter"
                 },
+                "mask_products": {
+                    "type": "boolean",
+                    "description": "Score only product regions (default CDS) of each reference; everything else is masked in match_paths.py. Features come from --mask_products_features, or else from each sample's FEATURES_DOWNLOAD in reference prep (NCBI GFF3 / feature table of every assembly it aligned to).",
+                    "default": false,
+                    "fa_icon": "fas fa-dna"
+                },
+                "mask_products_types": {
+                    "type": "string",
+                    "description": "Feature types that count as products, e.g. CDS, 'CDS,rRNA,tRNA', exon or gene.",
+                    "default": "CDS",
+                    "fa_icon": "fas fa-list"
+                },
+                "mask_products_untargeted": {
+                    "type": "string",
+                    "description": "--mask_products: references with no annotated product (viral segments, unannotated assemblies) are scored whole (keep) or dropped (drop).",
+                    "enum": ["keep", "drop"],
+                    "default": "keep",
+                    "fa_icon": "fas fa-filter"
+                },
+                "mask_products_features": {
+                    "type": ["string", "null"],
+                    "description": "--mask_products: comma-separated local features (BED, NCBI *_feature_table.txt[.gz] or GFF3[.gz]) used for every sample instead of downloading. Sequence ids must equal the reference ids.",
+                    "default": null,
+                    "fa_icon": "fas fa-file-alt"
+                },
                 "mask_read_overlap": {
                     "type": "number",
                     "description": "A read is removed when at least this fraction of its aligned span lies in masked space (outside targets in target mode). 1.0 = only fully masked reads.",
@@ -1898,9 +1935,15 @@
                 },
                 "mask_compare": {
                     "type": "boolean",
-                    "description": "Also score every sample without the mask so the masking report shows TASS before/after (doubles scoring time).",
-                    "default": false,
+                    "description": "Also score every masked sample without the mask: before/after TASS goes into the JSON, the HTML report (hover in the tables, right-panel toggle for the heatmap) and the masking report. Roughly doubles the scoring time of masked samples.",
+                    "default": true,
                     "fa_icon": "fas fa-exchange-alt"
+                },
+                "mask_compare_parallel": {
+                    "type": "boolean",
+                    "description": "Run the --mask_compare unmasked scoring at the same time as the masked one (faster, about twice the peak memory) instead of before it.",
+                    "default": false,
+                    "fa_icon": "fas fa-random"
                 },
                 "mask_report_top": {
                     "type": "integer",

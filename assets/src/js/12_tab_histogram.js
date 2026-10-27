@@ -4,6 +4,76 @@
        -     wrapped in an IIFE that exposes its draw/clear callbacks. Driven
        -     by genome-coverage histogram data attached to organism rows.
 ═══════════════════════════════════════════════════════════════════════════ */
+
+// ── Region-mask helpers (match_paths --mask_bed / --mask_products) ─────────
+// breadth_histogram.mask_b64 = per-bin % of bases NOT scored (masked in
+// exclude mode, outside the targets in target mode). Shared with the Summary
+// sparkline (18_tab_summary.js).
+function ttMaskBins(bh) {
+  if (!bh || !bh.mask_b64) return null;
+  if (bh._maskBins === undefined) {
+    try {
+      const mraw = atob(bh.mask_b64);
+      bh._maskBins = Array.from({ length: mraw.length }, (_, i) => mraw.charCodeAt(i));
+    } catch (e) {
+      bh._maskBins = null;
+    }
+  }
+  return Array.isArray(bh._maskBins) && bh._maskBins.length ? bh._maskBins : null;
+}
+// % of the whole genome not scored: exact (bh.mask_pct from match_paths) when
+// present, else the length-weighted mean of the per-bin mask.
+function ttMaskPct(bh) {
+  if (!bh) return null;
+  if (bh.mask_pct !== undefined && bh.mask_pct !== null && Number.isFinite(+bh.mask_pct)) return +bh.mask_pct;
+  const mb = ttMaskBins(bh);
+  if (!mb) return null;
+  const binSz = bh.bin_size || 2000;
+  const totLen = bh.total_len || mb.length * binSz;
+  let w = 0,
+    acc = 0;
+  mb.forEach((m, i) => {
+    const len = Math.max(0, Math.min(binSz, totLen - i * binSz));
+    acc += m * len;
+    w += len;
+  });
+  return w > 0 ? acc / w : null;
+}
+// Scored-regions-only histogram (match_paths: breadth_histogram.scored): the
+// kept / targeted bases joined end to end. Decoded lazily into a histogram-
+// shaped object; orig_start maps each bin back to its contig position and
+// gap_bins marks the bins where one kept region ends and the next begins.
+function ttScoredHist(bh) {
+  const sc = bh && bh.scored;
+  if (!sc || !sc.b64) return null;
+  if (!sc._bins) {
+    try {
+      const raw = atob(sc.b64);
+      sc._bins = Array.from({ length: raw.length }, (_, i) => raw.charCodeAt(i));
+    } catch (e) {
+      return null;
+    }
+  }
+  return sc;
+}
+// Text width in px for a CSS font (layout before the SVG text exists).
+let _ttMeasureCtx = null;
+function _ttTextW(txt, font) {
+  try {
+    if (!_ttMeasureCtx) _ttMeasureCtx = document.createElement("canvas").getContext("2d");
+    _ttMeasureCtx.font = font;
+    return _ttMeasureCtx.measureText(String(txt)).width;
+  } catch (e) {
+    return String(txt).length * 6;
+  }
+}
+// Never round a partial mask to "0%" / "100%".
+function ttFmtMaskPct(v) {
+  return (
+    (v <= 0 || v >= 100 ? v.toFixed(0) : v < 1 || v > 99 ? v.toFixed(1) : v >= 10 ? v.toFixed(0) : v.toFixed(1)) + "%"
+  );
+}
+
 (function () {
   function _getOrgKey(cd) {
     return `${cd.organism}||${cd.taxon_id}`;
@@ -247,6 +317,8 @@
     const sample = sampleSel ? sampleSel.value : "";
     const metric = metricSel ? metricSel.value : "reads";
     const limitTo = top20El ? parseInt(top20El.value, 10) || 15 : 9999;
+    const scopeSel = document.getElementById("hist-breadth-scope");
+    const breadthScope = scopeSel ? scopeSel.value : "auto";
 
     if (!orgKey) {
       noData.style.display = "block";
@@ -339,7 +411,14 @@
       mB_reads = 30,
       mL_reads = 160,
       mR_reads = 36;
-    const mT_brd = 28,
+    // Extra headroom for the scored / not-scored strip when any row is masked
+    const _anyMaskHist = entries.some((cd) => cd && cd.breadth_histogram && cd.breadth_histogram.mask_b64);
+    const _scopeLbl = document.getElementById("hist-scope-lbl");
+    if (_scopeLbl)
+      _scopeLbl.style.display = entries.some((cd) => cd && cd.breadth_histogram && cd.breadth_histogram.scored)
+        ? "flex"
+        : "none";
+    const mT_brd = _anyMaskHist ? 52 : 28,
       mB_brd = 36,
       iH_brd_min = 110;
     const mT_dep = 22,
@@ -571,7 +650,23 @@
 
       entries.forEach((cd, ei) => {
         const rowH = rowHeights[ei];
-        const bh = cd.breadth_histogram;
+        const bhFull = cd.breadth_histogram;
+        // Scored-regions-only view (see ttScoredHist): whole genome vs only the
+        // kept / targeted bases. Auto = scored view when >= 50 % was not scored.
+        const _sc = ttScoredHist(bhFull);
+        const _fullMaskPct = _sc ? ttMaskPct(bhFull) : null;
+        const useScored =
+          !!_sc &&
+          (breadthScope === "scored" || (breadthScope === "auto" && _fullMaskPct !== null && _fullMaskPct >= 50));
+        const bh = useScored
+          ? {
+              bins: _sc._bins,
+              bin_size: _sc.bin_size,
+              total_len: _sc.total_len,
+              breaks: _sc.breaks,
+              contig_names: _sc.contig_names,
+            }
+          : bhFull;
         const hasBh = bh && Array.isArray(bh.bins) && bh.bins.length > 0;
 
         if (!hasBh) {
@@ -595,20 +690,21 @@
         // Top-N set — build filtered bins/breaks/names restricted to visible contigs
         const topContigSet = new Set((cd.contigs || []).slice(0, limitTo).map((c) => c.name));
 
-        // Region mask overlay (match_paths --mask_bed): per-bin % of bases that
-        // were masked (exclude mode) or lay outside the targets (target mode).
-        // Decoded lazily and cached on the histogram object.
-        if (bh.mask_b64 && !bh._maskBins) {
-          try {
-            const mraw = atob(bh.mask_b64);
-            bh._maskBins = Array.from({ length: mraw.length }, (_, i) => mraw.charCodeAt(i));
-          } catch (e) {
-            bh._maskBins = null;
-          }
-        }
+        // Region mask: per-bin % NOT scored (see ttMaskBins)
+        ttMaskBins(bh);
         const maskBins = Array.isArray(bh._maskBins) && bh._maskBins.length === nBins ? bh._maskBins : null;
         const maskMode = bh.mask_mode || "exclude";
 
+        // Scored view: each bin's original start + "a new kept region starts here"
+        let scOrig =
+          useScored && Array.isArray(_sc.orig_start) && _sc.orig_start.length === nBins ? _sc.orig_start : null;
+        let scGap = null;
+        if (useScored && Array.isArray(_sc.gap_bins)) {
+          scGap = new Array(nBins).fill(false);
+          _sc.gap_bins.forEach((b) => {
+            if (b > 0 && b < nBins) scGap[b] = true;
+          });
+        }
         // Remap breadth histogram to only the top-N contigs so grey sections disappear
         let filteredBins = bins,
           filteredBreaks = breaks,
@@ -619,6 +715,8 @@
           const remappedMask = [];
           const remappedBreaks = [];
           const remappedNames = [];
+          const remappedOrig = [];
+          const remappedGap = [];
           contigNames.forEach((cName, ci) => {
             if (!topContigSet.has(cName)) return;
             const bStart = breaks[ci] || 0;
@@ -628,6 +726,8 @@
             for (let b = bStart; b < bEnd; b++) {
               remappedBins.push(bins[b]);
               if (maskBins) remappedMask.push(maskBins[b]);
+              if (scOrig) remappedOrig.push(scOrig[b]);
+              if (scGap) remappedGap.push(scGap[b]);
             }
           });
           if (remappedBins.length > 0) {
@@ -635,6 +735,8 @@
             filteredBreaks = remappedBreaks;
             filteredContigNames = remappedNames;
             filteredMask = maskBins ? remappedMask : null;
+            if (scOrig) scOrig = remappedOrig;
+            if (scGap) scGap = remappedGap;
           }
         }
         const fNBins = filteredBins.length;
@@ -662,7 +764,27 @@
         const mL = 42,
           mR = 8;
         const iW = panelW - mL - mR;
-        const iH = Math.max(iH_brd_min, rowH - mT_brd - mB_brd);
+        // Whole-genome view of a masked organism: the not-scored badge sits top
+        // right. When it would run into the title (narrow panel / long name) it
+        // gets its own row under the title and this panel's plot gives up the
+        // 20 px. (The scored-only view has no strip, so its badge uses that row.)
+        let mT = mT_brd;
+        let _badgeOwnRow = false;
+        if (maskBins && !useScored) {
+          const _ff = getComputedStyle(document.body).fontFamily || "sans-serif";
+          const _tW = _ttTextW(`${cd.organism}${showAll ? ` \u2014 ${cd.sample}` : ""}`, `600 10px ${_ff}`);
+          const _mp = ttMaskPct(bhFull);
+          const _bTxt =
+            _mp === null
+              ? "Not scored (outside targets)"
+              : `Not scored: ${ttFmtMaskPct(_mp)} (outside targets) \u00b7 scored: ${ttFmtMaskPct(100 - _mp)}`;
+          const _bW = _ttTextW(_bTxt, `700 10px ${_ff}`) + 62 + 28;
+          if (_tW + 12 + _bW > iW + mR) {
+            _badgeOwnRow = true;
+            mT = mT_brd + 20;
+          }
+        }
+        const iH = Math.max(iH_brd_min - (mT - mT_brd), rowH - mT - mB_brd);
 
         const svg = d3
           .select(breadthWrap)
@@ -672,17 +794,18 @@
           .style("display", "block")
           .style("margin-bottom", "0");
 
-        svg
+        // Left-aligned when masked so the not-scored badge (top right) has room
+        const titleEl = svg
           .append("text")
-          .attr("x", mL + iW / 2)
+          .attr("x", _anyMaskHist ? mL : mL + iW / 2)
           .attr("y", 14)
-          .attr("text-anchor", "middle")
+          .attr("text-anchor", _anyMaskHist ? "start" : "middle")
           .attr("font-size", 10)
           .attr("font-weight", "600")
           .attr("fill", "#333")
           .text(`${cd.organism}${sLbl}`);
 
-        const g = svg.append("g").attr("transform", `translate(${mL},${mT_brd})`);
+        const g = svg.append("g").attr("transform", `translate(${mL},${mT})`);
         const xSc = d3.scaleLinear().domain([xDomStart, xDomEnd]).range([0, iW]);
         const ySc = d3.scaleLinear().domain([0, maxPct]).range([iH, 0]);
 
@@ -733,25 +856,78 @@
 
         const barsG = g.append("g").attr("clip-path", `url(#${clipId})`);
 
+        // Keep a top-right badge clear of the title on narrow panels. The
+        // scored-only view has no scope strip, so its badge drops into that row
+        // (just above the plot); the whole-genome view keeps the badge and
+        // shortens the title instead (full name on hover).
+        function _fitBadge(badgeSel, canDrop) {
+          if (_badgeOwnRow) {
+            // its own row between the subtitle and the scored strip
+            badgeSel.attr("transform", "translate(0,30)");
+            return;
+          }
+          try {
+            const bb = badgeSel.node().getBBox();
+            const tEl = titleEl.node();
+            const tW = tEl.getComputedTextLength ? tEl.getComputedTextLength() : 0;
+            if (!bb.width || bb.x >= mL + tW + 12) return;
+            if (canDrop) {
+              badgeSel.attr("transform", `translate(0,${mT_brd - 22})`);
+              return;
+            }
+            const full = titleEl.text();
+            const room = bb.x - mL - 12;
+            let txt = full;
+            while (txt.length > 4 && tEl.getComputedTextLength() > room) {
+              txt = txt.slice(0, -2);
+              titleEl.text(txt + "\u2026");
+            }
+            titleEl.append("title").text(full);
+          } catch (e) {
+            /* not rendered yet (hidden tab) - leave as is */
+          }
+        }
+
         // ── Mask layer (behind the coverage bars) ──────────────────────────
-        // exclude: grey = masked bases (not scored). target: amber = targeted
-        // bases (the only ones scored). Equal neighbouring bins merge into one
-        // rect so long masked spans draw as a solid band.
-        if (filteredMask) {
-          const layer = filteredMask.map((m) => {
-            const v = maskMode === "target" ? 100 - m : m;
-            return Math.round(v / 5) * 5;
-          });
+        // Bases that were NOT scored (masked in exclude mode, outside the
+        // targets in target mode) are hatched grey, darker the more of the bin
+        // is unscored; coverage bars there are faded. A strip above the plot
+        // shows the same split (blue = scored, hatched = not scored) and a
+        // badge gives the genome-wide %. Equal neighbouring bins merge into one
+        // rect so long spans draw as a solid band.
+        const _unscored = filteredMask ? filteredMask.map((m) => Math.max(0, Math.min(100, m))) : null;
+        if (_unscored) {
+          const hatchId = `brd-hatch-${ei}`;
+          const pat = svg
+            .select("defs")
+            .append("pattern")
+            .attr("id", hatchId)
+            .attr("patternUnits", "userSpaceOnUse")
+            .attr("width", 6)
+            .attr("height", 6)
+            .attr("patternTransform", "rotate(45)");
+          pat.append("rect").attr("width", 6).attr("height", 6).attr("fill", "#dcdce2");
+          pat
+            .append("line")
+            .attr("x1", 0)
+            .attr("y1", 0)
+            .attr("x2", 0)
+            .attr("y2", 6)
+            .attr("stroke", "#8d8d96")
+            .attr("stroke-width", 2.2);
+
+          const layer = _unscored.map((m) => Math.round(m / 5) * 5);
           const runs = [];
           for (let i = 0; i < layer.length; ) {
             let j = i;
             while (j + 1 < layer.length && layer[j + 1] === layer[i]) j++;
-            if (layer[i] > 0) runs.push({ i0: i, i1: j + 1, v: layer[i] });
+            runs.push({ i0: i, i1: j + 1, v: layer[i] });
             i = j + 1;
           }
+          const maskRuns = runs.filter((r) => r.v > 0);
           barsG
             .selectAll("rect.bh-mask")
-            .data(runs)
+            .data(maskRuns)
             .enter()
             .append("rect")
             .attr("class", "bh-mask")
@@ -759,18 +935,206 @@
             .attr("y", 0)
             .attr("width", (d) => Math.max(1, xSc(d.i1) - xSc(d.i0)))
             .attr("height", iH)
-            .attr("fill", maskMode === "target" ? "#f2b84b" : "#9a9aa1")
-            .attr("opacity", (d) => 0.12 + 0.38 * (d.v / 100))
+            .attr("fill", `url(#${hatchId})`)
+            .attr("opacity", (d) => Math.max(0.08, 0.9 * (d.v / 100)))
             .attr("shape-rendering", "crispEdges")
             .style("pointer-events", "none");
+
+          // Scope strip: scored vs not scored along the genome
+          const stripH = 9,
+            stripY = -17;
+          const stripG = g.append("g").attr("class", "bh-scope");
+          const stripClip = `brd-strip-clip-${ei}`;
+          svg
+            .select("defs")
+            .append("clipPath")
+            .attr("id", stripClip)
+            .append("rect")
+            .attr("y", stripY)
+            .attr("width", iW)
+            .attr("height", stripH);
+          // Partly-masked bins blend blue -> grey by their unscored share;
+          // bins mostly not scored are hatched.
+          const _stripMix = d3.interpolateRgb("#4f8fd6", "#8d8d96");
+          const stripInner = stripG.append("g").attr("clip-path", `url(#${stripClip})`);
+          stripInner
+            .append("rect")
+            .attr("x", 0)
+            .attr("y", stripY)
+            .attr("width", iW)
+            .attr("height", stripH)
+            .attr("fill", "#4f8fd6");
+          stripInner
+            .selectAll("rect.bh-scope-m")
+            .data(maskRuns)
+            .enter()
+            .append("rect")
+            .attr("class", "bh-scope-m")
+            .attr("x", (d) => xSc(d.i0))
+            .attr("y", stripY)
+            .attr("width", (d) => Math.max(1, xSc(d.i1) - xSc(d.i0)))
+            .attr("height", stripH)
+            .attr("fill", (d) => (d.v >= 50 ? `url(#${hatchId})` : _stripMix(d.v / 100)))
+            .attr("shape-rendering", "crispEdges");
+          stripG
+            .append("rect")
+            .attr("x", 0)
+            .attr("y", stripY)
+            .attr("width", iW)
+            .attr("height", stripH)
+            .attr("fill", "none")
+            .attr("stroke", "#9aa3ad")
+            .attr("stroke-width", 0.6);
           svg
             .append("text")
-            .attr("x", mL + iW)
-            .attr("y", 14)
+            .attr("x", mL - 4)
+            .attr("y", mT + stripY + stripH - 1)
             .attr("text-anchor", "end")
-            .attr("font-size", 9)
-            .attr("fill", maskMode === "target" ? "#a8741a" : "#77777e")
-            .text(maskMode === "target" ? "\u25A0 targeted (only scored region)" : "\u25A0 masked (not scored)");
+            .attr("font-size", 8)
+            .attr("fill", "#555")
+            .text("scored");
+
+          // Genome-wide badge (top right)
+          const mpct = ttMaskPct(bh);
+          const modeTxt = maskMode === "target" ? "outside targets" : "masked";
+          const badgeTxt =
+            mpct === null
+              ? `Not scored (${modeTxt})`
+              : `Not scored: ${ttFmtMaskPct(mpct)} (${modeTxt}) \u00b7 scored: ${ttFmtMaskPct(100 - mpct)}`;
+          const full = +bh.total_len || 0;
+          const badge = svg.append("g").attr("class", "bh-mask-badge").style("cursor", "help");
+          const bt = badge
+            .append("text")
+            .attr("y", 15)
+            .attr("font-size", 10)
+            .attr("font-weight", 700)
+            .attr("fill", "#4a4a52")
+            .text(badgeTxt);
+          const tw = bt.node().getComputedTextLength ? bt.node().getComputedTextLength() : badgeTxt.length * 5.5;
+          const bx = mL + iW - tw - 10;
+          badge
+            .insert("rect", "text")
+            .attr("x", bx - 62 - 8)
+            .attr("y", 2)
+            .attr("width", tw + 62 + 18)
+            .attr("height", 18)
+            .attr("rx", 9)
+            .attr("fill", "#f1f1f4")
+            .attr("stroke", "#a9a9b2");
+          // Mini 100% bar: blue = scored, hatched = not scored
+          const pbW = 56;
+          badge
+            .insert("rect", "text")
+            .attr("x", bx - pbW - 6)
+            .attr("y", 6)
+            .attr("width", pbW)
+            .attr("height", 10)
+            .attr("fill", "#4f8fd6");
+          if (mpct !== null && mpct > 0)
+            badge
+              .insert("rect", "text")
+              .attr("x", bx - 6 - (pbW * Math.min(100, mpct)) / 100)
+              .attr("y", 6)
+              .attr("width", Math.max(1, (pbW * Math.min(100, mpct)) / 100))
+              .attr("height", 10)
+              .attr("fill", `url(#${hatchId})`);
+          badge
+            .insert("rect", "text")
+            .attr("x", bx - pbW - 6)
+            .attr("y", 6)
+            .attr("width", pbW)
+            .attr("height", 10)
+            .attr("fill", "none")
+            .attr("stroke", "#7d7d86")
+            .attr("stroke-width", 0.6);
+          bt.attr("x", bx + 2);
+          _fitBadge(badge, false);
+          badge
+            .on("mouseover", (ev) =>
+              showTip(
+                `<b>${maskMode === "target" ? "Target mode" : "Exclude mode"}</b><br>` +
+                  (mpct === null
+                    ? ""
+                    : `<b>${ttFmtMaskPct(mpct)}</b> of the genome was not considered` +
+                      (full ? ` (\u2248${fmtLen(Math.round((full * mpct) / 100))} of ${fmtLen(full)})` : "") +
+                      `.<br>`) +
+                  (maskMode === "target"
+                    ? "Only the targeted regions (BED / CDS-exon products) are scored."
+                    : "Masked regions are excluded from scoring.") +
+                  `<br>Breadth, depth and TASS use the scored part only.<br>` +
+                  `<span style="color:#ccc">Hatched = not scored \u00b7 blue strip = scored</span>`,
+                ev,
+              ),
+            )
+            .on("mousemove", moveTip)
+            .on("mouseout", hideTip);
+        }
+
+        // ── Scored-regions-only view: region joins + badge ──────────────────
+        if (useScored) {
+          // where one kept / targeted region ends and the next begins
+          const gapIdx = [];
+          if (scGap)
+            scGap.forEach((f, i) => {
+              if (f && i >= xDomStart && i < xDomEnd) gapIdx.push(i);
+            });
+          const gapG = g.append("g").attr("class", "bh-scored-gaps").style("pointer-events", "none");
+          gapG
+            .selectAll("line.tick")
+            .data(gapIdx)
+            .enter()
+            .append("line")
+            .attr("x1", (i) => xSc(i))
+            .attr("x2", (i) => xSc(i))
+            .attr("y1", -5)
+            .attr("y2", gapIdx.length <= 60 ? iH : 0)
+            .attr("stroke", "#d08a1e")
+            .attr("stroke-width", 0.8)
+            .attr("stroke-dasharray", gapIdx.length <= 60 ? "2,3" : null)
+            .attr("opacity", gapIdx.length <= 60 ? 0.55 : 0.8);
+          const nReg = (_sc.gap_bins || []).length + (_sc.breaks || []).length;
+          const fullLen = +bhFull.total_len || 0;
+          const scPct = fullLen > 0 ? (100 * _sc.total_len) / fullLen : null;
+          const badgeTxt =
+            `Scored regions only: ${fmtLen(_sc.total_len)}` +
+            (fullLen ? ` of ${fmtLen(fullLen)} (${ttFmtMaskPct(scPct)} of genome)` : "") +
+            ` \u00b7 ${nReg.toLocaleString()}${_sc.gaps_truncated ? "+" : ""} region${nReg === 1 ? "" : "s"}`;
+          const badge = svg.append("g").attr("class", "bh-mask-badge").style("cursor", "help");
+          const bt = badge
+            .append("text")
+            .attr("y", 15)
+            .attr("font-size", 10)
+            .attr("font-weight", 700)
+            .attr("fill", "#7a4f0e")
+            .text(badgeTxt);
+          const tw = bt.node().getComputedTextLength ? bt.node().getComputedTextLength() : badgeTxt.length * 5.5;
+          const bx = mL + iW - tw - 10;
+          badge
+            .insert("rect", "text")
+            .attr("x", bx - 10)
+            .attr("y", 2)
+            .attr("width", tw + 20)
+            .attr("height", 18)
+            .attr("rx", 9)
+            .attr("fill", "#fff6e6")
+            .attr("stroke", "#e0b25c");
+          bt.attr("x", bx);
+          _fitBadge(badge, true);
+          badge
+            .on("mouseover", (ev) =>
+              showTip(
+                `<b>Scored regions only</b><br>The ${
+                  bhFull.mask_mode === "target" ? "targeted" : "unmasked"
+                } bases joined end to end: ${fmtLen(_sc.total_len)}` +
+                  (fullLen ? ` of the ${fmtLen(fullLen)} genome (${ttFmtMaskPct(100 - scPct)} not scored)` : "") +
+                  `.<br>Amber ticks mark where one region ends and the next begins (a jump in genome position); ` +
+                  `grey dashes are contig boundaries. Hover a bin for its genome position.<br>` +
+                  `<span style="color:#ccc">Breadth \u2192 Whole genome shows the real positions with the masked spans hatched.</span>`,
+                ev,
+              ),
+            )
+            .on("mousemove", moveTip)
+            .on("mouseout", hideTip);
         }
 
         barsG
@@ -786,7 +1150,10 @@
           .attr("fill", ({ v, i }) => {
             return v > 0 ? colorFn(v) : "#ececec";
           })
-          .attr("opacity", ({ i }) => (selIdx < 0 ? 1 : i >= selBinStart && i < selBinEnd ? 1 : 0.15))
+          .attr("opacity", ({ i }) => {
+            const base = selIdx < 0 ? 1 : i >= selBinStart && i < selBinEnd ? 1 : 0.15;
+            return _unscored ? base * (1 - 0.6 * (_unscored[i] / 100)) : base;
+          })
           .attr("shape-rendering", "crispEdges")
           .style("cursor", "pointer")
           .on("click", function (ev, { v, i }) {
@@ -802,17 +1169,27 @@
             const cName = filteredContigNames[ci] || "";
             const posStart = i * binSz;
             const posEnd = Math.min(totLen, posStart + binSz);
+            // scored view: genome position of the bin's first base (+ a note when
+            // the bin spans a jump between two kept regions)
+            const _gpos =
+              scOrig && scOrig[i] !== undefined
+                ? `Genome pos: \u2248${Number(scOrig[i]).toLocaleString()}` +
+                  (scGap && (scGap[i] || scGap[i + 1]) ? ` <span style="color:#e0b25c">(region boundary)</span>` : "") +
+                  `<br>`
+                : "";
             showTip(
               `<b>${cName || `Bin ${i + 1}`}</b><br>` +
                 `<span style="color:#aaa;font-size:0.9em">Click to filter</span><br>` +
-                `Pos: ${fmtLen(posStart)} \u2013 ${fmtLen(posEnd)}<br>` +
+                (useScored
+                  ? `Scored pos: ${fmtLen(posStart)} \u2013 ${fmtLen(posEnd)}<br>${_gpos}`
+                  : `Pos: ${fmtLen(posStart)} \u2013 ${fmtLen(posEnd)}<br>`) +
                 `Covered: <b>${v.toFixed(1)}%</b>` +
-                (filteredMask && filteredMask[i] > 0
-                  ? maskMode === "target"
-                    ? `<br>Targeted: <b>${(100 - filteredMask[i]).toFixed(0)}%</b> of bin`
-                    : `<br>Masked: <b>${filteredMask[i].toFixed(0)}%</b> of bin (not scored)`
-                  : maskMode === "target" && filteredMask
-                  ? `<br>Targeted: <b>100%</b> of bin`
+                (filteredMask
+                  ? filteredMask[i] > 0
+                    ? `<br><span style="color:#77777e">Not scored: <b>${filteredMask[i].toFixed(0)}%</b> of bin (${
+                        maskMode === "target" ? "outside targets" : "masked"
+                      })</span>`
+                    : `<br>Scored: <b>100%</b> of bin`
                   : ""),
               ev,
             );
@@ -877,7 +1254,7 @@
           .tickFormat((d) => {
             const bp = (d - _xTickOffset) * binSz;
             if (_xRefLen >= 1e6) return (bp / 1e6).toFixed(1) + "M";
-            if (_xRefLen >= 1e3) return (bp / 1e3).toFixed(0) + "K";
+            if (_xRefLen >= 1e3) return (bp / 1e3).toFixed(_xRefLen < 2e4 ? 1 : 0) + "K";
             return bp;
           });
         g.append("g").attr("transform", `translate(0,${iH})`).call(xAxis).selectAll("text").attr("font-size", 8);
@@ -887,6 +1264,10 @@
             ? `${filteredContigNames[selIdx] || "Contig"}  (bin\u202f=\u202f${fmtLen(
                 binSz,
               )}, len\u202f\u2248\u202f${fmtLen(visRange * binSz)})`
+            : useScored
+            ? `Scored positions only, joined end to end  (bin\u202f=\u202f${fmtLen(binSz)}, scored\u202f=\u202f${fmtLen(
+                totLen,
+              )})`
             : `Genomic position  (bin\u202f=\u202f${fmtLen(binSz)}, genome\u202f=\u202f${fmtLen(totLen)})`;
         g.append("text")
           .attr("x", iW / 2)
@@ -908,7 +1289,7 @@
         svg
           .append("text")
           .attr("transform", "rotate(-90)")
-          .attr("x", -(mT_brd + iH / 2))
+          .attr("x", -(mT + iH / 2))
           .attr("y", 10)
           .attr("text-anchor", "middle")
           .attr("font-size", 9)
@@ -918,13 +1299,15 @@
         const subLine =
           selIdx >= 0
             ? `Filtered: ${filteredContigNames[selIdx] || ""} \u00b7 max=${maxBin}% \u00b7 mean=${avgPct}%`
-            : `bin=${fmtLen(binSz)} \u00b7 genome=${fmtLen(totLen)} \u00b7 max=${maxBin}% \u00b7 mean=${avgPct}%` +
+            : `bin=${fmtLen(binSz)} \u00b7 ${useScored ? "scored" : "genome"}=${fmtLen(
+                totLen,
+              )} \u00b7 max=${maxBin}% \u00b7 mean=${avgPct}%` +
               (filteredBreaks.length > 1 ? ` \u00b7 ${filteredBreaks.length} contigs` : "");
         svg
           .append("text")
-          .attr("x", mL + iW / 2)
-          .attr("y", mT_brd - 4)
-          .attr("text-anchor", "middle")
+          .attr("x", _anyMaskHist ? mL : mL + iW / 2)
+          .attr("y", _anyMaskHist ? 27 : mT_brd - 4)
+          .attr("text-anchor", _anyMaskHist ? "start" : "middle")
           .attr("font-size", 8)
           .attr("fill", "#888")
           .text(subLine);
@@ -1049,7 +1432,7 @@
 
   // Wire histogram controls after DOM is ready (scripts are at end of body)
   _buildSelectors();
-  ["hist-sample-sel", "hist-metric-sel", "hist-merge-mode-sel"].forEach((id) => {
+  ["hist-sample-sel", "hist-metric-sel", "hist-merge-mode-sel", "hist-breadth-scope"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener("change", window.drawHistogram);
   });
@@ -1344,6 +1727,11 @@ function _renderOneRow(row) {
       }
       td.style.textAlign = "center";
       td.style.fontWeight = "600";
+      // Region masking: TASS before masking on hover (53_mask_compare.js)
+      if (typeof ttMaskCmpTitle === "function") {
+        const _mt = ttMaskCmpTitle(row);
+        if (_mt) td.title = _mt;
+      }
       // Species-rollup hit: mark the row with the rescued-row style.
       // The level badge in the Detected Organism column already identifies
       // this as a Species row — no duplicate text badge needed here.

@@ -419,7 +419,7 @@ class WorkflowTaxtriage {
         'show_commensals', 'show_unidentified', 'integrate_strain_table',
         'skip_multiqc', 'email_on_fail', 'plaintext_email', 'monochrome_logs',
         'help', 'validate_params', 'show_hidden_params', 'enable_conda',
-        'report_admin'
+        'report_admin', 'mask_products', 'mask_compare', 'mask_compare_parallel'
     ]
 
     public static void coerceBooleanParams(params) {
@@ -450,6 +450,18 @@ class WorkflowTaxtriage {
 
     public static boolean isGzName(value) {
         return value != null && (baseName(value).toLowerCase() ==~ /.*\.(gz|bgz)$/)
+    }
+
+    /**
+     * File name minus any .gz/.bgz suffix and then its last extension, so a
+     * reference gets the same id/prefix whether or not it is compressed:
+     * x.fasta.gz -> x, x.fasta -> x, GCF_1.2.fna.bgz -> GCF_1.2
+     * (for an uncompressed file this equals Nextflow's getBaseName()).
+     */
+    public static String fastaStem(value) {
+        def n = baseName(value).replaceAll(/(?i)\.(gz|bgz)$/, '')
+        def i = n.lastIndexOf('.')
+        return i > 0 ? n.substring(0, i) : n
     }
 
     /** Split a multi-value path param on commas and/or whitespace. */
@@ -587,6 +599,46 @@ class WorkflowTaxtriage {
     // exist purely for the read-based path (Kraken2 DB, QC, reference download) and
     // warn about flags that cannot apply without raw reads.
     //
+    //
+    // Per-sample reference / mask columns (fasta, mask_fasta, mask_bed): peek at the
+    // samplesheet up front, like scanBamSamplesheet, so run-level checks and the
+    // REPORT masking branch know whether any row brings its own reference or mask.
+    //   fasta_any / fasta_all : some / every row has a `fasta`
+    //   mask_any              : some row has a `mask_fasta` or `mask_bed`
+    //
+    public static Map scanSampleReferenceColumns(infile) {
+        def scan = [fasta_any: false, fasta_all: false, mask_any: false, first_fasta: null]
+        if (!infile) { return scan }
+        try {
+            def f = Nextflow.file(infile)
+            if (!f.exists()) { return scan }
+            def lines = f.readLines().findAll { it != null && it.trim() }
+            if (lines.size() < 2) { return scan }
+            def sep = lines[0].contains('\t') ? '\t' : ','
+            def hdr = lines[0].split(sep, -1).collect { it.trim().replaceAll('\\uFEFF', '') }
+            def filled = { String col ->
+                def idx = hdr.indexOf(col)
+                lines[1..-1].collect { l ->
+                    def cols = l.split(sep, -1)
+                    (idx >= 0 && idx < cols.size() && cols[idx] != null && cols[idx].trim()) ? true : false
+                }
+            }
+            def fa = filled('fasta')
+            def fidx = hdr.indexOf('fasta')
+            if (fidx >= 0) {
+                scan.first_fasta = lines[1..-1].collect { l -> l.split(sep, -1) }
+                    .findResult { c -> (fidx < c.size() && c[fidx]?.trim()) ? c[fidx].trim() : null }
+            }
+            scan.fasta_any = fa.any { it }
+            scan.fasta_all = fa.every { it }
+            scan.mask_any  = filled('mask_fasta').any { it } || filled('mask_bed').any { it }
+        /* groovylint-disable-next-line CatchException */
+        } catch (Exception e) {
+            println "WARNING: could not pre-scan ${infile} for fasta/mask columns: ${e.message}"
+        }
+        return scan
+    }
+
     public static Map scanBamSamplesheet(infile) {
         def scan = [any: false, all: false]
         if (!infile) { return scan }
@@ -676,12 +728,26 @@ class WorkflowTaxtriage {
     // already fixed by the BAM, and their sequence comes either from
     // --reference_fasta or from BAM_CONSENSUS.
     //
-    public static void requireDatabases(params, boolean has_bam_samples) {
+    public static void requireDatabases(params, boolean has_bam_samples, boolean all_rows_have_fasta = false) {
         if (!params.skip_kraken2 && !params.db && !params.download_db) {
             Nextflow.error("If --skip_kraken2 is false, you must provide --db or --download_db")
         }
-        if (params.skip_kraken2 && !has_bam_samples && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
-            Nextflow.error("If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file")
+        // A samplesheet whose every row carries its own `fasta` column is a complete
+        // reference source on its own.
+        if (params.skip_kraken2 && !has_bam_samples && !all_rows_have_fasta && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
+            Nextflow.error("If you are skipping kraken2, you must provide a reference fasta (--reference_fasta, or a `fasta` column on every samplesheet row), --get_pathogens to pull the pathogens file, organisms, or organisms_file")
+        }
+    }
+
+    //
+    // Per-sample `fasta` rows are aligned with minimap2 (default) or bowtie2
+    // (--use_bt2: each distinct row FASTA gets its own BOWTIE2_BUILD). They are not
+    // indexed for hisat2. Fail early and clearly.
+    //
+    public static void checkSampleFastaAligner(params, boolean has_sample_fastas) {
+        if (has_sample_fastas && params.use_hisat2) {
+            Nextflow.error("The samplesheet `fasta` column (per-sample reference) is supported with minimap2 (default) " +
+                           "and --use_bt2 only; remove --use_hisat2 or use --reference_fasta instead.")
         }
     }
 

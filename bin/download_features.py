@@ -84,6 +84,21 @@ def parse_args(argv=None):
         help="Download the corresponding amino acid sequences for the CDS features",
     )
     parser.add_argument(
+        "-b",
+        "--bed_out",
+        type=Path,
+        default=None,
+        help="--mask_products: also write the product regions of every assembly as one BED "
+             "(0-based, half-open). Taken from the assembly's GFF3 (one CDS row per exon, so "
+             "introns are left out); if the GFF cannot be fetched, from its feature table (CDS only)",
+    )
+    parser.add_argument(
+        "-t",
+        "--bed_types",
+        default="CDS",
+        help="Feature types written to --bed_out (GFF column 3), comma-separated. Default CDS",
+    )
+    parser.add_argument(
         "-o",
         "--dir_out",
         metavar="DIR_OUT",
@@ -148,6 +163,74 @@ def download_feature_file(dir_out: str, url: str,  outfile: str, featurefile: bo
     except Exception as e:
         logger.error(f"Failed to download assembly file from {url} with error {e}")
         return None
+def _gff_products(path, types):
+    """(seqid, start0, end, label) for the GFF3 rows whose type is in `types`."""
+    rows = []
+    with gzip.open(path, "rt") as fh:
+        for line in fh:
+            if line.startswith("##FASTA"):
+                break
+            if line.startswith("#") or not line.strip():
+                continue
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 9 or f[2] not in types:
+                continue
+            attrs = dict(kv.split("=", 1) for kv in f[8].split(";") if "=" in kv)
+            label = attrs.get("gene") or attrs.get("Name") or attrs.get("locus_tag") or attrs.get("ID") or f[2]
+            rows.append((f[0], int(f[3]) - 1, int(f[4]), f"product:{f[2]}:{label}"[:120].replace(" ", "_")))
+    return rows
+
+
+def _feature_table_products(path, types):
+    """Fallback: CDS rows of a downloaded feature table (no header; spliced CDS = one span)."""
+    rows = []
+    with open(path) as fh:
+        for line in fh:
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 9 or f[0] not in types:
+                continue
+            try:
+                a, b = int(f[7]) - 1, int(f[8])
+            except ValueError:
+                continue
+            label = (f[14] if len(f) > 14 and f[14] else (f[13] if len(f) > 13 else f[0])) or f[0]
+            rows.append((f[6], a, b, f"product:{f[0]}:{label}"[:120].replace(" ", "_")))
+    return rows
+
+
+def write_products_bed(gcfs, assembly_urls, dir_out, bed_out, types):
+    """One BED of product regions for all assemblies; a log line per assembly."""
+    rows = []
+    for gcf in gcfs:
+        if gcf not in assembly_urls:
+            print(f"[products] {gcf}: not in the assembly summary - no products")
+            continue
+        gcf_url = assembly_urls[gcf].rstrip("/")
+        base = os.path.basename(gcf_url)
+        gff = os.path.join(dir_out, f"{gcf}_genomic.gff.gz")
+        got = []
+        try:
+            if not os.path.exists(gff) or os.path.getsize(gff) == 0:
+                with closing(request.urlopen(f"{gcf_url}/{base}_genomic.gff.gz", context=ctx)) as r, open(gff, "wb") as w:
+                    shutil.copyfileobj(r, w)
+            got = _gff_products(gff, types)
+            src = "GFF3"
+        except Exception as e:
+            if os.path.exists(gff):
+                os.remove(gff)  # never reuse a partial download
+            print(f"[products] {gcf}: GFF3 unavailable ({e}); using the feature table")
+            ft = os.path.join(dir_out, f"{gcf}_feature_table.txt")
+            got = _feature_table_products(ft, types) if os.path.exists(ft) else []
+            src = "feature table"
+        print(f"[products] {gcf}: {len(got)} {','.join(sorted(types))} regions from the {src}")
+        rows.extend(got)
+    rows.sort()
+    with open(bed_out, "w") as fh:
+        for r in rows:
+            fh.write("\t".join(str(x) for x in r) + "\n")
+    print(f"[products] {len(rows)} regions -> {bed_out}")
+
+
 def main():
     args = parse_args()
     logger.setLevel(logging.INFO)
@@ -219,6 +302,9 @@ def main():
                             f.close()
             except Exception as e:
                 print(f"Failed to write feature file for {gcf} at {url} with error {e}")
+    if args.bed_out:
+        types = {t.strip() for t in args.bed_types.split(",") if t.strip()}
+        write_products_bed(gcfs, assembly_urls, dir_out, args.bed_out, types)
     if mfa:
         # get only accessions in the amino acid file that are not in the feature file accessions
         seen = dict()

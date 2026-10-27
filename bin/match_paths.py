@@ -667,6 +667,23 @@ def parse_args(argv=None):
                              "supplementary alike); kept alignments that partly overlap the mask carry a "
                              "ZM:i tag with the number of masked reference bases. Indexed (.bai). Only "
                              "written when a mask is active.")
+    parser.add_argument("--mask_compare", action="store_true", default=False,
+                        help="Before/after TASS: when a mask is active, also score the same BAM WITHOUT "
+                             "the mask (a background match_paths.py run started at once) and add "
+                             "'mask_compare' {tass_unmasked, tass_masked, tass_delta, reads / breadth "
+                             "before and after} to every organism plus metadata.masking.compare. The "
+                             "unmasked JSON is kept (see --mask_compare_out). Roughly doubles the CPU "
+                             "time of this step.")
+    parser.add_argument("--mask_compare_parallel", action="store_true", default=False,
+                        help="Run the --mask_compare unmasked scoring at the same time as the masked one "
+                             "(faster wall time, about twice the peak memory). Default: run it first, then "
+                             "the masked scoring, so peak memory stays that of one run.")
+    parser.add_argument("--mask_compare_out", default=None, metavar="UNMASKED.json",
+                        help="Where --mask_compare writes the unmasked JSON "
+                             "(default: <dir of -o>/unmasked/<name>.json).")
+    parser.add_argument("--mask_baseline_json", default=None, metavar="UNMASKED.json",
+                        help="Use this existing unmasked match_paths JSON of the same sample for the "
+                             "before/after TASS instead of re-scoring (implies --mask_compare).")
     parser.add_argument("--mask_regions_json_max", type=int, default=2000,
                         help="Max masked/target intervals per accession written to the JSON for plotting.")
     parser.add_argument("--min_threshold", type=float, default=0.2, help="Min Jaccard similarity to report.")
@@ -925,7 +942,12 @@ def parse_args(argv=None):
              "TASS scores and read counts per organism.",
     )
 
+    global _ARG_PARSER
+    _ARG_PARSER = parser
     return parser.parse_args(argv)
+
+
+_ARG_PARSER = None
 
 def import_pathogens(pathogens_file):
     """Import the pathogens from the input CSV file, correctly handling commas in quoted fields."""
@@ -1574,6 +1596,22 @@ def describe_reference_db(bam_path, fasta_paths=None):
 
 def main():
     args = parse_args()
+    # ── Before/after TASS for region masking (--mask_compare) ────────────────
+    # Start the unmasked re-score now so it runs alongside this (masked) one;
+    # it is collected and merged just before the JSON is written.
+    _mask_cmp = None
+    _mask_on = bool(getattr(args, 'mask_bed', None) or getattr(args, 'mask_exclude_bed', None))
+    if _mask_on and args.mask_compare and not args.mask_baseline_json \
+            and not os.environ.get("TT_MASK_COMPARE_CHILD"):
+        import mask_compare as _mc
+        try:
+            _mask_cmp = _mc.launch(os.path.abspath(__file__), _ARG_PARSER, sys.argv[1:],
+                                   args.mask_compare_out or _mc.default_out(args.output))
+            if not args.mask_compare_parallel:
+                # serial (default): finish the unmasked run before this one allocates
+                _mask_cmp = {"done": _mc.wait(_mask_cmp)}
+        except Exception as _e:
+            print(f"[mask_compare] WARNING: could not start the unmasked run: {_e}", file=sys.stderr)
     inputfile = args.input
     pathogenfile = args.pathogens
     # Write to file in a newline format
@@ -4046,6 +4084,12 @@ def main():
     # coordinates (so positions stay meaningful) with a per-bin masked-% overlay;
     # every scored metric above used the compressed, mask-free coordinates.
     _breadth_mask_by_key = defaultdict(list)   # skey -> [(RefMask, offset)]
+    # ... and a second, SCORED-ONLY histogram over the compressed coordinates
+    # (just the kept / targeted bases, concatenated), so a genome that is 99 %
+    # masked still gets a readable track. Built only for masked strains.
+    _scored_regs_by_key = defaultdict(list)    # skey -> [(s, e, d)] scored coords
+    _scored_len_by_key = {}                    # skey -> total scored bp
+    _scored_segs_by_key = defaultdict(list)    # skey -> [(scored_offset, RefMask|None, kept_len, acc)]
     _mask_regions_by_key = defaultdict(list)   # skey -> [{accession, intervals}]
     for _acc, _hit in reference_hits.items():
         _skey = str(_hit.get('key', _acc))
@@ -4092,6 +4136,12 @@ def main():
                 if _acc_rm is not None:
                     _breadth_mask_by_key[_skey].append((_acc_rm, _offset))
                 _breadth_len_by_key[_skey] = _offset + _plot_len
+                if _region_mask is not None and _length > 0:
+                    _soff = _scored_len_by_key.get(_skey, 0)
+                    _scored_segs_by_key[_skey].append((_soff, _acc_rm, _length, _acc))
+                    for (_s, _e, _d) in _cov_regs:      # already in compressed coords
+                        _scored_regs_by_key[_skey].append((_s + _soff, _e + _soff, _d))
+                    _scored_len_by_key[_skey] = _soff + _length
         _contig_entry = {
             'name':          _acc,
             'length':        _length,
@@ -4107,6 +4157,49 @@ def main():
         if _acc_hist and any(_acc_hist.values()):
             _contig_entry['depth_histogram'] = _acc_hist
         _contig_by_key[_skey].append(_contig_entry)
+
+    def _build_scored_hist(skey):
+        """Breadth bins over the scored (compressed) coordinates of one strain,
+        with each bin's start mapped back to its original contig position and
+        the bins where one kept region ends and the next begins (a jump in
+        original coordinates) so the report can mark them."""
+        import bisect as _bis
+        _segs = _scored_segs_by_key.get(skey) or []
+        _tot = int(_scored_len_by_key.get(skey) or 0)
+        if not _segs or _tot <= 0:
+            return None
+        _nt = max(_N_BREADTH_BINS, len(_segs) * 5)
+        _bs = max(1, (_tot + _nt - 1) // _nt)
+        _bins = _build_positional_bins(_scored_regs_by_key.get(skey) or [], _tot, _bs)
+        if not _bins:
+            return None
+        _offs = [o for o, _, _, _ in _segs]
+        _orig = []
+        for _b in range(len(_bins)):
+            _p = _b * _bs
+            _si = max(0, _bis.bisect_right(_offs, _p) - 1)
+            _o, _rm, _kl, _a = _segs[_si]
+            _q = min(_p - _o, max(0, _kl - 1))
+            _orig.append(int(_rm.to_original(_q)) if _rm is not None else int(_q))
+        _gaps, _GAP_CAP = set(), 5000
+        for _o, _rm, _kl, _a in _segs:
+            if _rm is None:
+                continue
+            for _i in range(1, len(_rm.kept)):
+                _gaps.add((_o + _rm._cum[_i]) // _bs)
+                if len(_gaps) > _GAP_CAP:
+                    break
+        import base64 as _b64s
+        return {
+            'bin_size': _bs,
+            'total_len': _tot,
+            'b64': _b64s.b64encode(bytes([min(255, round(v)) for v in _bins])).decode(),
+            'breaks': [max(0, o // _bs) for o in _offs],
+            'contig_names': [a for _, _, _, a in _segs],
+            'orig_start': _orig,
+            'gap_bins': sorted(_gaps)[:_GAP_CAP],
+            'gaps_truncated': len(_gaps) > _GAP_CAP,
+        }
 
     # Pass 2: one call to _build_positional_bins per strain with adaptive bin size.
     # Target bins = max(100, n_contigs * 5) so every contig gets at least 5 bins.
@@ -4135,6 +4228,10 @@ def main():
                         _mfb(_rm_i, _rm_i.length, _off_i, _bsz, len(_bins), _mbins)
                     _breadth_bins_by_key[_skey]['mask_bins'] = [
                         min(100.0, 100.0 * _v / _bsz) for _v in _mbins]
+                if _breadth_mask_by_key.get(_skey) and _scored_len_by_key.get(_skey):
+                    _sc = _build_scored_hist(_skey)
+                    if _sc:
+                        _breadth_bins_by_key[_skey]['scored'] = _sc
                 # Compact covered runs (concatenated coords) so the report can
                 # compute an exact breadth union across a specimen's samples.
                 _ivals = _merge_covered_intervals(_breadth_regs_by_key[_skey])
@@ -4322,6 +4419,12 @@ def main():
                             bytes([min(255, round(v)) for v in _bbins['mask_bins']])
                         ).decode()
                         _strain['breadth_histogram']['mask_mode'] = _region_mask.mode
+                        # exact share of the genome not scored (masked / outside the
+                        # targets), for the histogram legend; the bins are rounded
+                        _lf = float(_strain.get('length_full') or 0)
+                        if _lf > 0:
+                            _strain['breadth_histogram']['mask_pct'] = round(
+                                100.0 * float(_strain.get('masked_bp') or 0) / _lf, 3)
                     # Carry the compact covered runs through to the report so it
                     # can compute an EXACT breadth union across a specimen's
                     # samples (per-bin max is only a lower bound). Built in
@@ -4329,6 +4432,9 @@ def main():
                     _ci = _bbins.get('covered_intervals')
                     if _ci:
                         _strain['breadth_histogram']['covered_intervals'] = _ci
+                    # scored-regions-only histogram (masked strains; see _build_scored_hist)
+                    if _bbins.get('scored'):
+                        _strain['breadth_histogram']['scored'] = _bbins['scored']
                 if _mask_regions_by_key.get(_skey):
                     _strain['mask_regions'] = _mask_regions_by_key[_skey]
                 if _fcs_by_acc:
@@ -4636,6 +4742,19 @@ def main():
         "metadata": _output_metadata,
         "organisms": _json_out,
     }
+    if _mask_on and (_mask_cmp is not None or args.mask_baseline_json):
+        import mask_compare as _mc
+        _base_path = args.mask_baseline_json or (
+            _mask_cmp["done"] if "done" in _mask_cmp else _mc.wait(_mask_cmp))
+        if _base_path:
+            try:
+                with open(_base_path) as _fh:
+                    _base_json = json.load(_fh)
+                print(_mc.describe(_mc.merge(
+                    output_json, _base_json,
+                    source="inline" if _mask_cmp is not None else os.path.basename(_base_path))))
+            except Exception as _e:
+                print(f"[mask_compare] WARNING: merge failed: {_e}", file=sys.stderr)
     write_to_json(args.output.replace(".tsv", ".json"), output_json)
 
     # ── Report Metrics (TP/FP analysis with threshold percentiles) ───────────

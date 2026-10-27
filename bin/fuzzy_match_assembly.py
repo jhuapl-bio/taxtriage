@@ -24,6 +24,7 @@ from Bio import SeqIO
 import os
 # import function determine_priority_assembly from fil in same dir
 from determine_priority_assembly import determine_priority_assembly, format_description, parse_fasta_header
+from fasta_utils import open_fasta_text  # plain, gzip or bgzip FASTA (detected by magic bytes)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Fetch assembly accessions for a list of nuccore accessions.")
@@ -125,16 +126,9 @@ def main():
     final_list = []
     missing_elements = []
     if os.path.exists(args.input):
-        # Determine the file type based on the extension
-        file_mode = 'rt'  # text mode for reading
-
-        # Use gzip.open if it's a gzipped file, otherwise open normally
-        if args.input.endswith('.gz'):
-            file_handler = gzip.open(args.input, file_mode)
-        else:
-            file_handler = open(args.input, file_mode)
-        # if the file is compressed decompress and read otherwise just read
-        with file_handler as file:
+        # Plain, gzip or bgzip FASTA: compression is detected from the file's
+        # magic bytes (not its extension) and gzip is streamed, never unpacked.
+        with open_fasta_text(args.input) as file:
             for seq_record in SeqIO.parse(file, "fasta"):
                 id, desc = format_description(seq_record.id, seq_record.description)
                 desc = desc.replace("TPA_inf: ", "")

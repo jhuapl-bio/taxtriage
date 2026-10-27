@@ -9,6 +9,7 @@ include { FEATURES_TO_BED } from '../../modules/local/convert_features_to_bed'
 include { COMBINE_MAPFILES } from '../../modules/local/combine_mapfiles'
 include { BOWTIE2_BUILD as BOWTIE2_BUILD_LOCAL } from '../../modules/nf-core/bowtie2/build/main'
 include { BOWTIE2_BUILD as BOWTIE2_BUILD_DWNLD } from '../../modules/nf-core/bowtie2/build/main'
+include { BOWTIE2_BUILD as BOWTIE2_BUILD_SAMPLE } from '../../modules/nf-core/bowtie2/build/main'
 include { HISAT2_BUILD as HISAT2_BUILD_LOCAL } from '../../modules/nf-core/hisat2/build/main'
 include { HISAT2_BUILD as HISAT2_BUILD_DWNLD } from '../../modules/nf-core/hisat2/build/main'
 
@@ -33,6 +34,7 @@ workflow  REFERENCE_PREP {
     ch_bedfiles = ch_samples.map { meta, report ->
         return [meta, []]
     }
+    ch_products = Channel.empty()   // [meta, <sample>.products.bed] with --mask_products
 
     ch_mapped_assemblies   = ch_samples.map{ meta, report -> [meta, [], [], []] }
     ch_reports_to_download = ch_samples.map{ meta, report -> report ? [meta, report] : [meta, []] }
@@ -67,7 +69,7 @@ workflow  REFERENCE_PREP {
                 ch_reference_fasta
                 .map { fasta ->
                     // Now fasta is an individual file, not a list
-                    def basename = fasta.baseName
+                    def basename = WorkflowTaxtriage.fastaStem(fasta.name)
                     return [ [id: basename],  fasta]
                 },
                 ch_assembly_txt,
@@ -78,8 +80,10 @@ workflow  REFERENCE_PREP {
             )
             // add ch_reference_fasta to all ch_fastas
             // add ch_reference_fasta to all ch_fastas
+            // A row with its own `fasta` column (meta.sample_fasta) is aligned to THAT
+            // reference only, so the run-wide --reference_fasta is not added to it.
             ch_fastas = ch_fastas.combine(ch_reference_fasta.collect()).map{ meta, fastas, fasta ->
-                fastas.add(fasta)
+                if (!meta.sample_fasta) { fastas.add(fasta) }
                 [meta, fastas]
             }
 
@@ -93,7 +97,7 @@ workflow  REFERENCE_PREP {
                         return [it[0], it[1]]
                     }, flat:false).toList()).map {
                         meta, fastas, listmaps, listids, fastaWithIndex ->
-                            fastas.addAll([fastaWithIndex])
+                            if (!meta.sample_fasta) { fastas.addAll([fastaWithIndex]) }
                             return [meta, fastas, listmaps, listids]
                     }.set { ch_mapped_assemblies }
                 } else {
@@ -102,7 +106,7 @@ workflow  REFERENCE_PREP {
 
                     fastaForBowtieBuild = ch_reference_fasta
                         .map { fasta ->
-                            def basen = fasta.baseName
+                            def basen = WorkflowTaxtriage.fastaStem(fasta.name)
                             return [ [id: basen], fasta ]
                         }
 
@@ -114,17 +118,39 @@ workflow  REFERENCE_PREP {
                     ch_mapped_assemblies = ch_mapped_assemblies
                         .combine(fastaWithIndexChannel.collect({ return [it[1], it[2]] }, flat: false).toList())
                         .map { meta, fastas, listmaps, listids, fastaWithIndex ->
-                            fastas.addAll([fastaWithIndex])
+                            if (!meta.sample_fasta) { fastas.addAll([fastaWithIndex]) }
                             return [meta, fastas, listmaps, listids]
                         }
 
                     //////////////////////////////////////////////////////////////////////////////////
                 }
+            } else if (params.use_hisat2) {
+                // hisat2 needs its own index (hisat2-build reads plain FASTA only and
+                // decompresses a .gz reference inside the build task). Each reference
+                // then travels as [fasta, hisat2/] exactly like the bowtie2 route.
+                fastaForHisatBuild = ch_reference_fasta
+                    .map { fasta -> [ [id: WorkflowTaxtriage.fastaStem(fasta.name)], fasta ] }
+
+                HISAT2_BUILD_LOCAL(
+                    fastaForHisatBuild,
+                    [[:], []],
+                    [[:], []]
+                )
+
+                fastaWithHisatIndex = fastaForHisatBuild
+                    .join(HISAT2_BUILD_LOCAL.out.index, by: 0)
+
+                ch_mapped_assemblies = ch_mapped_assemblies
+                    .combine(fastaWithHisatIndex.collect({ return [it[1], it[2]] }, flat: false).toList())
+                    .map { meta, fastas, listmaps, listids, fastaWithIndex ->
+                        fastas.addAll([fastaWithIndex])
+                        return [meta, fastas, listmaps, listids]
+                    }
             } else {
                 // Case when `use_bt2` is false, just add the fastas directly
                 ch_mapped_assemblies.combine(ch_reference_fasta.collect().toList()).map {
                     meta, fastas, listmaps, listids, fasta ->
-                        fasta.each{ f -> fastas.add([f]) }
+                        if (!meta.sample_fasta) { fasta.each{ f -> fastas.add([f]) } }
                         return [meta, fastas, listmaps, listids]
                 }.set { ch_mapped_assemblies }
             }
@@ -140,32 +166,63 @@ workflow  REFERENCE_PREP {
             // Combine the maps into the third list (listmaps) of the ch_mapped_assemblies structure
             ch_mapped_assemblies.combine(merged_map.toList())
             .map{ meta, fastas, listmaps, listids, map ->
-                listmaps.addAll(map)
+                if (!meta.sample_fasta) { listmaps.addAll(map) }
                 [meta, fastas, listmaps, listids]
             }.combine(
                 merged_map_ids.toList()
             ).map{ meta, fastas, listmaps, listids, ids ->
-                listids.addAll(ids)
+                if (!meta.sample_fasta) { listids.addAll(ids) }
                 [meta, fastas, listmaps, listids]
             }.set{ ch_mapped_assemblies }
         }
 
         ////////////////////////////////////////////////////////////////////////////////////////
-        // PER-SAMPLE REFERENCE SEQUENCE (BAM consensus)
+        // PER-SAMPLE REFERENCE SEQUENCE (samplesheet `fasta` column, or BAM consensus)
         // Pre-aligned samples run without --reference_fasta recover their reference
         // sequence from the alignment itself (BAM_CONSENSUS).  That FASTA is treated
         // exactly like a user-supplied local reference: fuzzy-matched against the
         // assembly summary to build the accession->taxid map match_paths.py needs for
         // -m, and added to the sample's FASTA list so -f (sourmash / ANI) has bases.
         // The difference is that it is PER SAMPLE, so it is joined by meta rather
-        // than broadcast to every sample.
+        // than broadcast to every sample. The same path carries a samplesheet row's
+        // own `fasta` (which replaces --reference_fasta for that row, see above).
         ////////////////////////////////////////////////////////////////////////////////////////
+        // One fuzzy-match per DISTINCT FASTA file -- many samplesheet rows can share
+        // one `fasta` -- then fanned back out to every sample that uses it.
+        ch_sample_fasta_keyed = ch_sample_fastas.map { meta, f -> [f.toString(), meta, f] }
         MAP_SAMPLE_FASTA_TO_ASSEMBLY(
-            ch_sample_fastas,
+            ch_sample_fasta_keyed
+                .unique { it[0] }
+                .map { key, meta, f -> [[id: WorkflowTaxtriage.fastaStem(f.name), fasta_key: key], f] },
             ch_assembly_txt,
             ch_pathogens_file.first()
         )
         ch_versions = ch_versions.mix(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.versions)
+        ch_sample_fasta_map = ch_sample_fasta_keyed.map { key, meta, f -> [key, meta] }
+            .combine(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.map.map { m, mapfile -> [m.fasta_key, mapfile] }, by: 0)
+            .map { key, meta, mapfile -> [meta, mapfile] }
+        ch_sample_fasta_acc = ch_sample_fasta_keyed.map { key, meta, f -> [key, meta] }
+            .combine(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.accessions.map { m, acc -> [m.fasta_key, acc] }, by: 0)
+            .map { key, meta, acc -> [meta, acc] }
+
+        // --use_bt2: a row's own `fasta` needs its own bowtie2 index (the run-wide
+        // --reference_fasta index does not cover it). One BOWTIE2_BUILD per DISTINCT
+        // row FASTA, fanned back out; the reference then travels as [fasta, index_dir]
+        // exactly like the run-wide one. BAM-consensus FASTAs are never realigned, so
+        // only samplesheet `fasta` rows (meta.sample_fasta) are indexed.
+        ch_sample_bt2 = Channel.empty()
+        if (params.use_bt2) {
+            ch_row_fastas = ch_sample_fasta_keyed.filter { key, meta, f -> meta.sample_fasta }
+            BOWTIE2_BUILD_SAMPLE(
+                ch_row_fastas
+                    .unique { it[0] }
+                    .map { key, meta, f -> [[id: WorkflowTaxtriage.fastaStem(f.name), fasta_key: key], f] }
+            )
+            ch_versions = ch_versions.mix(BOWTIE2_BUILD_SAMPLE.out.versions)
+            ch_sample_bt2 = ch_row_fastas.map { key, meta, f -> [key, meta] }
+                .combine(BOWTIE2_BUILD_SAMPLE.out.index.map { m, idx -> [m.fasta_key, idx] }, by: 0)
+                .map { key, meta, idx -> [meta, idx] }
+        }
 
         // NOTE: each .join(..., remainder: true) below is immediately normalised
         // with a single-arg `{ row -> ... }` closure rather than a multi-param
@@ -192,13 +249,16 @@ workflow  REFERENCE_PREP {
         ch_mapped_assemblies = ch_mapped_assemblies
             .join(ch_sample_fastas, remainder: true)
             .map { row -> [row[0], row[1], row[2], row[3], row.size() > 4 ? row[4] : null] }
-            .join(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.map, remainder: true)
+            .join(ch_sample_fasta_map, remainder: true)
             .map { row -> [row[0], row[1], row[2], row[3], row[4], row.size() > 5 ? row[5] : null] }
-            .join(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.accessions, remainder: true)
+            .join(ch_sample_fasta_acc, remainder: true)
             .map { row -> [row[0], row[1], row[2], row[3], row[4], row[5], row.size() > 6 ? row[6] : null] }
+            .join(ch_sample_bt2, remainder: true)
+            .map { row -> [row[0], row[1], row[2], row[3], row[4], row[5], row[6], row.size() > 7 ? row[7] : null] }
             .filter { it[0] != null && it[1] != null }
-            .map { meta, fastas, listmaps, listids, sample_fasta, mapfile, accessions ->
-                if (sample_fasta) { fastas.add([sample_fasta]) }
+            .map { meta, fastas, listmaps, listids, sample_fasta, mapfile, accessions, bt2_index ->
+                // ALIGNMENT flattens one level: [[fasta, index]] -> one [fasta, index] reference
+                if (sample_fasta) { fastas.add(bt2_index ? [[sample_fasta, bt2_index]] : [sample_fasta]) }
                 if (mapfile)      { listmaps.add(mapfile) }
                 if (accessions)   { listids.add(accessions) }
                 [meta, fastas, listmaps, listids]
@@ -230,6 +290,14 @@ workflow  REFERENCE_PREP {
                 DOWNLOAD_ASSEMBLY.out.fasta
             )
             DOWNLOAD_ASSEMBLY.out.fasta.join(BOWTIE2_BUILD_DWNLD.out.index)
+            .map{ meta, fasta, index -> [meta, [fasta, index]] }.set { merged_index }
+        } else if (params.use_hisat2) {
+            HISAT2_BUILD_DWNLD(
+                DOWNLOAD_ASSEMBLY.out.fasta,
+                [[:], []],
+                [[:], []]
+            )
+            DOWNLOAD_ASSEMBLY.out.fasta.join(HISAT2_BUILD_DWNLD.out.index)
             .map{ meta, fasta, index -> [meta, [fasta, index]] }.set { merged_index }
         } else {
             DOWNLOAD_ASSEMBLY.out.fasta.map{meta, fasta -> [meta, [fasta]] }.set { merged_index }
@@ -293,40 +361,35 @@ workflow  REFERENCE_PREP {
         ch_assembly_txt,
         ch_custom_accession_map
     )
-    if ((params.use_diamond ) && ( !params.skip_refpull && ( !params.skip_realignment && !params.skip_features ) ) ) {
-        try {
-            // Attempt to use the FEATURES_DOWNLOAD process
-            FEATURES_DOWNLOAD(
-                ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->
-                    return [meta, listids]
-                },
-                ch_assembly_txt,
-                true
-            )
+    // Feature tables of every assembly a sample uses (FEATURES_DOWNLOAD):
+    //  * --use_diamond: CDS proteins + a CDS BED for the de-novo / DIAMOND path
+    //  * --mask_products: <sample>.products.bed, the product regions (default CDS,
+    //    one row per exon from the assembly's GFF3) that match_paths.py scores; the
+    //    rest of each reference is masked. Skipped when --mask_products_features
+    //    gives local feature files instead.
+    def _feat_diamond  = params.use_diamond && !params.skip_refpull && !params.skip_realignment && !params.skip_features
+    def _feat_products = (params.mask_products && params.mask_products.toString() != 'false') &&
+                         !params.mask_products_features && !params.skip_realignment
+    if (_feat_diamond || _feat_products) {
+        FEATURES_DOWNLOAD(
+            ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->
+                return [meta, listids]
+            },
+            ch_assembly_txt,
+            _feat_diamond ? true : false,
+            _feat_products ? (params.mask_products_types ?: 'CDS') : ''
+        )
+        ch_versions = ch_versions.mix(FEATURES_DOWNLOAD.out.versions)
+        ch_products = FEATURES_DOWNLOAD.out.products
+        if (_feat_diamond) {
             ch_cds = FEATURES_DOWNLOAD.out.proteins
             ch_cds_to_taxids = FEATURES_DOWNLOAD.out.mapfile
-            ch_versions = ch_versions.mix(FEATURES_DOWNLOAD.out.versions)
-        /* groovylint-disable-next-line CatchException */
-        } catch (Exception e) {
-            // On failure, fallback to an alternative channel
-            ch_cds = ch_samples.map { meta, report ->
-                return [meta, []]
-            }
-            ch_cds_to_taxids = ch_samples.map { meta, report ->
-                return [meta, []]
-            }
-        }
-        try {
             FEATURES_TO_BED(
                 FEATURES_DOWNLOAD.out.features
             )
             ch_features = FEATURES_DOWNLOAD.out.features
             ch_versions = ch_versions.mix(FEATURES_TO_BED.out.versions)
             ch_bedfiles = FEATURES_TO_BED.out.bed
-        } catch (Exception e) {
-            ch_bedfiles = ch_samples.map { meta, report ->
-                return [meta, []]
-            }
         }
     }
     ch_mapped_assemblies = MAP_TAXID_ASSEMBLY.out.taxidmerged.join(
@@ -341,5 +404,6 @@ workflow  REFERENCE_PREP {
         ch_reference_cds = ch_cds
         ch_cds_to_taxids = ch_cds_to_taxids
         features = ch_features
+        products = ch_products
         fastas = ch_fastas
 }
