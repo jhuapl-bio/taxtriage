@@ -28,6 +28,7 @@ PAGE_MAP = {
     "Pre-Aligned-Input": "pre-aligned-input.md",
     "Running-the-Pipeline": "running-the-pipeline.md",
     "CLI-Parameters": "cli-parameters.md",
+    "Standalone-Scripts": "standalone-scripts.md",
     "Pipeline-Modules": "pipeline-modules.md",
     "Output": "output.md",
     "Interactive-Report": "interactive-report.md",
