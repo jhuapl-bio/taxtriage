@@ -914,6 +914,10 @@ $$
 
 ![Disparity Score](images/svgs/disparity.svg)
 
+### 9.7 Per-Organism Adaptive Weights (Optional)
+
+Everything above uses one weight vector for the whole sample. With `--adaptive_tass` each organism's vector is shifted by its context in the sample (community complexity, high-ANI organisms of other species, same-genus species, low abundance, roll-ups) and ambiguous calls with weak MinHash support are marked down. Off by default; the static score is kept alongside as `tass_score_static`. See [Adaptive TASS](adaptive-tass.md).
+
 ---
 
 ## 10. Full Pipeline Sequence Diagram

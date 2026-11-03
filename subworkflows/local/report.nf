@@ -67,6 +67,15 @@ workflow REPORT {
                 : Channel.fromPath("$projectDir/assets/sampletype_best_thresholds.json", checkIfExists: false)
                     .ifEmpty { Channel.value(file("$projectDir/assets/NO_FILE_thresholds")) }
         }
+        // --adaptive_tass (opt-in): say up front which parts cannot work in this run
+        if (params.adaptive_tass && params.adaptive_tass.toString() != 'false') {
+            def _at_terms = (params.adaptive_tass_terms ?: 'all').toString()
+            if ((_at_terms == 'all' || _at_terms.contains('ani')) &&
+                    !(params.enable_matrix && params.enable_matrix.toString() != 'false')) {
+                log.warn "--adaptive_tass without --enable_matrix: no ANI matrix, so the 'ani' term " +
+                         "(high-ANI organisms of other species) is inactive. Add --enable_matrix to use it."
+            }
+        }
         // Placeholder files for when no control JSONs are available
         ch_no_neg_ctrl = Channel.value(file("$projectDir/assets/NO_FILE_neg_ctrl"))
         ch_no_pos_ctrl = Channel.value(file("$projectDir/assets/NO_FILE_pos_ctrl"))

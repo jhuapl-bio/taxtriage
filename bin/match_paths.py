@@ -781,6 +781,32 @@ def parse_args(argv=None):
                          "'this species is present' is a strictly weaker claim than "
                          "'this strain is present' and so can never be less certain. "
                          "Use this flag to reproduce pre-fix scores.")
+    # ── Adaptive TASS weighting (opt-in; see bin/adaptive_tass.py, docs/adaptive-tass.md) ──
+    parser.add_argument('--adaptive_tass', action='store_true', default=False,
+                    help="Opt-in: shift the TASS weights per organism from its context in "
+                         "the sample (community complexity, high-ANI organisms of other "
+                         "species, same-genus species, low abundance, roll-ups) and mark "
+                         "ambiguous calls with weak MinHash support down. Off by default; "
+                         "with it off scoring is unchanged. Every organism keeps its static "
+                         "score in 'tass_score_static' and an 'adaptive_tass' audit block.")
+    parser.add_argument('--adaptive_tass_strength', type=float, default=1.0,
+                    help="Scale of every adaptive shift and penalty, 0-1 (default 1). "
+                         "0 reproduces the static scores exactly.")
+    parser.add_argument('--adaptive_tass_terms', type=str, default=None,
+                    help="Comma-separated context terms to use: complexity, ani, sibling, "
+                         "low_abundance, rollup; 'all' (default) or 'none'.")
+    parser.add_argument('--adaptive_tass_base', type=str, default='sampletype',
+                    choices=['sampletype', 'platform', 'global'],
+                    help="Starting weights (and cutoffs) taken from --thresholds_json: "
+                         "'sampletype' = the usual sample type|platform entry (default), "
+                         "'platform' = all|<platform>, 'global' = all|all. Explicit weight "
+                         "flags still win.")
+    parser.add_argument('--adaptive_tass_high_ani', type=float, default=None,
+                    help="ANI fraction at/above which organisms of different species "
+                         "compete (default: --ani_threshold). Needs --enable_matrix.")
+    parser.add_argument('--adaptive_tass_max_penalty', type=float, default=0.35,
+                    help="Largest multiplicative ambiguity mark-down at strength 1 "
+                         "(default 0.35, max 0.9).")
     parser.add_argument('--premapq_group_reads', action='store_true', default=False,
                     help="Restore the old species/genus read totals: count every alignment "
                          "that survives species/genus-LCA removal regardless of MAPQ. By "
@@ -1596,6 +1622,18 @@ def describe_reference_db(bam_path, fasta_paths=None):
 
 def main():
     args = parse_args()
+    # ── --adaptive_tass: validate the configuration before any work is done ──
+    # (bad values stop the run here rather than being silently ignored)
+    _adaptive_cfg = None
+    if args.adaptive_tass:
+        from adaptive_tass import AdaptiveConfig
+        try:
+            _adaptive_cfg = AdaptiveConfig.from_args(args)
+        except ValueError as _e:
+            _ARG_PARSER.error(str(_e))
+        print(f"[adaptive_tass] enabled: strength={_adaptive_cfg.strength} "
+              f"terms={','.join(_adaptive_cfg.terms) or 'none'} base={_adaptive_cfg.base} "
+              f"high_ani={_adaptive_cfg.high_ani} max_penalty={_adaptive_cfg.max_penalty}")
     # ── Before/after TASS for region masking (--mask_compare) ────────────────
     # Start the unmasked re-score now so it runs alongside this (masked) one;
     # it is collected and merged just before the JSON is written.
@@ -1694,6 +1732,16 @@ def main():
             _norm_plat = "illumina"          # default platform
         else:
             _norm_plat = _raw_plat            # pass through as-is
+
+        # --adaptive_tass_base platform|global: start from the all|<platform> or
+        # all|all entry (weights AND cutoffs, which were fitted together) and let
+        # the per-organism adaptation supply the sample-specific part.
+        if _adaptive_cfg is not None and _adaptive_cfg.base != "sampletype":
+            _norm_st = "all"
+            if _adaptive_cfg.base == "global":
+                _norm_plat = "all"
+            print(f"[adaptive_tass] base={_adaptive_cfg.base}: thresholds key lookup uses "
+                  f"'{_norm_st}|{_norm_plat}' instead of the sample type")
 
         def _find_threshold_key(norm_st, norm_plat, domain_suffix=""):
             """Return the first matching key in thresholds_config for the given
@@ -3010,6 +3058,37 @@ def main():
 
         _d['score_power_scale'] = (_reads / _group_total) if _group_total > 0 else 1.0
 
+    # ── Adaptive TASS (--adaptive_tass; off by default) ────────────────────
+    # None unless the flag is given: every _tass_raw() call below is then the
+    # exact compute_tass_score(data, weights) call it replaced.
+    _adaptive = None
+    if _adaptive_cfg is not None:
+        from adaptive_tass import AdaptiveTass
+        if args.optimize:
+            print("[adaptive_tass] WARNING: --optimize fitted the global weights on STATIC "
+                  "scores; the adaptive layer is applied on top of them")
+        if _adaptive_cfg.base != "sampletype" and not args.thresholds_json:
+            print(f"[adaptive_tass] base={_adaptive_cfg.base} has no effect without --thresholds_json")
+        if _adaptive_cfg.on("ani") and not ani_data:
+            print("[adaptive_tass] no ANI matrix (--enable_matrix off or empty): "
+                  "the 'ani' term is inactive")
+        from adaptive_tass import species_fields_for_rank
+        _sp_field, _g_field, _note = species_fields_for_rank(args.rank, getattr(args, 'subrank', 'species'))
+        if _note:
+            print(f"[adaptive_tass] {_note}")
+        _adaptive = AdaptiveTass(_adaptive_cfg, ani_data=ani_data,
+                                 species_field=_sp_field, genus_field=_g_field)
+
+    def _tass_raw(data, level):
+        """Raw (0-1) TASS: static, or adaptive when --adaptive_tass is on."""
+        if _adaptive is None:
+            return compute_tass_score(data=data, weights=weights)
+        raw = _adaptive.score(data, level, weights, compute_tass_score)
+        _static = data.get('adaptive_tass', {}).get('static')
+        if _static is not None:
+            data['tass_score_static'] = _scale_tass_value(_mask_adjust(data, _static))
+        return raw
+
     def _mask_adjust(data, val):
         """--mask_penalty_power: TASS *= (1 - masked_read_fraction) ^ power.
 
@@ -3038,6 +3117,11 @@ def main():
             return val
         return round(fv * 100, 4) if fv <= 1.0 else fv
 
+    if _adaptive is not None:
+        # the MinHash comparison marker lives on the per-accession hits
+        _adaptive.prepare('strain', strain_summary, strain_summary,
+                          minhash_available=any('minhash_read_retention' in _h
+                                                for _h in reference_hits.values()))
     # Add sample_name and pathogen annotations to each strain
     for k, data in strain_summary.items():
         data['sample_name'] = args.samplename
@@ -3069,10 +3153,7 @@ def main():
             dmnd = dmnd,
             total_reads = total_reads,
         )
-        data['tass_score'] = _scale_tass_value(_mask_adjust(data, compute_tass_score(
-            data=data,
-            weights=weights,
-        )))
+        data['tass_score'] = _scale_tass_value(_mask_adjust(data, _tass_raw(data, 'strain')))
     # : Define a function to calculate disparity for each organism
     i=0
 
@@ -3340,6 +3421,8 @@ def main():
             _d['score_power_scale'] = 1.0  # no ANI info at species level, no penalty
 
     # ── Compute TASS scores for subkey (species) groups ────────────────────
+    if _adaptive is not None:
+        _adaptive.prepare('species', subkey_summary, strain_summary)
     for _, sk_data in subkey_summary.items():
         sk_data['sample_name'] = args.samplename
         sk_group_reads = [
@@ -3356,10 +3439,7 @@ def main():
             group_reads=sk_group_reads,
             total_reads=total_reads,
         )
-        sk_data['tass_score'] = _scale_tass_value(_mask_adjust(sk_data, compute_tass_score(
-            data=sk_data,
-            weights=weights,
-        )))
+        sk_data['tass_score'] = _scale_tass_value(_mask_adjust(sk_data, _tass_raw(sk_data, 'species')))
 
     # ── Monotone rollup floor ──────────────────────────────────────────────
     # A parent rank is a strictly WEAKER claim than any of its children:
@@ -3396,6 +3476,9 @@ def main():
                 print(f"[rollup] species floored: {sk_data.get('name')} "
                       f"{_before:.2f} -> {sk_data['tass_score']:.2f}")
         print(f"[rollup] monotone floor applied to {_n_floored}/{len(subkey_summary)} species")
+        if _adaptive is not None:
+            for _, sk_data in subkey_summary.items():
+                _adaptive.floor_static(sk_data)
 
     # ── Presence vs assignment ─────────────────────────────────────────────
     # Scoring N conspecific assemblies independently yields N high scores, and
@@ -3413,6 +3496,8 @@ def main():
     print(f"[rollup] strain assignment status across {len(subkey_summary)} species: "
           + ", ".join(f"{k}={v}" for k, v in sorted(_status_counts.items()) if k))
 
+    if _adaptive is not None:
+        _adaptive.prepare('genus', aggregate_dict, strain_summary)
     for _, data in aggregate_dict.items():
         # Nest subkey groups as members of the toplevelkey group.
         # Each subkey group already contains its own 'members' list of strains.
@@ -3441,10 +3526,7 @@ def main():
             group_reads = group_reads,
             total_reads = total_reads,
         )
-        data['tass_score'] = _scale_tass_value(_mask_adjust(data, compute_tass_score(
-            data=data,
-            weights=weights,
-        )))
+        data['tass_score'] = _scale_tass_value(_mask_adjust(data, _tass_raw(data, 'genus')))
 
     # Genus-level floor.  Runs after the species floor above so the invariant
     # propagates transitively: genus >= max(species) >= max(strain).
@@ -3458,6 +3540,9 @@ def main():
                 print(f"[rollup] genus floored: {data.get('name')} "
                       f"{_before:.2f} -> {data['tass_score']:.2f}")
         print(f"[rollup] monotone floor applied to {_n_floored}/{len(aggregate_dict)} genera")
+        if _adaptive is not None:
+            for _, data in aggregate_dict.items():
+                _adaptive.floor_static(data)
 
     # Species-within-genus assignment, same partition one rank up.
     for _, data in aggregate_dict.items():
@@ -3492,6 +3577,15 @@ def main():
     print("Final weights used for scoring: ")
     for k, v in weights.items():
         print(f"\t{k}: {v}")
+    if _adaptive is not None:
+        _as = _adaptive.summary()
+        print(f"[adaptive_tass] applied={_as['applied']} complexity="
+              f"{(_as['sample'] or {}).get('complexity')} ani={_as['ani_available']} "
+              f"errors={_as['errors']}")
+        for _lvl, _st in _as['levels'].items():
+            print(f"[adaptive_tass]   {_lvl}: {_st['changed']}/{_st['organisms']} changed "
+                  f"(raised {_st['raised']}, lowered {_st['lowered']}), mean "
+                  f"{_st['mean_delta']:+.2f}, max |change| {_st['max_abs_delta']:.2f} TASS points")
     # ── ANI annotation ────────────────────────────────────────────────────────
     # For each member in every species group, attach a 'high_ani_matches' list
     # containing dicts {key, name, ani_pct} for all other taxa whose ANI with
@@ -4716,6 +4810,8 @@ def main():
         "masking": _mask_summary,  # None when no --mask_bed; see docs/masking.md
         "mapq_breadth_power": args.mapq_breadth_power,
         "weights": dict(weights),
+        # --adaptive_tass only (absent otherwise, so default output is unchanged)
+        **({"adaptive_tass": _adaptive.summary()} if _adaptive is not None else {}),
         "min_conf_applied": None,  # populated by create_report per-sample
         "best_cutoffs": _best_cutoffs,  # from thresholds JSON; None if not available
         "best_cutoffs_source": _st_key if _best_cutoffs else None,

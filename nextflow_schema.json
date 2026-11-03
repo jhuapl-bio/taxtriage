@@ -619,6 +619,50 @@
                     "description": "Disable the automatic setting of TASS Score weights based on sample type and platform. If set to true, it uses the default weights for all sample types rather than adjusting them based on the sample type-specific thresholds determined in our testing.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "adaptive_tass": {
+                    "type": "boolean",
+                    "description": "Opt-in adaptive TASS weighting: shift the score weights per organism from its context in the sample (community complexity, high-ANI organisms of other species, same-genus species, low abundance, roll-ups) and mark ambiguous calls with weak MinHash support down. Off by default; with it off scoring is unchanged.",
+                    "help_text": "Starts from the sample type/platform weights. Every organism keeps its static score (tass_score_static) and an adaptive_tass audit block in the JSON; the report adds TASS (static) / TASS Change (adaptive) columns. The ani term needs --enable_matrix. See docs/adaptive-tass.md.",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "adaptive_tass_strength": {
+                    "type": "number",
+                    "default": 1.0,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Scale of every adaptive shift and penalty (0-1). 0 reproduces the static scores exactly.",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "adaptive_tass_terms": {
+                    "type": "string",
+                    "default": "all",
+                    "pattern": "^(all|none|(complexity|ani|sibling|low_abundance|rollup)(\\s*,\\s*(complexity|ani|sibling|low_abundance|rollup))*)$",
+                    "description": "Comma-separated adaptive context terms: complexity, ani, sibling, low_abundance, rollup; or all / none.",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "adaptive_tass_base": {
+                    "type": "string",
+                    "default": "sampletype",
+                    "enum": ["sampletype", "platform", "global"],
+                    "description": "Starting weights and cutoffs for --adaptive_tass from the thresholds JSON: sampletype (usual sample type|platform entry), platform (all|<platform>) or global (all|all).",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "adaptive_tass_high_ani": {
+                    "type": ["number", "null"],
+                    "default": null,
+                    "minimum": 0.5,
+                    "exclusiveMaximum": 1,
+                    "description": "ANI fraction at/above which organisms of different species compete under --adaptive_tass. Default: --ani_threshold. Needs --enable_matrix.",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "adaptive_tass_max_penalty": {
+                    "type": "number",
+                    "default": 0.35,
+                    "minimum": 0,
+                    "maximum": 0.9,
+                    "description": "Largest multiplicative ambiguity mark-down under --adaptive_tass (at strength 1).",
+                    "fa_icon": "fas fa-sliders-h"
+                },
                 "gini_weight": {
                     "type": ["number", "null"],
                     "description": "Gini Weight to the TASS Score. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",

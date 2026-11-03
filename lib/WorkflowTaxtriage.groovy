@@ -419,7 +419,8 @@ class WorkflowTaxtriage {
         'show_commensals', 'show_unidentified', 'integrate_strain_table',
         'skip_multiqc', 'email_on_fail', 'plaintext_email', 'monochrome_logs',
         'help', 'validate_params', 'show_hidden_params', 'enable_conda',
-        'report_admin', 'mask_products', 'mask_compare', 'mask_compare_parallel'
+        'report_admin', 'mask_products', 'mask_compare', 'mask_compare_parallel',
+        'adaptive_tass'
     ]
 
     public static void coerceBooleanParams(params) {

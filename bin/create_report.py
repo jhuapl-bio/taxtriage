@@ -3810,7 +3810,7 @@ _META_PIPELINE_KEYS = {
     "preferred_granularity", "control_type", "negative_controls_used",
     "positive_controls_used", "control_fold_threshold", "missing_positive_controls",
     "insilico_controls_used", "insilico_simulator_types", "missing_insilico_controls",
-    "missing_insilico_by_type",
+    "missing_insilico_by_type", "adaptive_tass",
 }
 
 

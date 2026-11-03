@@ -179,6 +179,7 @@ nav:
           - Alignment Trends: alignment-trends.md
           - Region Masking (FCS / Targeted): masking.md
           - TASS Scoring: tass-scoring.md
+          - Adaptive TASS (opt-in): adaptive-tass.md
           - Microbial Categories: microbial-categories.md
           - Novelty Detection: novelty-detection.md
           - Multimapper Rescue: multimapper-rescue.md

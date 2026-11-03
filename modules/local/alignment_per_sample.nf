@@ -94,6 +94,21 @@ process ALIGNMENT_PER_SAMPLE {
     def rescue_as_highmapq = params.rescue_counts_as_highmapq ? " --rescue_counts_as_highmapq " : " "
     def rescue_args = rescue_multimapped + rescue_min_aln_phred + rescue_max_mapq + rescue_min_aln_frac +
                       rescue_max_nm_rate + rescue_min_aln_len + rescue_proper_pair + rescue_as_highmapq
+    // ── Adaptive TASS weighting (--adaptive_tass; off by default) ────────────
+    // Nothing is passed unless the flag is on, and adaptive_args is appended
+    // with no separator (it starts with a space), so with it off the rendered
+    // script -- and every -resume cache hash -- is byte-identical to before.
+    // String "false" from the CLI under Nextflow 26 is treated as off.
+    def _adaptive_on = params.adaptive_tass && params.adaptive_tass.toString() != 'false'
+    def adaptive_args = ''
+    if (_adaptive_on) {
+        adaptive_args = " --adaptive_tass " +
+            (params.adaptive_tass_strength != null ? " --adaptive_tass_strength ${params.adaptive_tass_strength} " : '') +
+            (params.adaptive_tass_terms ? " --adaptive_tass_terms '${params.adaptive_tass_terms.toString().replaceAll(/\s+/, '')}' " : '') +
+            (params.adaptive_tass_base ? " --adaptive_tass_base ${params.adaptive_tass_base} " : '') +
+            (params.adaptive_tass_high_ani != null ? " --adaptive_tass_high_ani ${params.adaptive_tass_high_ani} " : '') +
+            (params.adaptive_tass_max_penalty != null ? " --adaptive_tass_max_penalty ${params.adaptive_tass_max_penalty} " : '')
+    }
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
     // def assemblyi = assembly ? " -j ${assembly} " : " "
@@ -207,7 +222,7 @@ process ALIGNMENT_PER_SAMPLE {
         $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $insilico_flag $parent_arg $reward_factor $dispersion_factor \\
         $mapq_breadth_power $mapq_gini_power $rescue_args \\
         $annotate_report_arg $pident $depth_profile \\
-        $meta_csv_arg $mask_args
+        $meta_csv_arg $mask_args${adaptive_args}
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
     cp search_results/removal_stats_by_taxid.xlsx "${meta.id}_removal_stats_by_taxid.xlsx" || true

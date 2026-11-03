@@ -1215,6 +1215,19 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
             "Reads (unmasked)":      int(float(_mc.get("reads_unmasked", 0) or 0)),
             "Breadth % (unmasked)":  round(float(_mc.get("breadth_unmasked", 0) or 0), 2),
         })
+    # Adaptive TASS (match_paths --adaptive_tass): the static score this row
+    # would have without it, the change, and why. Absent from default runs.
+    _ad = org.get("adaptive_tass")
+    if isinstance(_ad, dict):
+        _st = org.get("tass_score_static")
+        _st = float(_st) if _st is not None else None
+        _mask_cols.update({
+            "TASS (static)":          round(_st, 4) if _st is not None else None,
+            "TASS Change (adaptive)": round(tass - _st, 4) if _st is not None else None,
+            "Adaptive Penalty":       round(float(_ad.get("penalty", 1.0) or 0), 4),
+            "Adaptive Cutoff Shift":  _ad.get("cutoff_shift"),
+            "Adaptive Reasons":       "; ".join(_ad.get("reasons") or []),
+        })
     _fcs = org.get("fcs_assembly") or {}
     if _fcs:
         _mask_cols["FCS Assembly"] = _fcs.get("assembly", "")
@@ -1314,7 +1327,10 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
 # they appear in the table (whose column list comes from the first row).
 _MASK_COLS = ["Masked Reads", "Masked Reads %", "Full Genome Length (bp)", "Masked bp",
               "Masked bp %", "Mask Penalty", "FCS Assembly", "FCS Contaminated bp",
-              "TASS (unmasked)", "TASS Change (mask)", "Reads (unmasked)", "Breadth % (unmasked)"]
+              "TASS (unmasked)", "TASS Change (mask)", "Reads (unmasked)", "Breadth % (unmasked)",
+              # --adaptive_tass
+              "TASS (static)", "TASS Change (adaptive)", "Adaptive Penalty",
+              "Adaptive Cutoff Shift", "Adaptive Reasons"]
 
 
 def _iter_organisms(json_data, sample_name, mintass=0, microbial_cats=None):
@@ -2930,7 +2946,10 @@ def main():
                 r.setdefault(c, None)
         _n_masked = sum(1 for m in sample_meta.values()
                         if ((m or {}).get("masking") or {}).get("applied"))
+        _n_adaptive = sum(1 for m in sample_meta.values()
+                          if ((m or {}).get("adaptive_tass") or {}).get("applied"))
         print(f"[make_report] region masking: {_n_masked}/{len(sample_meta)} sample(s) masked; "
+              f"adaptive TASS: {_n_adaptive}/{len(sample_meta)}; "
               f"columns added: {', '.join(_present_mask_cols)}")
 
     # ── derive column lists ────────────────────────────────────────────────────
@@ -3067,7 +3086,7 @@ def main():
         "preferred_granularity", "control_type", "negative_controls_used",
         "positive_controls_used", "control_fold_threshold", "missing_positive_controls",
         "insilico_controls_used", "insilico_simulator_types", "missing_insilico_controls",
-        "missing_insilico_by_type",
+        "missing_insilico_by_type", "adaptive_tass",
     }
     run_metadata_records = []
     for sname, smeta in sample_meta.items():
