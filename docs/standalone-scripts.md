@@ -115,15 +115,15 @@ The two helpers also run on their own:
 
 ### Results and reports
 
-| Script                              | Does                                                                                                                        | Needs                |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `export_data.py`                    | multi-tab export of report data (XLSX, CSV, wide or stacked tables), with filters such as `--min-tass` and `--passing-only` | openpyxl (XLSX)      |
-| `combine_samples_json.py`           | merge per-sample `.paths.json` into `all.samples.json`                                                                      | pandas               |
-| `make_report.py`                    | multi-run comparison HTML report                                                                                            | pandas               |
-| `alignment_trends.py`               | cross-sample depth trends ([Alignment Trends](alignment-trends.md))                                                         | matplotlib, openpyxl |
-| `mask_compare.py`, `mask_report.py` | TASS before vs. after masking; visual summary of a masked run                                                               | -                    |
-| `get_top_hits.py`                   | top-hit organisms from a Kraken2 report                                                                                     | pandas               |
-| `make_kt_files.py`                  | Kraken report → Krona input                                                                                                 | -                    |
+| Script                              | Does                                                                                                                                                     | Needs                |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `export_data.py`                    | multi-tab export of report data (XLSX, CSV, wide or stacked tables), with filters such as `--min-tass` and `--passing-only`                              | openpyxl (XLSX)      |
+| `combine_samples_json.py`           | merge per-sample `.paths.json` or whole runs' `all.odr.json` into one JSON ([Merging Runs](interactive-report.md#merging-runs-into-one-json-allodrjson)) | -                    |
+| `make_report.py`                    | multi-run comparison HTML report                                                                                                                         | pandas               |
+| `alignment_trends.py`               | cross-sample depth trends ([Alignment Trends](alignment-trends.md))                                                                                      | matplotlib, openpyxl |
+| `mask_compare.py`, `mask_report.py` | TASS before vs. after masking; visual summary of a masked run                                                                                            | -                    |
+| `get_top_hits.py`                   | top-hit organisms from a Kraken2 report                                                                                                                  | pandas               |
+| `make_kt_files.py`                  | Kraken report → Krona input                                                                                                                              | -                    |
 
 ---
 

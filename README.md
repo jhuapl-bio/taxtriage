@@ -321,18 +321,30 @@ See [Multimapper Rescue](https://jhuapl-bio.github.io/taxtriage/latest/multimapp
 
 ## Important outputs
 
-| Output                      | Purpose                                                 |
-| --------------------------- | ------------------------------------------------------- |
-| `report/all.odr.html`       | Interactive, multi-sample organism investigation report |
-| Per-sample ODR PDF          | Static archival summary for an individual sample        |
-| `*.paths.json`              | Structured organism evidence used by the report         |
-| TASS/path tables            | Organism-level scores and component metrics             |
-| BAM/depth/coverage outputs  | Alignment evidence and genome-position support          |
-| Kraken2/Centrifuge reports  | Read-classifier evidence                                |
-| MultiQC report              | Pipeline and tool-level QC summaries                    |
-| Conflict-comparison outputs | Evidence changes after ambiguous support is addressed   |
+| Output                      | Purpose                                                      |
+| --------------------------- | ------------------------------------------------------------ |
+| `report/all.odr.html`       | Interactive, multi-sample organism investigation report      |
+| Per-sample ODR PDF          | Static archival summary for an individual sample             |
+| `report/all.odr.json`       | All samples' report data in one file (mergeable across runs) |
+| `*.paths.json`              | Structured organism evidence used by the report              |
+| TASS/path tables            | Organism-level scores and component metrics                  |
+| BAM/depth/coverage outputs  | Alignment evidence and genome-position support               |
+| Kraken2/Centrifuge reports  | Read-classifier evidence                                     |
+| MultiQC report              | Pipeline and tool-level QC summaries                         |
+| Conflict-comparison outputs | Evidence changes after ambiguous support is addressed        |
 
 See [Output](https://jhuapl-bio.github.io/taxtriage/latest/output/) for exact locations and file naming.
+
+### Merging several runs into one report
+
+Combine the `report/all.odr.json` of finished runs into one file, then drag it onto any `all.odr.html` or rebuild a report from it. Duplicate sample names are renamed `<name>__<run folder>`, and VF/AMR and novelty data are kept.
+
+```bash
+python bin/combine_samples_json.py -i run1/report/all.odr.json run2/report/all.odr.json -o merged.odr.json
+python bin/make_report.py -i merged.odr.json -t assets/heatmap.html -o merged.odr.html
+```
+
+See [Interactive Report → Merging Runs](https://jhuapl-bio.github.io/taxtriage/latest/interactive-report/#merging-runs-into-one-json-allodrjson) for all options.
 
 ## Metadata-aware analysis
 

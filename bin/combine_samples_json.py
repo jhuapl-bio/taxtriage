@@ -46,6 +46,23 @@ Optional extra feeds
 --novelty <all.novelty.json>       adds  "novelty" + "has_novelty"
 --annotate-reports <*.tsv ...>     adds  "prot_data" + "has_prot"
 
+Merging finished runs
+---------------------
+Inputs may also be already-combined files (report/all.odr.json from earlier
+runs). Their samples are expanded (never nested) and their embedded
+"novelty" / "prot_data" blocks are carried over, so several runs can be merged
+into one file:
+
+    combine_samples_json.py -i runA/report/all.odr.json runB/report/all.odr.json \
+        -o merged.odr.json
+
+Sample names must be unique (the report keys samples by name). When two inputs
+share a name, --on-duplicate decides: rename (default; "<name>__<label>",
+label = --labels entry or the run folder name), skip, keep, or error. Renames
+are applied everywhere the name appears (metadata, organism rows, control
+links, VF/AMR "Specimen ID", novelty). --tag-all applies the label to every
+sample. A top-level "merged_from" list records each input.
+
 Both are folded into the SAME file so a single drag-and-drop carries the
 Novelty and VF/AMR panels too, instead of the user having to locate and drop
 report/all.novelty.json and annotate/<sample>.annotate_report.tsv separately.
@@ -292,32 +309,99 @@ def parse_args(argv=None):
         "--pident", type=float, default=0.0, metavar="FLOAT",
         help="Drop annotation rows below this %%identity (default: 0, keep all).",
     )
+    parser.add_argument(
+        "--on-duplicate", choices=("rename", "skip", "keep", "error"), default="rename",
+        help="What to do when a sample name was already loaded from an earlier input: "
+             "rename it to <name>__<label> (default), skip it, keep both unchanged "
+             "(the report will collapse them), or stop with an error.",
+    )
+    parser.add_argument(
+        "--labels", nargs="+", default=None, metavar="LABEL",
+        help="One label per -i argument (in order) used for renaming. Default: the run "
+             "folder name (the parent of report/ for .../report/all.odr.json, otherwise "
+             "the file's folder name).",
+    )
+    parser.add_argument(
+        "--tag-all", action="store_true",
+        help="Rename every sample to <name>__<label>, not only duplicates.",
+    )
     return parser.parse_args(argv)
+
+
+# ── multi-run merging helpers ───────────────────────────────────────────────
+# Keys whose string value (or list of strings) names a sample. Renames are only
+# applied there, so an organism that happens to share a sample's name is safe.
+_SAMPLE_REF_KEYS = {"sample_name", "sample_id", "parent_id", "Specimen ID", "sample"}
+
+
+def _is_sample_ref_key(key):
+    return key in _SAMPLE_REF_KEYS or key.endswith("_controls_used") or key.endswith("_controls")
+
+
+def _rename_refs(obj, mapping):
+    """Rename sample references in place (see _SAMPLE_REF_KEYS)."""
+    if not mapping:
+        return obj
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if _is_sample_ref_key(k):
+                if isinstance(v, str) and v in mapping:
+                    obj[k] = mapping[v]
+                    continue
+                if isinstance(v, list) and any(isinstance(x, str) for x in v):
+                    obj[k] = [mapping.get(x, x) if isinstance(x, str) else x for x in v]
+                    continue
+            _rename_refs(v, mapping)
+    elif isinstance(obj, list):
+        for v in obj:
+            _rename_refs(v, mapping)
+    return obj
+
+
+def _default_label(path):
+    """Run folder name: <run>/report/all.odr.json -> <run>."""
+    d = os.path.dirname(os.path.abspath(path))
+    if os.path.basename(d) == "report":
+        d = os.path.dirname(d)
+    return os.path.basename(d) or os.path.basename(path).split(".")[0]
+
+
+def _sample_name(data, path):
+    return (data.get("metadata") or {}).get("sample_name") or os.path.basename(path).split(".")[0]
 
 
 def main():
     args = parse_args()
 
-    # Expand globs and collect all paths
+    if args.labels is not None and len(args.labels) != len(args.input):
+        print(f"[combine_samples_json] ERROR: --labels has {len(args.labels)} value(s) "
+              f"but -i has {len(args.input)}.", file=sys.stderr)
+        sys.exit(1)
+
+    # Expand globs; each file remembers the label of the -i argument it came from
     paths = []
-    for pattern in args.input:
+    for idx, pattern in enumerate(args.input):
         pattern = pattern.strip()
-        if os.path.isfile(pattern):
-            paths.append(pattern)
-        else:
-            expanded = glob.glob(pattern)
-            if expanded:
-                paths.extend(sorted(expanded))
-            else:
-                print(f"[combine_samples_json] WARNING: no files found for {pattern!r}, skipping",
-                      file=sys.stderr)
+        hits = [pattern] if os.path.isfile(pattern) else sorted(glob.glob(pattern))
+        if not hits:
+            print(f"[combine_samples_json] WARNING: no files found for {pattern!r}, skipping",
+                  file=sys.stderr)
+        for h in hits:
+            label = args.labels[idx] if args.labels else _default_label(h)
+            paths.append((h, label))
 
     if not paths:
         print("[combine_samples_json] ERROR: no input files found.", file=sys.stderr)
         sys.exit(1)
 
     samples = []
-    for path in paths:
+    seen = set()
+    merged_from = []
+    carried_prot = {k: [] for k in PROT_KEYS}
+    carried_nov = None
+    n_combined_inputs = 0
+
+    for path, label in paths:
         try:
             with open(path, "r", encoding="utf-8") as fh:
                 data = json.load(fh)
@@ -326,32 +410,113 @@ def main():
                   file=sys.stderr)
             continue
 
-        # If somehow a combined file was passed, expand it rather than nesting
-        if data.get("taxtriage_combined"):
-            samples.extend(data.get("samples", []))
-            print(f"[combine_samples_json] Expanded combined file {path!r} "
-                  f"({len(data.get('samples', []))} samples)")
-        else:
-            sample_name = (data.get("metadata") or {}).get("sample_name",
-                           os.path.basename(path).split(".")[0])
-            samples.append(data)
-            print(f"[combine_samples_json] Loaded {path!r} -> {sample_name!r}")
+        is_combined = bool(data.get("taxtriage_combined"))
+        n_combined_inputs += is_combined
+        in_samples = data.get("samples", []) if is_combined else [data]
+
+        # Decide each sample's final name for this input
+        mapping, keep_idx, skipped = {}, [], []
+        local = set()
+        for j, sd in enumerate(in_samples):
+            name = _sample_name(sd, path)
+            new = name
+            if args.tag_all or name in seen or name in local:
+                if name in seen and not args.tag_all:
+                    if args.on_duplicate == "error":
+                        print(f"[combine_samples_json] ERROR: sample {name!r} in {path!r} "
+                              f"was already loaded (use --on-duplicate rename|skip|keep).",
+                              file=sys.stderr)
+                        sys.exit(1)
+                    if args.on_duplicate == "skip":
+                        skipped.append(name)
+                        continue
+                    if args.on_duplicate == "keep":
+                        print(f"[combine_samples_json] WARNING: duplicate sample {name!r} "
+                              f"kept as-is; the report will treat them as one sample.",
+                              file=sys.stderr)
+                        keep_idx.append(j)
+                        local.add(name)
+                        continue
+                new = f"{name}__{label}"
+                k = 2
+                while new in seen or new in local:
+                    new = f"{name}__{label}_{k}"
+                    k += 1
+            if new != name:
+                mapping[name] = new
+            local.add(new)
+            keep_idx.append(j)
+
+        for j in keep_idx:
+            sd = in_samples[j]
+            old = _sample_name(sd, path)
+            _rename_refs(sd, mapping)
+            if old in mapping:
+                sd.setdefault("metadata", {})["sample_name"] = mapping[old]
+                sd["metadata"]["original_sample_name"] = old
+                sd["metadata"]["merged_from_run"] = label
+            samples.append(sd)
+        seen |= local
+
+        # Carry over blocks embedded in an already-combined input
+        if is_combined:
+            emb = data.get("prot_data")
+            if isinstance(emb, dict):
+                for k in PROT_KEYS:
+                    for r in emb.get(k) or []:
+                        if not isinstance(r, dict):
+                            continue
+                        if r.get("Specimen ID") in skipped:
+                            continue
+                        carried_prot[k].append(_rename_refs(r, mapping))
+            nov = data.get("novelty")
+            if isinstance(nov, dict) and isinstance(nov.get("samples"), dict):
+                if carried_nov is None:
+                    carried_nov = {"samples": {}, "classifier": nov.get("classifier", "") or "",
+                                   "gene_mode": nov.get("gene_mode")}
+                for sname, sv in nov["samples"].items():
+                    if sname in skipped:
+                        continue
+                    carried_nov["samples"][mapping.get(sname, sname)] = _rename_refs(sv, mapping)
+
+        merged_from.append({
+            "file": os.path.abspath(path),
+            "label": label,
+            "samples": len(keep_idx),
+            "renamed": mapping,
+            "skipped": skipped,
+        })
+        what = f"combined file ({len(in_samples)} sample(s))" if is_combined else "sample"
+        print(f"[combine_samples_json] Loaded {path!r} [{label}] {what}: kept {len(keep_idx)}"
+              + (f", renamed {mapping}" if mapping else "")
+              + (f", skipped {skipped}" if skipped else ""))
 
     combined = {
         "taxtriage_combined": True,
         "version": "1.1",
         "samples": samples,
     }
+    # Provenance only when merging finished runs, so the pipeline's own
+    # all.odr.json (built from per-sample .paths.json) is unchanged.
+    if n_combined_inputs:
+        combined["merged_from"] = merged_from
 
-    # ── optional novelty block ────────────────────────────────────────────
+    # ── optional novelty block (carried over + --novelty) ─────────────────
     novelty = load_novelty(args.novelty)
+    if carried_nov and carried_nov["samples"]:
+        if novelty:
+            carried_nov["samples"].update(novelty["samples"])
+            carried_nov["classifier"] = novelty.get("classifier") or carried_nov["classifier"]
+        novelty = carried_nov
     if novelty:
         combined["novelty"] = novelty
         combined["has_novelty"] = True
         print(f"[combine_samples_json] Novelty embedded: {len(novelty['samples'])} sample(s)")
 
-    # ── optional VF/AMR block ─────────────────────────────────────────────
+    # ── optional VF/AMR block (carried over + --annotate-reports) ─────────
     prot_data = load_annotate_reports(args.annotate_reports, pident=args.pident)
+    for k in PROT_KEYS:
+        prot_data[k] = carried_prot[k] + prot_data[k]
     n_prot = sum(len(v) for v in prot_data.values())
     if n_prot:
         combined["prot_data"] = prot_data

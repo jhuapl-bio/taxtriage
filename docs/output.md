@@ -8,15 +8,16 @@ This page describes the files and directories produced by TaxTriage. All paths a
 
 These are the outputs you should review first after a successful run:
 
-| File                   | Location                              | Description                                                                                  |
-| ---------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Combined ODR PDF       | `report/all.odr.pdf`                  | All-sample Organism Discovery Report with confidence-ranked pathogen table                   |
-| Per-sample ODR PDF     | `report/<sample>.odr.pdf`             | Single-sample ODR                                                                            |
-| Interactive Comparison | `report/all.odr.html`                 | Multi-sample interactive comparison report. See [Interactive Report](interactive-report.md). |
-| MultiQC Report         | `report/multiqc_report.html`          | QC stats and alignment metrics across all samples                                            |
-| Krona Plot             | `report/combined_krona_kreports.html` | Interactive radial abundance visualization from Kraken2                                      |
-| Microbial Sheet        | `report/<sample\|all>.odr.txt`        | Full tabular data backing the ODR PDF                                                        |
-| Annotated Workbook     | `report/<sample\|all>.odr.xlsx`       | Excel workbook of the ODR data, including VF/AMR annotation and a Metadata sheet             |
+| File                   | Location                              | Description                                                                                                                                                                    |
+| ---------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Combined ODR PDF       | `report/all.odr.pdf`                  | All-sample Organism Discovery Report with confidence-ranked pathogen table                                                                                                     |
+| Per-sample ODR PDF     | `report/<sample>.odr.pdf`             | Single-sample ODR                                                                                                                                                              |
+| Interactive Comparison | `report/all.odr.html`                 | Multi-sample interactive comparison report. See [Interactive Report](interactive-report.md).                                                                                   |
+| MultiQC Report         | `report/multiqc_report.html`          | QC stats and alignment metrics across all samples                                                                                                                              |
+| Krona Plot             | `report/combined_krona_kreports.html` | Interactive radial abundance visualization from Kraken2                                                                                                                        |
+| Report Data (JSON)     | `report/all.odr.json`                 | All samples' evidence (plus VF/AMR, novelty) in one file; drag onto any report or merge runs. See [Merging Runs](interactive-report.md#merging-runs-into-one-json-allodrjson). |
+| Microbial Sheet        | `report/<sample\|all>.odr.txt`        | Full tabular data backing the ODR PDF                                                                                                                                          |
+| Annotated Workbook     | `report/<sample\|all>.odr.xlsx`       | Excel workbook of the ODR data, including VF/AMR annotation and a Metadata sheet                                                                                               |
 
 ---
 
@@ -28,6 +29,7 @@ These are the outputs you should review first after a successful run:
 │   ├── all.odr.pdf                       # Combined Organism Discovery Report
 │   ├── <sample>.odr.pdf                  # Per-sample ODR
 │   ├── all.odr.html                      # Multi-sample interactive comparison report
+│   ├── all.odr.json                      # All samples' report data in one JSON (input for all.odr.html)
 │   ├── all.odr.txt                       # Combined microbial sheet
 │   ├── all.odr.xlsx                      # Combined annotated workbook (incl. VF/AMR + Metadata)
 │   ├── <sample>.odr.txt                  # Per-sample microbial sheet
