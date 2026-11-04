@@ -766,6 +766,12 @@ def parse_args(argv=None):
                          "may set its group's representative breadth. Applied together with "
                          "--rep_breadth_min_frac (an accession qualifies if it clears EITHER "
                          "bar). Default: 50000. Set to 0 to disable.")
+    parser.add_argument('--ungated_minhash', action='store_true', default=False,
+                        help="Score the MinHash/ANI term WITHOUT its coverage gate (depth concentration x "
+                             "share of contigs with reads x 1%% breadth sigmoid). For targeted / capture panels, "
+                             "where reads cover a few short regions by design and the gate treats that as a "
+                             "pile-up artefact. Off by default. The would-be gate is kept in the JSON as "
+                             "minhash_coverage_gate_computed.")
     parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.3,
                     help="Power exponent for depth-concentration penalty on Gini. "
                          "Detects the conserved-human-reads pattern: many reads map to a "
@@ -2722,6 +2728,7 @@ def main():
         mapq_gini_power=args.mapq_gini_power,
         contig_penalty_power=args.contig_penalty_power,
         depth_concentration_power=args.depth_concentration_power,
+        minhash_gate=not args.ungated_minhash,
     )
     # for k, v in strain_summary.items():
     #     if v.get('toplevelname') == "Toxoplasma":
@@ -3277,6 +3284,7 @@ def main():
         mapq_gini_power=args.mapq_gini_power,
         contig_penalty_power=args.contig_penalty_power,
         depth_concentration_power=args.depth_concentration_power,
+        minhash_gate=not args.ungated_minhash,
         group_covered_bp_override=_subkey_union_cb if _subkey_union_cb else None,
         group_coverage_override=_subkey_cov_frac if _subkey_cov_frac else None,
         group_numreads_override=_subkey_numreads_override if _subkey_numreads_override else None,
@@ -3301,6 +3309,7 @@ def main():
         mapq_gini_power=args.mapq_gini_power,
         contig_penalty_power=args.contig_penalty_power,
         depth_concentration_power=args.depth_concentration_power,
+        minhash_gate=not args.ungated_minhash,
         group_covered_bp_override=_toplevelkey_union_cb if _toplevelkey_union_cb else None,
         group_coverage_override=_toplevelkey_cov_frac if _toplevelkey_cov_frac else None,
         group_numreads_override=_toplevelkey_numreads_override if _toplevelkey_numreads_override else None,
@@ -4714,6 +4723,7 @@ def main():
         "num_toplevelkeys": len(_all_toplevelkeys),
         "minmapq": args.minmapq,
         "masking": _mask_summary,  # None when no --mask_bed; see docs/masking.md
+        **({"ungated_minhash": True} if args.ungated_minhash else {}),  # --ungated_minhash
         "mapq_breadth_power": args.mapq_breadth_power,
         "weights": dict(weights),
         "min_conf_applied": None,  # populated by create_report per-sample

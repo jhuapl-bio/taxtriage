@@ -62,12 +62,15 @@ process ALIGNMENT_PER_SAMPLE {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     // if params.sensitive is true then set breadth_weight to 0.3, gini_weight to 0.26 and minhash_weight to 0.44
-    def minhash_weight = params.minhash_weight ? " --minhash_weight ${params.minhash_weight} " : " "
-    def gini_weight = params.gini_weight ? " --gini_weight ${params.gini_weight} " : " "
-    def breadth_weight = params.breadth_weight ? " --breadth_weight ${params.breadth_weight} " : " "
-    def mapq_weight = params.mapq_weight ? " --mapq_weight ${params.mapq_weight} " : " "
-    def hmp_weight = params.hmp_weight ? " --hmp_weight ${params.hmp_weight} " : " "
-    def disparity_score_weight = params.disparity_score_weight ? " --disparity_weight ${params.disparity_score_weight} " : " "
+    // TASS weights: passed whenever set, INCLUDING 0 (e.g. --gini_weight 0 to drop a term);
+    // a plain truthiness test would silently drop a weight of 0. Explicit weights win over
+    // the sample-type weights from the thresholds JSON (match_paths.py).
+    def minhash_weight = params.minhash_weight != null && params.minhash_weight.toString() != '' ? " --minhash_weight ${params.minhash_weight} " : " "
+    def gini_weight = params.gini_weight != null && params.gini_weight.toString() != '' ? " --gini_weight ${params.gini_weight} " : " "
+    def breadth_weight = params.breadth_weight != null && params.breadth_weight.toString() != '' ? " --breadth_weight ${params.breadth_weight} " : " "
+    def mapq_weight = params.mapq_weight != null && params.mapq_weight.toString() != '' ? " --mapq_weight ${params.mapq_weight} " : " "
+    def hmp_weight = params.hmp_weight != null && params.hmp_weight.toString() != '' ? " --hmp_weight ${params.hmp_weight} " : " "
+    def disparity_score_weight = params.disparity_score_weight != null && params.disparity_score_weight.toString() != '' ? " --disparity_weight ${params.disparity_score_weight} " : " "
     def auto_score_power = params.auto_score_power ? " --auto_score_power " : " "
     def score_power = params.score_power != null ? " --score_power ${params.score_power} " : " "
     def depth_concentration_power = params.depth_concentration_power != null ? " --depth_concentration_power ${params.depth_concentration_power} " : " "
@@ -112,6 +115,9 @@ process ALIGNMENT_PER_SAMPLE {
     def pident = params.pident ? " --pident ${params.pident} " : " "
     // Windowed per-reference depth profile for the Alignment Trends tab / --alignment_trends
     def depth_profile = params.depth_profile_windows != null ? " --depth_profile_windows ${params.depth_profile_windows} " : " "
+    // --ungated_minhash (off by default): MinHash/ANI term without its coverage gate. Empty
+    // when off and appended with no separator, so the rendered script (and -resume) is unchanged.
+    def ungated_minhash = (params.ungated_minhash && params.ungated_minhash.toString() != 'false') ? " --ungated_minhash " : ""
 
     /* groovylint-disable-next-line UnnecessaryCollectCall */
     def fastas_arg = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
@@ -206,7 +212,7 @@ process ALIGNMENT_PER_SAMPLE {
         $workflow_revision $commitID $platform $sampletype_thresholds \\
         $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $insilico_flag $parent_arg $reward_factor $dispersion_factor \\
         $mapq_breadth_power $mapq_gini_power $rescue_args \\
-        $annotate_report_arg $pident $depth_profile \\
+        $annotate_report_arg $pident $depth_profile${ungated_minhash} \\
         $meta_csv_arg $mask_args
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true

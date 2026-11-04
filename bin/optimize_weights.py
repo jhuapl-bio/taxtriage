@@ -422,6 +422,7 @@ def calculate_normalized_groups(
     group_coverage_override: Optional[Dict[str, float]] = None,
     group_numreads_override: Optional[Dict[str, float]] = None,
     representative_rollup: bool = False,
+    minhash_gate: bool = True,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Aggregate `hits` into group-level summaries keyed by `group_field`.
@@ -973,6 +974,16 @@ def calculate_normalized_groups(
             _dom_strength = (1.0 - _removal_frac) * _mapq_norm
             _gate_floor = _dom_strength * MAX_DOMINANT_GATE_FLOOR
         _mh_coverage_gate = max(_mh_coverage_gate, _gate_floor)
+
+        # ── --ungated_minhash (off by default) ───────────────────────────
+        # Score MinHash/ANI on its own: skip the coverage gate above (depth
+        # concentration x contig share x 1% breadth sigmoid). For targeted
+        # panels, where reads sit on a few short regions BY DESIGN and the gate
+        # reads that as a pile-up artefact. The would-be gate is kept for the
+        # record; the RPM-share / winner-loser step below still applies.
+        if not minhash_gate:
+            agg['minhash_coverage_gate_computed'] = _mh_coverage_gate
+            _mh_coverage_gate = 1.0
 
         agg['minhash_reduction'] = _agg_raw_mh * _mh_coverage_gate
         agg['minhash_confidence'] = _mh_coverage_gate
