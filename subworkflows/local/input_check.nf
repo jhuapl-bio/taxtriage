@@ -252,6 +252,16 @@ def create_fastq_channel(LinkedHashMap row, List resolved = null) {
         // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
         meta.single_end = (row.fastq_2 && !meta.is_bam) ? false : true
     }
+    // Long reads (ONT / PacBio) are never paired. A fastq_2 on such a row would
+    // otherwise flip single_end to false and send --paired to kraken2 and other
+    // tools, so drop it (loudly: the platform may be mislabelled).
+    if ((meta.platform == 'OXFORD' || meta.platform == 'PACBIO') && !meta.single_end) {
+        println "WARNING: sample '${meta.id}' is ${meta.platform} but has a second read file " +
+                "(${meta.fastq_2}). Long reads are single-end, so it is ignored. If this " +
+                "sample is paired Illumina data, set platform to ILLUMINA."
+        meta.fastq_2    = null
+        meta.single_end = true
+    }
     meta.needscompressing = row.needscompressing ? row.needscompressing : null
 
     // if meta.needscompressing is null or false AND the filename ends with .fastq or .fq then set to true

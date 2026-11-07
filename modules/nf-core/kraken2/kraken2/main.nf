@@ -26,12 +26,18 @@ process KRAKEN2_KRAKEN2 {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def paired       = meta.single_end ? "" : "--paired"
+    // --paired only for genuine short-read pairs: exactly two input files and not
+    // a long-read platform. Relying on meta.single_end alone sent --paired with a
+    // single ONT FASTQ when the flag was wrong upstream.
+    def read_list  = reads instanceof List ? reads : [reads]
+    def long_read  = meta.platform in ['OXFORD', 'PACBIO']
+    def is_paired  = !meta.single_end && !long_read && read_list.size() == 2
+    def paired       = is_paired ? "--paired" : ""
     // get basename of the db
     def db_basename = db.getName()
 
-    def classified   = meta.single_end ? "${prefix}.${db_basename}.classified.fastq"   : "${prefix}.${db_basename}.classified#.fastq"
-    def unclassified = meta.single_end ? "${prefix}.${db_basename}.unclassified.fastq" : "${prefix}.${db_basename}.unclassified#.fastq"
+    def classified   = !is_paired ? "${prefix}.${db_basename}.classified.fastq"   : "${prefix}.${db_basename}.classified#.fastq"
+    def unclassified = !is_paired ? "${prefix}.${db_basename}.unclassified.fastq" : "${prefix}.${db_basename}.unclassified#.fastq"
     def classified_command = save_output_fastqs ? "--classified-out ${classified}" : ""
     def confidence = params.k2_confidence ? "--confidence ${params.k2_confidence}" : ""
     def unclassified_command = save_output_fastqs ? "--unclassified-out ${unclassified}" : ""
@@ -43,7 +49,6 @@ process KRAKEN2_KRAKEN2 {
     // Plain FASTA inputs (.fa / .fasta / .fna) must NOT have this flag or Kraken2
     // will try to decompress a non-compressed stream and fail.
     // Gzipped FASTA (.fa.gz / .fasta.gz) and the usual .fastq.gz both need it.
-    def read_list  = reads instanceof List ? reads : [reads]
     def is_gzipped = read_list.every { it.name.endsWith('.gz') }
     def gzip_cmd   = is_gzipped ? '--gzip-compressed' : ''
 
