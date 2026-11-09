@@ -351,7 +351,7 @@ path/size/mtime for local FASTAs) and `k`/`w`, so a changed FASTA or k/w rebuild
 | `--show_commensals`        | Show commensal organisms in the final report. Default: hidden.                                                                           |
 | `--show_potentials`        | Show potential pathogens in the final report. Default: hidden.                                                                           |
 | `--show_opportunistics`    | Show opportunistic pathogens in the final report. Default: hidden.                                                                       |
-| `--show_unidentified`      | Show unannotated organisms in the final report. Default: hidden.                                                                         |
+| `--show_unidentified`      | Show Uncategorized organisms (not in the pathogen sheet) in the final report. Default: hidden.                                           |
 | `--remove_commensal`       | Drop commensal taxids from the candidate list before alignment. Ignored for sterile sample types. Default: `FALSE`.                      |
 | `--add_irregular_top_hits` | Add organisms with irregular abundance distributions (z-score outliers) to top hits. Default: `false`.                                   |
 | `--distributions <path>`   | Custom `.tsv.gz` or `.tsv` abundance distributions file (replaces HMP defaults).                                                         |

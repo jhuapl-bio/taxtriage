@@ -122,7 +122,7 @@ function _xsAggregate(fd) {
       e = {
         taxid: taxid || "—",
         name: r["Detected Organism"] || key,
-        cat: r["Microbial Category"] || "Unknown",
+        cat: r["Microbial Category"] || UNCATEGORIZED,
         // Nested: specimen → (member sample → best TASS / coverage for that
         // member). Reduced to one value per specimen at row-build time using
         // the user-selected aggregation (max / median / mean / min / detection).
@@ -331,7 +331,7 @@ function _xsFilterRows(agg) {
 }
 
 function _xsCatColor(cat) {
-  return _CAT_COLORS[(cat || "Unknown").split(";")[0]] || "#607d8b";
+  return _CAT_COLORS[(cat || UNCATEGORIZED).split(";")[0]] || "#607d8b";
 }
 
 // ── Specimen merge: toggle + membership editor ───────────────────────────

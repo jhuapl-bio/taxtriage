@@ -58,7 +58,7 @@ custom_table_header_config:
     "Detected Organism":
       description: "The organism detected by the pipeline in the given sample. ★ indicates high consequence"
     "Microbial Category":
-      description: "The microbial category of the detected organism. Options are Primary, Opportunistic, Potential, or Commensal. Unknowns are also there if the organism isn't annotated in the TaxTriage Pathogen sheet"
+      description: "The microbial category of the detected organism. Options are Primary, Opportunistic, Potential, or Commensal. Uncategorized means the organism isn't listed in the TaxTriage pathogen sheet"
     "% Reads":
       description: "The percentage of reads that were assigned to the detected organism relative to the full sample."
     "Index":
@@ -100,7 +100,7 @@ table_cond_formatting_rules:
     beige:
       - s_eq: "Commensal"
     neutral:
-      - s_eq: "Unknown"
+      - s_eq: "Uncategorized"
   Detected_Organism:
     lred:
       - s_contains: "★"

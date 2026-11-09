@@ -7547,7 +7547,7 @@ window.HEATMAP_BOOT = {
           "source": "Site2_B_insilico_iss_ss_randomized_c20000_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         }
       ],
       "missing_insilico_by_type": {
@@ -7598,7 +7598,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           }
         ]
       }
@@ -7738,7 +7738,7 @@ window.HEATMAP_BOOT = {
           "source": "Site1_D_insilico_iss_ss_randomized_c20000_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         },
         {
           "level": "subkey",
@@ -7749,7 +7749,7 @@ window.HEATMAP_BOOT = {
           "source": "Site1_D_insilico_iss_ss_randomized_c20000_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         },
         {
           "level": "subkey",
@@ -7811,7 +7811,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           },
           {
             "level": "subkey",
@@ -7823,7 +7823,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           },
           {
             "level": "subkey",
@@ -7983,7 +7983,7 @@ window.HEATMAP_BOOT = {
           "source": "Site1_B_insilico_iss_ss_randomized_c20000_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         },
         {
           "level": "subkey",
@@ -7994,7 +7994,7 @@ window.HEATMAP_BOOT = {
           "source": "Site1_B_insilico_iss_ss_randomized_c800_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         }
       ],
       "missing_insilico_by_type": {
@@ -8057,7 +8057,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           },
           {
             "level": "subkey",
@@ -8069,7 +8069,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           }
         ]
       }
@@ -8239,7 +8239,7 @@ window.HEATMAP_BOOT = {
           "source": "Site2_A_insilico_iss_ss_randomized_c20000_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         },
         {
           "level": "subkey",
@@ -8250,7 +8250,7 @@ window.HEATMAP_BOOT = {
           "source": "Site2_A_insilico_iss_ss_randomized_c20000_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         }
       ],
       "missing_insilico_by_type": {
@@ -8337,7 +8337,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           },
           {
             "level": "subkey",
@@ -8349,7 +8349,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           }
         ]
       }
@@ -8512,7 +8512,7 @@ window.HEATMAP_BOOT = {
           "source": "Site1_C_insilico_iss_ss_randomized_c20000_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         },
         {
           "level": "subkey",
@@ -8523,7 +8523,7 @@ window.HEATMAP_BOOT = {
           "source": "Site1_C_insilico_iss_ss_randomized_c1000_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         },
         {
           "level": "subkey",
@@ -8609,7 +8609,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           },
           {
             "level": "subkey",
@@ -8621,7 +8621,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           },
           {
             "level": "subkey",
@@ -8759,7 +8759,7 @@ window.HEATMAP_BOOT = {
           "source": "Site1_A_insilico_iss_ss_randomized_c20000_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         },
         {
           "level": "subkey",
@@ -8770,7 +8770,7 @@ window.HEATMAP_BOOT = {
           "source": "Site1_A_insilico_iss_ss_randomized_c20000_r1.paths.json",
           "missing_control": true,
           "control_source": "insilico",
-          "microbial_category": "Unknown"
+          "microbial_category": "Uncategorized"
         }
       ],
       "missing_insilico_by_type": {
@@ -8809,7 +8809,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           },
           {
             "level": "subkey",
@@ -8821,7 +8821,7 @@ window.HEATMAP_BOOT = {
             "missing_control": true,
             "control_source": "insilico_iss",
             "simulator_type": "iss",
-            "microbial_category": "Unknown"
+            "microbial_category": "Uncategorized"
           }
         ]
       }

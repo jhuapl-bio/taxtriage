@@ -27,6 +27,8 @@ from collections import defaultdict
 from typing import Dict, Iterable, Optional, Set, Tuple
 import pandas as pd
 import pysam
+
+from microbial_category import normalize_category
 from optimize_weights import compute_tass_score_from_metrics
 
 
@@ -429,7 +431,8 @@ def optimize_weights(
 
     # ── Category filter: restrict optimization to selected categories ────
     if optimize_categories:
-        _allowed = set(optimize_categories)
+        # "Unknown" is the pre-2026-11 name for "Uncategorized"
+        _allowed = {normalize_category(c) for c in optimize_categories}
         _before = len(metrics_df)
         metrics_df = metrics_df[metrics_df["category"].isin(_allowed)].reset_index(drop=True)
         print(f"[optimize] Category filter {list(_allowed)}: "
@@ -1703,7 +1706,7 @@ def build_metrics_df_from_final_json(
         # Features (match your optimizer targets)
         breadth = float(stats.get("breadth_log_score", 0.0))
         minhash = float(stats.get("minhash_reduction", stats.get("minhash_score", 0.0)))
-        categorical = stats.get("microbial_category", "unknown")
+        categorical = normalize_category(stats.get("microbial_category"))
         # Prefer k2_disparity_score; fall back to disparity if present
         disparity = float(stats.get("k2_disparity_score", stats.get("disparity", 0.0)))
 

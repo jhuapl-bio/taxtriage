@@ -23,7 +23,7 @@
       "TASS Score": Math.round(tass * 10) / 10, // 4th col
       "Taxonomic ID #": String(org.key || ""),
       Subkey: String(org.subkey || org.key || ""),
-      "Microbial Category": org.microbial_category || "Unknown",
+      "Microbial Category": canonMicrobialCategory(org.microbial_category),
       "Ann Class": org.annClass || "",
       IsAnnotated: org.is_annotated === "Yes" ? "Yes" : "No",
       "High Consequence": !!org.high_cons,
@@ -590,6 +590,10 @@
     step("novelty merge", () => _mergeNovelty());
 
     const combined = [...(BOOT.records || []), ..._uploadedRows];
+    // Uploaded JSON/TSV may carry blank, unrecognised or legacy "Unknown" categories.
+    for (const r of combined) {
+      if (r && typeof r === "object") r["Microbial Category"] = canonMicrobialCategory(r["Microbial Category"]);
+    }
     DATA = combined;
 
     step("contig data", () => {

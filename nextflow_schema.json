@@ -1085,7 +1085,7 @@
                 },
                 "show_unidentified": {
                     "type": "boolean",
-                    "description": "Show all non or non-identification organisms in the final discovery report",
+                    "description": "Show Uncategorized organisms (not listed in the pathogen sheet) in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "ani_threshold": {

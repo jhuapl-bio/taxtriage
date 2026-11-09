@@ -78,6 +78,8 @@ import json
 import os
 import sys
 
+from microbial_category import canonicalize_categories
+
 # The `sites` column of an annotate_report can be far larger than csv's default
 # 128 KB field cap; without this the reader raises on perfectly valid rows.
 try:
@@ -524,6 +526,8 @@ def main():
         print(f"[combine_samples_json] Annotations embedded: {n_prot} row(s) "
               f"({len(prot_data['per_gene_hits'])} VF, {len(prot_data['amr_genes'])} AMR)")
 
+    # Blank, unrecognised or legacy ("Unknown") categories -> "Uncategorized".
+    canonicalize_categories(combined)
     with open(args.output, "w", encoding="utf-8") as fh:
         json.dump(combined, fh, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
 

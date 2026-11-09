@@ -57,6 +57,8 @@ import re
 import sys
 from collections import OrderedDict, defaultdict
 
+from microbial_category import normalize_category
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Small helpers (mirrors of the JS side)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -66,6 +68,10 @@ JOIN_NONE = None
 JOIN_SAMPLE = "sample"
 JOIN_ORG = "organism"
 JOIN_SAMPLE_ORG = "sample+organism"
+
+
+# Blank, unrecognised or legacy ("Unknown") categories -> "Uncategorized".
+_mcat = normalize_category
 
 
 def _num(v):
@@ -450,7 +456,7 @@ def _bd_organism_summary(ctx):
         e = by_org.get(key)
         if e is None:
             e = {"taxid": taxid or "-", "name": r.get("Detected Organism") or key,
-                 "cat": r.get("Microbial Category") or "Unknown", "hc": False,
+                 "cat": _mcat(r.get("Microbial Category")), "hc": False,
                  "tass": {}, "cov": {}, "seen": set(), "reads": 0}
             by_org[key] = e
         t = _num(r.get("TASS Score")) or 0.0
@@ -808,7 +814,7 @@ PIVOT_ROWS = OrderedDict([
                         lambda r: (r.get("Detected Organism") or "")
                         + (" (%s)" % r["Taxonomic ID #"] if r.get("Taxonomic ID #") else ""))),
     ("genus", ("Genus", lambda r: r.get("Genus Name") or r.get("Genus") or "")),
-    ("category", ("Microbial Category", lambda r: r.get("Microbial Category") or "Unknown")),
+    ("category", ("Microbial Category", lambda r: _mcat(r.get("Microbial Category")))),
     ("domain", ("Domain", lambda r: r.get("Domain") or r.get("Kingdom") or "Unknown")),
     ("sample", ("Specimen ID", lambda r: r.get("Specimen ID") or "")),
     ("sample_type", ("Sample Type", lambda r: r.get("Sample Type") or "")),

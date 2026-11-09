@@ -1288,7 +1288,7 @@ function _refreshMapGroupPanelTable() {
     // ── Organism rows ────────────────────────────────────────────────
     orgRows.forEach((r, i) => {
       const bg = i % 2 === 0 ? "#fafbff" : "#fff";
-      const cat = r["Microbial Category"] || "Unknown";
+      const cat = r["Microbial Category"] || UNCATEGORIZED;
       const catColor = _CAT_COLORS[cat] || "#555";
       const tass = parseFloat(r["TASS Score"] || 0);
       const reads = parseFloat(r["# Reads Aligned"] || r["% Reads"] || 0);
@@ -1520,7 +1520,7 @@ function _refreshMapPanelTable() {
   tbody.innerHTML = rows
     .map((r, i) => {
       const bg = i % 2 === 0 ? "#fafbff" : "#fff";
-      const cat = r["Microbial Category"] || "Unknown";
+      const cat = r["Microbial Category"] || UNCATEGORIZED;
       const catColor = _CAT_COLORS[cat] || "#555";
       const tass = parseFloat(r["TASS Score"] || 0);
       const bar = `<div style="display:inline-block;width:${Math.round(

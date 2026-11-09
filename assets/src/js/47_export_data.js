@@ -384,7 +384,7 @@ const TT_PIVOT_ROWS = [
     of: (r) => (r["Detected Organism"] || "") + (r["Taxonomic ID #"] ? " (" + r["Taxonomic ID #"] + ")" : ""),
   },
   { id: "genus", label: "Genus", of: (r) => r["Genus Name"] || r["Genus"] || "" },
-  { id: "category", label: "Microbial Category", of: (r) => r["Microbial Category"] || "Unknown" },
+  { id: "category", label: "Microbial Category", of: (r) => r["Microbial Category"] || UNCATEGORIZED },
   { id: "domain", label: "Domain", of: (r) => r["Domain"] || r["Kingdom"] || "Unknown" },
   { id: "sample", label: "Specimen ID", of: (r) => r["Specimen ID"] || "" },
   { id: "sample_type", label: "Sample Type", of: (r) => r["Sample Type"] || "" },

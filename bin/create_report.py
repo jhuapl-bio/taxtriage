@@ -49,6 +49,7 @@ from reportlab.lib.units import inch
 from datetime import datetime
 from map_taxid import load_taxdump, load_names, load_merged
 from body_site_normalization import normalize_body_site
+from microbial_category import UNCATEGORIZED, normalize_category, canonicalize_categories
 
 # ── Unicode font registration ──────────────────────────────────────────────
 # Built-in PDF fonts (Helvetica, etc.) only cover WinAnsi/Latin-1.
@@ -185,15 +186,27 @@ def get_direct_qualifying_strains(species_group, args, min_conf, min_reads=1):
     return qualified
 
 
+# Blank, unrecognised or legacy ("Unknown") categories are read as
+# "Uncategorized" -- see microbial_category.py.
+def canonical_category(microbial_category):
+    """Standard category for a value read from a match_paths JSON."""
+    return normalize_category(microbial_category)
+
+
+def _canonicalize_categories_in_tree(obj):
+    """Normalise every category field in a loaded match_paths JSON tree."""
+    return canonicalize_categories(obj)
+
+
 def _category_severity(microbial_category):
-    category = str(microbial_category or 'Unknown')
+    category = canonical_category(microbial_category)
     if 'Primary' in category:
         return 4
     if 'Opportunistic' in category:
         return 3
     if 'Potential' in category:
         return 2
-    if 'Unknown' in category:
+    if UNCATEGORIZED in category:
         return 1
     if 'Commensal' in category:
         return 0
@@ -208,7 +221,7 @@ def resolve_rollup_annotation(species_record=None, qualifying_strains=None):
     candidates.extend(qualifying_strains or [])
     if not candidates:
         return {
-            'microbial_category': 'Unknown',
+            'microbial_category': 'Uncategorized',
             'annClass': '',
             'high_cons': False,
         }
@@ -216,13 +229,13 @@ def resolve_rollup_annotation(species_record=None, qualifying_strains=None):
     best = max(
         candidates,
         key=lambda rec: (
-            _category_severity(rec.get('microbial_category', 'Unknown')),
+            _category_severity(rec.get('microbial_category', 'Uncategorized')),
             float(rec.get('tass_score', 0) or 0),
             float(rec.get('numreads', 0) or 0),
         ),
     )
     return {
-        'microbial_category': best.get('microbial_category', 'Unknown'),
+        'microbial_category': best.get('microbial_category', 'Uncategorized'),
         'annClass': best.get('annClass', ''),
         'high_cons': any(rec.get('high_cons', False) for rec in candidates),
     }
@@ -870,7 +883,7 @@ def check_if_k2_reads_present(strains):
 
 
 def should_include_strain(strain, args, sampletype=None):
-    category = str(strain.get('microbial_category', 'Unknown'))
+    category = canonical_category(strain.get('microbial_category'))
     # Resolve sample type from argument or from the strain's own data
     _st = sampletype or strain.get('sampletype') or strain.get('normalized_sample_site') or ''
     # For sterile sample types, anything listed from the pathogen sheet
@@ -889,7 +902,7 @@ def should_include_strain(strain, args, sampletype=None):
         return True
     if 'Commensal' in category and args.show_commensals:
         return True
-    if category == 'Unknown' and args.show_unidentified:
+    if category == UNCATEGORIZED and args.show_unidentified:
         return True
     return False
 
@@ -994,10 +1007,12 @@ def load_json_samples(input_files):
         if isinstance(data, dict) and 'organisms' in data:
             orgs = data['organisms']
             _scale_tass_in_tree(orgs)
+            _canonicalize_categories_in_tree(orgs)
             all_sample_data.extend(orgs)
             all_metadata.append(data.get('metadata', {}))
         elif isinstance(data, list):
             _scale_tass_in_tree(data)
+            _canonicalize_categories_in_tree(data)
             all_sample_data.extend(data)
             all_metadata.append({})
         else:
@@ -1143,7 +1158,7 @@ def get_derived_row_colors(alpha=1.0):
 def has_harmful_followup_signal(members):
     """Return True when a derived row summarizes potentially harmful descendants."""
     for member in members or []:
-        category = str(member.get('microbial_category', 'Unknown'))
+        category = str(member.get('microbial_category', 'Uncategorized'))
         if member.get('high_cons', False):
             return True
         if any(tag in category for tag in ('Primary', 'Opportunistic', 'Potential')):
@@ -1248,7 +1263,7 @@ def build_insilico_metrics_table(species_groups, min_conf, available_width,
     from collections import defaultdict
 
     # Categories to track
-    categories = ['Primary', 'Opportunistic', 'Potential', 'Commensal', 'Unknown']
+    categories = ['Primary', 'Opportunistic', 'Potential', 'Commensal', UNCATEGORIZED]
     cat_stats = defaultdict(lambda: {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0,
                                       'tp_reads': 0, 'fp_reads': 0,
                                       'fn_reads': 0, 'tn_reads': 0})
@@ -1257,9 +1272,9 @@ def build_insilico_metrics_table(species_groups, min_conf, available_width,
 
     for grp in species_groups:
         for member in get_all_strains(grp):
-            cat_raw = str(member.get('microbial_category', 'Unknown'))
+            cat_raw = canonical_category(member.get('microbial_category'))
             # Map to our category bins
-            cat = 'Unknown'
+            cat = 'Uncategorized'
             for c in categories:
                 if c in cat_raw:
                     cat = c
@@ -1299,8 +1314,8 @@ def build_insilico_metrics_table(species_groups, min_conf, available_width,
     if missing_insilico:
         has_any_insilico = True
         for entry in missing_insilico:
-            cat_raw = str(entry.get('microbial_category', 'Unknown'))
-            cat = 'Unknown'
+            cat_raw = canonical_category(entry.get('microbial_category'))
+            cat = 'Uncategorized'
             for c in categories:
                 if c in cat_raw:
                     cat = c
@@ -1444,7 +1459,7 @@ def build_missing_insilico_detail_table(missing_insilico, available_width):
     for entry in missing_insilico:
         name = entry.get('name', 'Unknown')
         taxid = str(entry.get('id', '-'))
-        cat = entry.get('microbial_category', 'Unknown')
+        cat = entry.get('microbial_category', 'Uncategorized')
         tass = entry.get('pos_tass_score', 0)
         reads = entry.get('pos_numreads', 0)
         tass_str = f"{float(tass):.2f}" if tass else '-'
@@ -1901,7 +1916,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
     def _append_child_strain_row(strain, promoted=False, below_threshold_primary=None):
         nonlocal row_idx
 
-        microbial_category = strain.get('microbial_category', 'Unknown')
+        microbial_category = strain.get('microbial_category', 'Uncategorized')
         ann_class = strain.get('annClass', '')
         indicator_text = '★' if strain.get('high_cons', False) else ''
         row_below_zscore, zscore_sym = _row_zscore_state(strain)
@@ -2012,7 +2027,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         # Prefer subkey group's annotations over individual strain's
         _sk_grp_ann = (subkey_group_lookup or {}).get((species_key, sk)) or {}
-        microbial_category = _sk_grp_ann.get('microbial_category') or best.get('microbial_category', 'Unknown')
+        microbial_category = _sk_grp_ann.get('microbial_category') or best.get('microbial_category', 'Uncategorized')
         ann_class = _sk_grp_ann.get('annClass') or best.get('annClass', '')
         is_hc = _sk_grp_ann.get('high_cons', best.get('high_cons', False))
         indicator_text = '★' if is_hc else ''
@@ -2472,7 +2487,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         else:
             # ── Original flat per-strain mode ──────────────────────────────────
-            microbial_category = strain.get('microbial_category', 'Unknown')
+            microbial_category = strain.get('microbial_category', 'Uncategorized')
             ann_class = strain.get('annClass', '')
             is_hc = strain.get('high_cons', False)
             indicator_text = '★' if is_hc else ''
@@ -2797,7 +2812,7 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
     # Color swatch only in the first column; no full-row fill
     for idx, item in enumerate(low_confidence_strains, start=1):
         row_color = get_category_color(
-            item['strain'].get('microbial_category', 'Unknown'),
+            item['strain'].get('microbial_category', 'Uncategorized'),
             item['strain'].get('annClass', ''),
             alpha=0.25
         )
@@ -2965,7 +2980,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
                 strain_row_bm = f"strain_row_{sanitize_bookmark_name(sample_name)}_{species_key}"
                 story_items.append(AnchorFlowable(strain_row_bm))
 
-            microbial_category = strain.get('microbial_category', 'Unknown')
+            microbial_category = strain.get('microbial_category', 'Uncategorized')
             ann_class = strain.get('annClass', '')
             is_hc = strain.get('high_cons', False)
             indicator = '★' if is_hc else ''
@@ -4685,7 +4700,7 @@ def create_pdf_template(output_path, samples_dict, args):
         (args.show_commensals,    '#90EE90',  'Commensal',      'Normal flora / non-pathogenic'),
         (args.show_opportunistic, '#ffe6a8',  'Opportunistic',  'May cause disease in certain conditions'),
         (args.show_potentials,    '#ADD8E6',  'Potential',      'Potential pathogen requiring further investigation'),
-        (args.show_unidentified,  '#FFFFFF',  'Unknown',        'Classified organism with unknown significance'),
+        (args.show_unidentified,  '#FFFFFF',  'Uncategorized',  'Not listed in the pathogen sheet; clinical significance not curated'),
     ]
     _hidden_category_names = [name for (show, _color, name, _desc) in _legend_conditional if not show]
 
@@ -5286,7 +5301,7 @@ def create_pdf_template(output_path, samples_dict, args):
                     if ic.get('missing_from_insilico'):
                         _so_name = sg.get('name') or sg.get('toplevelname') or str(sg.get('toplevelkey', ''))
                         _so_tass = float(sg.get('tass_score', 0) or 0)
-                        _so_cat = sg.get('microbial_category') or sg.get('is_pathogen') or 'Unknown'
+                        _so_cat = sg.get('microbial_category') or sg.get('is_pathogen') or 'Uncategorized'
                         _so_orgs.append((_so_name, _so_tass, _so_cat))
                 if _so_orgs:
                     _so_hdr_style = ParagraphStyle(
@@ -5348,7 +5363,7 @@ def create_pdf_template(output_path, samples_dict, args):
                         if ic.get('missing_from_insilico'):
                             _so_name = sg.get('name') or sg.get('toplevelname') or str(sg.get('toplevelkey', ''))
                             _so_tass = float(sg.get('tass_score', 0) or 0)
-                            _so_cat = sg.get('microbial_category') or sg.get('is_pathogen') or 'Unknown'
+                            _so_cat = sg.get('microbial_category') or sg.get('is_pathogen') or 'Uncategorized'
                             _sample_only_orgs.append((_so_name, _so_tass, _so_cat))
                     if _sample_only_orgs:
                         _so_hdr_style = ParagraphStyle(
@@ -5613,7 +5628,7 @@ def create_pdf_template(output_path, samples_dict, args):
             _sp_key = _sg.get('toplevelkey', _sg.get('key', 'unknown'))
             _sp_bm = f"species_{sanitize_bookmark_name(_sir_sample_name)}_{_sp_key}"
             _g_tass, _g_primary, _ = get_species_group_stats(_sg)
-            _g_cat = _sg.get('microbial_category', 'Unknown')
+            _g_cat = _sg.get('microbial_category', 'Uncategorized')
             _g_ann = _sg.get('annClass', '')
             _cat_color = get_category_color(_g_cat, _g_ann, alpha=1.0)
             _color_hex = '#{:02x}{:02x}{:02x}'.format(
@@ -5762,9 +5777,9 @@ def _build_tabular_dataframe(samples_dict, args):
                     f"{pct_reads:.4f}", int(strain_reads), f"{pct_reads:.4f}",
                     f"{(min(1, strain.get('coverage', 0)) or 0)*100:.0f}%",
                     '100.0',
-                    'Yes' if strain.get('isAnnotated', True) else 'No',
+                    'Yes' if str(strain.get('is_annotated', 'No')) == 'Yes' else 'No',
                     strain.get('annClass', ''),
-                    strain.get('microbial_category', 'Unknown'),
+                    strain.get('microbial_category', 'Uncategorized'),
                     'True' if strain.get('high_cons', False) else 'False',
                     (strain.get('mol_type') or '').strip().lower(),
                     strain.get('key', ''), strain.get('status', ''),
@@ -5936,7 +5951,7 @@ def parse_args():
     parser.add_argument("--show_commensals", action="store_true", required=False,
                         help="Show the commensals table")
     parser.add_argument("--show_unidentified", action="store_true", required=False,
-                        help="Show the all organisms now listed as commensal or pathogen")
+                        help="Show Uncategorized organisms (not listed in the pathogen sheet) in the report")
     parser.add_argument("--show_potentials", action="store_true", required=False,
                         help="Show the potentials table")
     parser.add_argument("--show_opportunistic", action="store_true", required=False,

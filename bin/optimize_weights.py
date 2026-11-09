@@ -45,12 +45,15 @@ def compute_tp_fp_counts_by_reference(bam_path: str) -> dict[str, tuple[int, int
 
 
 import pandas as pd
+from microbial_category import (  # noqa: F401  (re-exported)
+    UNCATEGORIZED, MICROBIAL_CATEGORIES, normalize_category, canonicalize_categories,
+)
 CATEGORY_PRIORITY = {
     "Primary": 5,
     "Potential": 4,
     "Opportunistic": 3,
     "Commensal": 2,
-    "Unknown": 1,
+    "Uncategorized": 1,
 }
 
 def transform_func(d):
@@ -2460,7 +2463,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
         "Opportunistic": 4,
         "Potential": 3,
         "Commensal": 2,
-        "Unknown": 1,
+        "Uncategorized": 1,
     }
 
     # Normalize the sample type/body site
@@ -2539,7 +2542,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
 
             # If this member was already classified recursively, use those results
             if member.get('is_annotated') is not None and member.get('microbial_category') is not None:
-                st_cat = member.get('microbial_category', 'Unknown')
+                st_cat = member.get('microbial_category', 'Uncategorized')
                 st_hc = member.get('high_cons', False)
                 st_ann = member.get('annClass', 'Direct')
                 is_annotated = member.get('is_annotated', 'No')
@@ -2569,7 +2572,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                 member['pathogenic_sites'] = refpath.get('pathogenic_sites', [])
                 member['mol_type'] = refpath.get('mol_type', '')
             else:
-                st_cat = "Unknown"
+                st_cat = "Uncategorized"
                 st_ann = "Direct"
                 st_hc = False
                 is_annotated = "No"
@@ -2595,7 +2598,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
         if member_categories:
             st_cat = max(member_categories, key=lambda cat: CATEGORY_PRIORITY.get(cat, 0))
         else:
-            st_cat = "Unknown"
+            st_cat = "Uncategorized"
 
         # AnnClass: Mixed if multiple categories, else Direct/Derived from members
         unique_categories = set(member_categories)
@@ -2654,7 +2657,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
             agg_pathogenic_sites = refpath.get("pathogenic_sites", [])
             st_mol_type = refpath.get('mol_type', '')
         else:
-            st_cat = "Unknown"
+            st_cat = "Uncategorized"
             st_ann = "Direct"
             st_hc = False
             is_annotated = "No"
@@ -2716,32 +2719,8 @@ def annotate_aggregate_dict(
 
 
 
-def normalize_category(label):
-    """
-    Normalize category labels to standard format.
-
-    Args:
-        label (str): Category label (e.g., "primary", "opportunistic")
-
-    Returns:
-        str: Capitalized standard category
-    """
-    if not label:
-        return "Unknown"
-
-    s = str(label).strip().lower()
-
-    if s in ("primary", "primary (sterile)"):
-        return "Primary"
-    if s in ("opportunistic",):
-        return "Opportunistic"
-    if s in ("potential",):
-        return "Potential"
-    if s in ("commensal",):
-        return "Commensal"
-
-    return "Unknown"
-
+# normalize_category / canonicalize_categories live in microbial_category.py
+# (shared with the report scripts) and are re-exported from here.
 
 
 def choose_aggregate_category_from_strains(strains):
@@ -2758,7 +2737,7 @@ def choose_aggregate_category_from_strains(strains):
     """
     cats = []
     for s in strains:
-        cat = normalize_category(s.get("microbial_category") or s.get("is_pathogen") or "Unknown")
+        cat = normalize_category(s.get("microbial_category") or s.get("is_pathogen") or "Uncategorized")
         try:
             tass = float(s.get("tass_score", 0) or 0)
         except Exception:
@@ -2766,7 +2745,7 @@ def choose_aggregate_category_from_strains(strains):
         cats.append((cat, tass))
 
     if not cats:
-        return "Unknown", "Direct"
+        return "Uncategorized", "Direct"
 
     unique_cats = sorted({c for c, _ in cats})
     if len(unique_cats) == 1:
@@ -2787,7 +2766,7 @@ def choose_aggregate_category_from_strains(strains):
     return chosen, "Mixed"
 
 def pathogen_label(rft, sample_type):
-    is_pathogen = "Unknown"
+    is_pathogen = "Uncategorized"
     isPathi = False
     direct_match = False
     callclass = rft.get('callclass', "N/A")
@@ -2809,9 +2788,9 @@ def pathogen_label(rft, sample_type):
         is_pathogen = "Commensal"
         direct_match = True
     elif callclass and callclass != "":
-        is_pathogen = callclass.capitalize() if callclass else "Unknown"
+        is_pathogen = callclass.capitalize() if callclass else "Uncategorized"
         isPathi = True
-    return is_pathogen, isPathi, direct_match, high_cons
+    return normalize_category(is_pathogen), isPathi, direct_match, high_cons
 
 
 # ── Control comparison utilities ─────────────────────────────────────────────
