@@ -3,5 +3,5 @@ window.TAXTRIAGE_DOCS = {
   "ref": "v3.3.12",
   "version": "stable",
   "label": "stable (3.3.12)",
-  "commit": "a001e4c72e15eb70ab52ad1bca8067ecae812289"
+  "commit": "5b0b744f6850a449c0f2b32713d6f0324a1471a9"
 };
