@@ -1,6 +1,6 @@
 # Microbial Categories
 
-Every organism TaxTriage reports carries a **microbial category**, which is one of `Primary`, `Opportunistic`, `Potential`, `Commensal`, or `Unknown`. The category is the pipeline's answer to _"if this organism is really here, does it matter?"_, and it is deliberately kept separate from [TASS](tass-scoring.md), which answers _"is this organism really here?"_
+Every organism TaxTriage reports carries a **microbial category**, which is one of `Primary`, `Opportunistic`, `Potential`, `Commensal`, or `Uncategorized`. The category is the pipeline's answer to _"if this organism is really here, does it matter?"_, and it is deliberately kept separate from [TASS](tass-scoring.md), which answers _"is this organism really here?"_
 
 > **The single most important thing to know:** the category never changes the TASS score. TASS is computed from breadth, Gini, minhash, disparity and HMP components only. Category controls **visibility, colour, ordering and triage priority** in the report. A `Commensal` with TASS 0.95 is a confident detection of something usually unremarkable; a `Primary` with TASS 0.08 is a weak signal for something that would matter if real. Read both columns together, always.
 
@@ -75,13 +75,17 @@ Organisms expected in a healthy microbiome at the sampled site. Examples: _Thoma
 - Can be removed from the candidate list entirely before alignment with `--remove_commensal` (see §5).
 - **Interpretation:** normally noise. But a commensal at high abundance in a _sterile_ sample is the opposite of noise. It is either a genuine translocation or infection, or a contamination event during collection. TaxTriage handles that case explicitly (§4).
 
-### Unknown: _not in the sheet_
+### Uncategorized: _not in the sheet_
 
 Anything detected that has no row in the pathogen sheet, and no annotated ancestor in its taxonomic lineage. `is_annotated = No`.
 
+!!! note "Uncategorized, not Unknown"
+
+    Earlier releases called this category `Unknown`. It was renamed because "unknown" read as _unknown organism_ or _unknown significance_, when all it means is that the organism is not in the pathogen sheet. The organism itself is identified; only its clinical category is missing. The same fallback applies to any blank or unrecognised category value (a typo in the sheet, a hand-edited JSON): every JSON, ODR table and report writes it as `Uncategorized`. JSON and reports from older runs that still say `Unknown` are read as `Uncategorized`, and `Unknown` is still accepted as an alias wherever a category is passed on the command line (`make_report.py --microbial_category`, `match_paths.py --optimize_categories`).
+
 - Hidden by default; shown with `--show_unidentified`.
 - Rendered **white**.
-- **Interpretation:** absence of evidence. Environmental, database-artefact, or simply un-curated organisms all land here. A high-TASS `Unknown` with strong even coverage is worth looking up by hand, and it is also the entry point for [Novelty Detection](novelty-detection.md).
+- **Interpretation:** absence of evidence. Environmental, database-artefact, or simply un-curated organisms all land here. A high-TASS `Uncategorized` organism with strong even coverage is worth looking up by hand, and it is also the entry point for [Novelty Detection](novelty-detection.md).
 
 ### Summary
 
@@ -90,10 +94,10 @@ Anything detected that has no row in the pathogen sheet, and no annotated ancest
 | Primary       | `primary`       | 452  | 🟥 `#E85F50` / 🟧 `#E67E22` | ✅ always                  | 4             | Act on it                  |
 | Opportunistic | `opportunistic` | 541  | 🟨 `#ffe6a8`                | ❌ `--show_opportunistics` | 3             | Depends on site & host     |
 | Potential     | `potential`     | 557  | 🟦 `#ADD8E6`                | ❌ `--show_potentials`     | 2             | Investigate further        |
-| Unknown       | _(absent)_      | -    | ⬜ `#FFFFFF`                | ❌ `--show_unidentified`   | 1             | Un-curated; check manually |
+| Uncategorized | _(absent)_      | -    | ⬜ `#FFFFFF`                | ❌ `--show_unidentified`   | 1             | Un-curated; check manually |
 | Commensal     | `commensal`     | 152  | 🟩 `#90EE90`                | ❌ `--show_commensals`     | 0             | Expected background        |
 
-The **severity rank** (`_category_severity()` in `create_report.py`) is what breaks ties when a species roll-up has to choose one label for several strains, and what orders rows within a table. Note that `Unknown` outranks `Commensal`, because an un-curated organism is treated as more interesting than a confirmed normal-flora one.
+The **severity rank** (`_category_severity()` in `create_report.py`) is what breaks ties when a species roll-up has to choose one label for several strains, and what orders rows within a table. Note that `Uncategorized` outranks `Commensal`, because an un-curated organism is treated as more interesting than a confirmed normal-flora one.
 
 ---
 
@@ -141,7 +145,7 @@ flowchart LR
     E -->|Yes| F["adopt genus label<br/>matched_rank = genus<br/>annClass = <b>Derived</b>"]
     E -->|No| G{"family in sheet?"}
     G -->|Yes| H["adopt family label<br/>matched_rank = family"]
-    G -->|No| I["<b>Unknown</b><br/>is_annotated = No"]
+    G -->|No| I["<b>Uncategorized</b><br/>is_annotated = No"]
 ```
 
 **Interpretation:** a `Primary` call with `matched_rank = genus` means _"something in this genus is a primary pathogen"_, not _"this species is"_. Check `matched_taxid` in the JSON/TSV before treating a Derived call as a species-level finding.
@@ -209,7 +213,7 @@ Before any alignment happens, the sheet is filtered to rows whose `pathogenic_si
 | `--show_opportunistics` | Show Opportunistic rows in the PDF                                                            |
 | `--show_potentials`     | Show Potential rows in the PDF                                                                |
 | `--show_commensals`     | Show Commensal rows in the PDF                                                                |
-| `--show_unidentified`   | Show Unknown (un-annotated) rows in the PDF                                                   |
+| `--show_unidentified`   | Show Uncategorized (not in the pathogen sheet) rows in the PDF                                |
 | `--remove_commensal`    | Drop commensal taxids from candidates _before_ download/alignment (ignored for sterile sites) |
 | `--pathogens <path>`    | Use a custom sheet with your own `general_classification` values                              |
 
@@ -235,7 +239,7 @@ The separate `high_consequence` column (179 of 1,702 rows: select agents, catego
 | _Escherichia coli_           | `opportunistic`          | `urine, blood`     | `gut`             | urine       | **Primary**                                    | Direct     | `pathogenic_sites` match promotes to Primary                 |
 | _Escherichia coli_           | `opportunistic`          | `urine, blood`     | `gut`             | stool       | **Commensal**                                  | Direct     | gut↔stool equivalence demotes                               |
 | Un-curated _Rhodococcus_ sp. | _(absent)_               | -                  | -                 | sputum      | **Opportunistic**                              | Derived    | Genus row matched via lineage walk                           |
-| Un-curated environmental sp. | _(absent)_               | -                  | -                 | any         | **Unknown**                                    | Direct     | No row, no annotated ancestor                                |
+| Un-curated environmental sp. | _(absent)_               | -                  | -                 | any         | **Uncategorized**                              | Direct     | No row, no annotated ancestor                                |
 
 ---
 
@@ -248,7 +252,7 @@ A practical triage order for the PDF and the [Interactive Report](interactive-re
 3. **Primary + Derived (orange)**: real pathogens, but annotated for a different body site. Ask whether the site makes sense.
 4. **Opportunistic**, weighted by the sample type and what you know about the host.
 5. **Anything under the "Potential Contaminants" separator**: flora at a sterile site. Adjudicate with abundance, coverage evenness, and replicate draws.
-6. **Potential / Unknown**: only when the above is empty or the clinical picture is unresolved.
+6. **Potential / Uncategorized**: only when the above is empty or the clinical picture is unresolved.
 
 Two failure modes worth naming:
 
@@ -261,7 +265,7 @@ Two failure modes worth naming:
 
 To change how an organism is categorised, edit the sheet. No code change is needed. See [Contributing](contributing.md#adding-organisms-to-the-pathogen-sheet).
 
-- Set `general_classification` to exactly one of `primary`, `opportunistic`, `potential`, `commensal` (lowercase in the sheet; the pipeline capitalises it). Unrecognised values normalise to `Unknown`.
+- Set `general_classification` to exactly one of `primary`, `opportunistic`, `potential`, `commensal` (lowercase in the sheet; the pipeline capitalises it). Unrecognised values normalise to `Uncategorized`.
 - Prefer adding `pathogenic_sites` / `commensal_sites` over changing `general_classification`. Site columns make the annotation conditional and correct across sample types; changing the general class changes it everywhere.
 - Use `status` (`established` vs. `putative`) to record evidence strength, especially for `potential` rows.
 - Reserve `high_consequence = TRUE` for organisms that must never be filtered out.
@@ -277,5 +281,5 @@ To propose changes to the shipped sheet, open a GitHub issue.
 - [TASS Scoring](tass-scoring.md): the confidence axis, which is independent of category
 - [CLI Parameters](cli-parameters.md#pathogen-discovery-and-reporting-filters): `--show_*`, `--remove_commensal`, `--pathogens`
 - [Interactive Report](interactive-report.md): category filters and colouring in the HTML report
-- [Novelty Detection](novelty-detection.md): what happens to high-signal `Unknown` organisms
+- [Novelty Detection](novelty-detection.md): what happens to high-signal `Uncategorized` organisms
 - [Contributing](contributing.md#adding-organisms-to-the-pathogen-sheet): adding or re-categorising organisms

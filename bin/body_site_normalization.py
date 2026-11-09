@@ -156,7 +156,7 @@ def get_pathogen_classification(pathogen_info, sample_site):
 
     Returns:
         tuple: (classification, is_direct_match)
-            - classification: "primary", "opportunistic", "potential", "commensal", or "unknown"
+            - classification: "primary", "opportunistic", "potential", "commensal", or "uncategorized"
             - is_direct_match: True if sample_site matches pathogenic/commensal sites
 
     Logic:
@@ -205,7 +205,7 @@ def get_pathogen_classification(pathogen_info, sample_site):
         return 'commensal', True
 
     # Not a direct match - use general classification but mark as indirect
-    return callclass or 'unknown', False
+    return callclass or 'uncategorized', False
 
 
 # Test cases

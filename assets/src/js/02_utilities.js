@@ -176,7 +176,7 @@ function filteredData(opts) {
       }
     }
     if (onlyHC && !isTruthy(r["High Consequence"])) return false;
-    if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
+    if (mcFilter && !mcFilter.has(r["Microbial Category"] || UNCATEGORIZED)) return false;
     if (kingdomFilter) {
       const bucket = _rowKingdomBucket(r);
       if (!bucket || !kingdomFilter.has(bucket)) return false;

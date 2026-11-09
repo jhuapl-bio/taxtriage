@@ -61,7 +61,7 @@ from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 import random
 from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
-from optimize_weights import annotate_aggregate_dict, compute_assignment_confidence, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison, find_missing_positive_controls
+from optimize_weights import annotate_aggregate_dict, compute_assignment_confidence, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, canonicalize_categories, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison, find_missing_positive_controls
 from map_taxid import load_taxdump, load_names, get_root
 from utils import taxid_to_rank, calculate_var, load_matchfile
 
@@ -465,9 +465,12 @@ def parse_args(argv=None):
                         help="Blend factor when --optimize_mode hybrid. 1.0 = pure taxid-level, "
                              "0.0 = pure read-level. Default: 0.5.")
     parser.add_argument("--optimize_categories", nargs='+', default=None,
-                        choices=["Primary", "Potential", "Opportunistic", "Commensal", "Unknown"],
+                        choices=["Primary", "Potential", "Opportunistic", "Commensal", "Uncategorized",
+                                 "Unknown"],
                         help="Restrict weight optimization to only these microbial categories. "
-                             "Accepts one or more of: Primary, Potential, Opportunistic, Commensal, Unknown. "
+                             "Accepts one or more of: Primary, Potential, Opportunistic, Commensal, "
+                             "Uncategorized (organisms not in the pathogen sheet; 'Unknown' is accepted "
+                             "as a legacy alias). "
                              "If not set, all categories are included in the optimization objective.")
     # ── Site-aware breadth sigmoid tuning ────────────────────────────────
     parser.add_argument("--breadth_midpoint", type=float, default=0.0005,
@@ -3486,6 +3489,9 @@ def main():
 
     import json
     def write_to_json(output_path, obj):
+        # Every category in the written JSON is one of the five standard labels;
+        # blank / unrecognised values are written as "Uncategorized".
+        canonicalize_categories(obj)
         with open(output_path, "w") as f:
             json.dump(obj, f, separators=(',', ':'), indent=4)
     final_json = annotate_aggregate_dict(
@@ -3786,12 +3792,12 @@ def main():
                 for entry in _type_missing:
                     entry['control_source'] = f'insilico_{_sim_type}'
                     entry['simulator_type'] = _sim_type
-                    _cat = 'Unknown'
+                    _cat = 'Uncategorized'
                     _entry_id = str(entry.get('id', ''))
                     _entry_name = entry.get('name', '')
                     _pinfo = pathogens.get(_entry_id) or pathogens.get(_entry_name)
                     if _pinfo:
-                        _raw_cat = _pinfo.get('callclass', 'Unknown')
+                        _raw_cat = _pinfo.get('callclass', 'Uncategorized')
                         if _raw_cat:
                             _raw_lower = str(_raw_cat).strip().lower()
                             if 'primary' in _raw_lower:
@@ -3825,12 +3831,12 @@ def main():
             for entry in _missing_insilico:
                 entry['control_source'] = 'insilico'
                 # Look up microbial category using taxid or name from pathogens dict
-                _cat = 'Unknown'
+                _cat = 'Uncategorized'
                 _entry_id = str(entry.get('id', ''))
                 _entry_name = entry.get('name', '')
                 _pinfo = pathogens.get(_entry_id) or pathogens.get(_entry_name)
                 if _pinfo:
-                    _raw_cat = _pinfo.get('callclass', 'Unknown')
+                    _raw_cat = _pinfo.get('callclass', 'Uncategorized')
                     # Normalize to standard category names
                     if _raw_cat:
                         _raw_lower = str(_raw_cat).strip().lower()
@@ -4796,7 +4802,7 @@ def main():
                 "fp_reads": int(fp_reads),
                 "total_reads": int(total_rd),
                 "classification": "TP" if is_tp else "FP",
-                "microbial_category": data.get('microbial_category', 'Unknown'),
+                "microbial_category": data.get('microbial_category', 'Uncategorized'),
             })
 
         # Filter out organisms with zero TP and zero FP reads –
@@ -4987,7 +4993,7 @@ def write_to_tsv(output_path, final_scores, header):
     with open (output_path, 'w') as file:
         file.write(f"{header}\n")
         for entry in final_scores:
-            is_pathogen = entry.get('is_pathogen', "Unknown")
+            is_pathogen = normalize_category(entry.get('is_pathogen'))
             formatname = entry.get('formatname', "N/A")
             sample_name = entry.get('sample_name', "N/A")
             ref = entry.get('ref', "N/A")
@@ -4995,7 +5001,7 @@ def write_to_tsv(output_path, final_scores, header):
             _entry_total = entry.get('total_reads', 0)
             _entry_reads = entry.get('reads_aligned', 0)
             percent_aligned = (100 * _entry_reads / _entry_total) if _entry_total > 0 and _entry_reads > 0 else 0
-            is_pathogen = entry.get('is_pathogen', "Unknown")
+            is_pathogen = normalize_category(entry.get('is_pathogen'))
             status = entry.get('status', "N/A")
             is_annotated= entry.get('is_annotated', "N/A")
             sample_type = entry.get('sample_type', "N/A")

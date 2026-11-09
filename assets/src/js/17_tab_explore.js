@@ -1236,7 +1236,7 @@ const _CAT_COLORS = {
   Commensal: "#1565c0",
   Opportunistic: "#f57c00",
   Potential: "#6a1b9a",
-  Unknown: "#555",
+  Uncategorized: "#555",
 };
 // Longitudinal analysis state — declared here (before init IIFE) to avoid TDZ
 let _longiOrgList = [];

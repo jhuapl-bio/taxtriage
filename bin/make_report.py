@@ -40,6 +40,7 @@ from collections import defaultdict
 
 import pandas as pd
 
+from microbial_category import normalize_category, canonicalize_categories
 from hmp_outliers import HMP_COLUMNS, HMP_HIDDEN_COLUMNS, annotate_rows, annotate_rows_from_json
 
 # Raw per-organism HMP fields match_paths.py writes into the paths JSON (only
@@ -215,7 +216,8 @@ def parse_args(argv=None):
         default=["all"],
         metavar="CAT",
         help="Microbial category filter (default: Primary). "
-             "Accepted values: Primary, Commensal, Opportunistic, Potential, Unknown. "
+             "Accepted values: Primary, Commensal, Opportunistic, Potential, Uncategorized "
+             "(not in the pathogen sheet; 'Unknown' is accepted as a legacy alias). "
              "Use 'all' to include every category. "
              "Multiple values are allowed, e.g. -mc Primary Potential",
     )
@@ -1104,7 +1106,10 @@ def _collect_best_cutoffs(sample_meta):
             aggregated[level]["best_threshold"] = min(thresholds)
     return aggregated or None
 
-_VALID_MICROBIAL_CATS = {"Primary", "Commensal", "Opportunistic", "Potential", "Unknown"}
+_VALID_MICROBIAL_CATS = {"Primary", "Commensal", "Opportunistic", "Potential", "Uncategorized"}
+# Blank, unrecognised or legacy ("Unknown") categories become "Uncategorized"
+# (microbial_category.py).
+_mcat = normalize_category
 
 
 def _resolve_microbial_cats(cat_args):
@@ -1120,7 +1125,8 @@ def _resolve_microbial_cats(cat_args):
         # handle "opportunistic" -> "Opportunistic", title-case normalisation
         # do a case-insensitive lookup against valid set
         matched = next(
-            (v for v in _VALID_MICROBIAL_CATS if v.lower() == raw.strip().lower()),
+            (v for v in _VALID_MICROBIAL_CATS
+             if v.lower() == raw.strip().lower() or (raw.strip().lower() == "unknown" and v == "Uncategorized")),
             None,
         )
         if matched:
@@ -1232,7 +1238,7 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
         "TASS Score":          round(tass, 100),  # 4th col — 0–100 scale for display
         "Taxonomic ID #":      str(org.get("key", "")),
         "Subkey":              str(org.get("subkey", org.get("key", ""))),
-        "Microbial Category":  org.get("microbial_category", "Unknown"),
+        "Microbial Category":  _mcat(org.get("microbial_category")),
         "Ann Class":           org.get("annClass", ""),
         "IsAnnotated":         "Yes" if org.get("is_annotated", "No") == "Yes" else "No",
         "High Consequence":    bool(org.get("high_cons", False)),
@@ -1329,7 +1335,7 @@ def _iter_organisms(json_data, sample_name, mintass=0, microbial_cats=None):
     def _cat_ok(org):
         if microbial_cats is None:
             return True
-        return org.get("microbial_category", "Unknown") in microbial_cats
+        return _mcat(org.get("microbial_category")) in microbial_cats
 
     # grp = toplevelkey (genus) group; sk_m = subkey (species) group; strain = key.
     #
@@ -1425,12 +1431,12 @@ def load_json_inputs(paths, mintass=0, microbial_cats=None):
                     for sk_m in grp.get("members", []):
                         if float(sk_m.get('tass_score', 0) or 0) < mintass:
                             continue
-                        if microbial_cats is not None and sk_m.get('microbial_category', 'Unknown') not in microbial_cats:
+                        if microbial_cats is not None and _mcat(sk_m.get('microbial_category')) not in microbial_cats:
                             continue
                         for strain in sk_m.get("members", []):
                             if float(strain.get('tass_score', 0) or 0) < mintass:
                                 continue
-                            if microbial_cats is not None and strain.get('microbial_category', 'Unknown') not in microbial_cats:
+                            if microbial_cats is not None and _mcat(strain.get('microbial_category')) not in microbial_cats:
                                 continue
                             _contigs = strain.get("contigs")
                             _dhist   = strain.get("depth_histogram")
@@ -1464,12 +1470,12 @@ def load_json_inputs(paths, mintass=0, microbial_cats=None):
             for sk_m in grp.get("members", []):
                 if float(sk_m.get('tass_score', 0) or 0) < mintass:
                     continue
-                if microbial_cats is not None and sk_m.get('microbial_category', 'Unknown') not in microbial_cats:
+                if microbial_cats is not None and _mcat(sk_m.get('microbial_category')) not in microbial_cats:
                     continue
                 for strain in sk_m.get("members", []):
                     if float(strain.get('tass_score', 0) or 0) < mintass:
                         continue
-                    if microbial_cats is not None and strain.get('microbial_category', 'Unknown') not in microbial_cats:
+                    if microbial_cats is not None and _mcat(strain.get('microbial_category')) not in microbial_cats:
                         continue
                     _contigs = strain.get("contigs")
                     _dhist   = strain.get("depth_histogram")
@@ -2394,7 +2400,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
             "rpr": rpr,
             "tass": tass,
             "passes": tass >= _own_thr(sn),   # detection vs this dataset's own recommended cutoff
-            "category": r.get("Microbial Category", "Unknown"),
+            "category": _mcat(r.get("Microbial Category")),
             # Lineage labels so the report can roll the suite up to Species or
             # Genus, and so a Strain-level detection can still be matched to a
             # series that was collapsed to Species.
@@ -2526,7 +2532,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                             # key by itself (a taxid, or the accession it is keyed by).
                             label = d.get("name") if len(keys) == 1 else ""
                             name_by_tid[tid] = label or (f"taxid {tid}" if tid.isdigit() else tid)
-                            cat_by_tid[tid] = "Unknown"
+                            cat_by_tid[tid] = "Uncategorized"
                             sp_by_tid[tid] = label or ""
                             gen_by_tid[tid] = ""
             _tot = sum(exp_reads_by_tid.values()) or 1.0
@@ -2697,7 +2703,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
             organisms.append({
                 "taxid": tid,
                 "name": name_by_tid.get(tid, "Unknown"),
-                "category": cat_by_tid.get(tid, "Unknown"),
+                "category": cat_by_tid.get(tid, "Uncategorized"),
                 # Lineage for the report's Species/Genus rollups and for matching
                 # a Strain-level detection against a Species-level series.
                 "species": sp_by_tid.get(tid, ""),
@@ -3317,6 +3323,8 @@ def main():
         "alignment_trends":      alignment_trends,             # pipeline --alignment_trends results (None when not run)
     })
 
+    # Every category the report shows is one of the five standard labels.
+    canonicalize_categories(payload)
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
     # The payload is inlined in a <script>: a sample/organism/metadata string
     # containing "</script" or "<!--" would otherwise end or derail the element.

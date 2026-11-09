@@ -166,7 +166,7 @@ function _ncbiLink(r) {
 function _rowKeywords(r) {
   const chips = [];
   const cat = r["Microbial Category"];
-  if (cat && cat !== "Unknown") chips.push({ t: cat, c: "kw-cat" });
+  if (cat && cat !== UNCATEGORIZED) chips.push({ t: cat, c: "kw-cat" });
   const status = r["Status"];
   if (status) chips.push({ t: status, c: "" });
   const annClass = r["Ann Class"];
@@ -1340,7 +1340,7 @@ function _renderSummaryTable(fd) {
         `<td colspan="${_visSumCols.length}">${_emptyOnlyMessageHTML(r["Specimen ID"], r.__emptyMeta)}</td></tr>`;
       return;
     }
-    const cat = r["Microbial Category"] || "Unknown";
+    const cat = r["Microbial Category"] || UNCATEGORIZED;
     const cc = _CAT_COLORS[cat] || "#555";
     const hc = isTruthy(r["High Consequence"]);
     const key = _sumRowKey(r);
@@ -3194,7 +3194,7 @@ function _belowCutoffExtraRows() {
       }
     }
     if (onlyHC && !isTruthy(r["High Consequence"])) continue;
-    if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) continue;
+    if (mcFilter && !mcFilter.has(r["Microbial Category"] || UNCATEGORIZED)) continue;
     if (kingdomFilter2) {
       const b2 = _rowKingdomBucket(r);
       if (!b2 || !kingdomFilter2.has(b2)) continue;
@@ -3318,7 +3318,7 @@ function _noveltySubThresholdExtraRows() {
       }
     }
     if (onlyHC && !isTruthy(r["High Consequence"])) continue;
-    if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) continue;
+    if (mcFilter && !mcFilter.has(r["Microbial Category"] || UNCATEGORIZED)) continue;
     if (kingdomFilter3) {
       const b3 = _rowKingdomBucket(r);
       if (!b3 || !kingdomFilter3.has(b3)) continue;
