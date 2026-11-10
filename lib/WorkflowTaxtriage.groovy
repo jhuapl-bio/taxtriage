@@ -605,9 +605,10 @@ class WorkflowTaxtriage {
     // REPORT masking branch know whether any row brings its own reference or mask.
     //   fasta_any / fasta_all : some / every row has a `fasta`
     //   mask_any              : some row has a `mask_fasta` or `mask_bed`
+    //   hop_any               : some row has an `index_hopping` table
     //
     public static Map scanSampleReferenceColumns(infile) {
-        def scan = [fasta_any: false, fasta_all: false, mask_any: false, first_fasta: null]
+        def scan = [fasta_any: false, fasta_all: false, mask_any: false, first_fasta: null, hop_any: false]
         if (!infile) { return scan }
         try {
             def f = Nextflow.file(infile)
@@ -632,6 +633,8 @@ class WorkflowTaxtriage {
             scan.fasta_any = fa.any { it }
             scan.fasta_all = fa.every { it }
             scan.mask_any  = filled('mask_fasta').any { it } || filled('mask_bed').any { it }
+            // Illumina index-hopping table on any row (subworkflows/local/report.nf)
+            scan.hop_any   = filled('index_hopping').any { it }
         /* groovylint-disable-next-line CatchException */
         } catch (Exception e) {
             println "WARNING: could not pre-scan ${infile} for fasta/mask columns: ${e.message}"

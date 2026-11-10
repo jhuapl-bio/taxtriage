@@ -594,6 +594,7 @@ Each of `--report_org_flag_min_reads`, `--report_org_flag_min_tass` and `--repor
 | `--report_org_flag_criteria <spec>`             | Free-form rules: `;` between rules, `&` between the conditions of a rule (all must hold), each `field:op:value`. `field` is a detection column or one of `ani_max` `ani_partners` `genus_reads` `genus_share` `genus_rank` `genus_members` `sample_read_share` `k2_ratio` `prevalence` `lineage`. Operators: those of `--report_flag_metadata` plus `in` / `!in` (comma list). |
 | `--report_org_flag_action <flag\|hide>`         | `flag` highlights (default); `hide` also removes matching rows from every view.                                                                                                                                                                                                                                                                                                |
 | `--report_org_flag_view <all\|hide\|only>`      | Which rows the report opens on: `all` (flagged highlighted), `hide` (flagged hidden) or `only` (nothing but the flagged rows).                                                                                                                                                                                                                                                 |
+| `--report_controls <show\|hide>`                | Negative / positive control samples in `all.odr.html`: `show` (default) or open the report with them hidden. The report's _Show controls_ switch toggles them either way.                                                                                                                                                                                                      |
 
 A `--report_flag_rules` JSON file may also carry an `"organism_rules"` block - `{"view": "hide", "rules": [{"action": "hide", "conds": [{"field": "Genus", "op": "in", "value": "Streptococcus"}, {"field": "# Reads Aligned", "op": "<", "value": 50}]}]}` - which replaces the parameters above.
 
@@ -711,6 +712,17 @@ Restrict TASS scoring to part of each reference: ignore NCBI FCS contaminant spa
 | `--mask_compare_parallel` | `false`            | Run that unmasked scoring alongside the masked one (faster, ~2× peak memory).                                                 |
 | `--mask_write_bam`        | `false`            | Also write `masking/bam/<sample>.masked.bam` (+ `.bai`) with the masked alignments removed.                                   |
 | `--mask_report_top`       | `24`               | Coverage tracks drawn in the masking report.                                                                                  |
+
+## Illumina Index Hopping
+
+Flag detections that index hopping from another sample of the same Illumina lane could explain (flag only; TASS and calls are unchanged). Off unless `--index_hopping` or the samplesheet `index_hopping` column is set. See [Index Hopping](index-hopping.md).
+
+| Parameter                | Default | Description                                                                                                                                                                                                                                 |
+| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--index_hopping`        | –       | Comma-separated index-hopping table(s) (bcl-convert `Index_Hopping_Counts` layout) as CSV, TSV or XLSX, applied to every sample. The samplesheet `index_hopping` column overrides it per row; `index_sample_id` names the row in the table. |
+| `--index_hopping_rate`   | `0.001` | Hop rate used when a table has no hopped rows (0.1 %).                                                                                                                                                                                      |
+| `--index_hopping_factor` | `2`     | Multiplier on the expected hopped reads, for uncertainty in the rate.                                                                                                                                                                       |
+| `--index_hopping_alpha`  | `0.01`  | Flag when P(reads ≥ observed \| hopping) ≥ alpha.                                                                                                                                                                                           |
 
 ## Deprecated Parameters
 

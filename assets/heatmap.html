@@ -62,6 +62,10 @@
       <span class="banner-mask" id="banner-mask" hidden tabindex="0"
         ><i class="fas fa-eye-slash" aria-hidden="true"></i><span id="banner-mask-label"></span
       ></span>
+      <!-- Index-hopping pill; filled by _hopBannerNote (54_index_hopping.js), hidden until a run or an uploaded hopping table provides results -->
+      <span class="banner-hop" id="banner-hop" hidden tabindex="0"
+        ><i class="fas fa-shuffle" aria-hidden="true"></i><span id="banner-hop-label"></span
+      ></span>
       <button id="pipeline-info-btn" type="button" aria-label="Show pipeline run metadata">
         <i class="fas fa-circle-info"></i><span class="info-btn-label">Run info</span>
       </button>
@@ -298,6 +302,11 @@
                   >Ⓡ</span
                 >
                 = DNA / RNA ·
+                <span id="sum-hop-legend" hidden
+                  ><i class="fas fa-shuffle hop-sus-mark" aria-hidden="true"></i> = possible index hop (reads may have
+                  come from another sample in the lane) · <i class="fas fa-share hop-src-mark" aria-hidden="true"></i> =
+                  possible source of hopped reads · hover the icons for details ·
+                </span>
                 <span id="sum-level-legend-rollup">
                   <span
                     style="
@@ -4088,6 +4097,27 @@
             style="flex-basis: 100%; color: #78909c; font-size: 0.66em"
           ></div>
         </div>
+        <!-- Show / hide every negative + positive control (55_controls.js); shown only when controls are loaded -->
+        <label
+          id="controls-toggle-row"
+          for="show-controls"
+          hidden
+          style="
+            display: none;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 2px 5px;
+            margin: 0 0 4px;
+            font-size: 0.72em;
+            color: #455a64;
+            cursor: pointer;
+          "
+        >
+          <input id="show-controls" type="checkbox" checked style="margin: 0; cursor: pointer" />
+          <i class="fas fa-vial" aria-hidden="true" style="color: #78909c"></i>
+          <span style="white-space: nowrap">Show controls</span>
+          <span id="controls-toggle-info" style="color: #78909c; white-space: nowrap"></span>
+        </label>
         <div id="sample-list"></div>
         <h3>Upload Data</h3>
         <div
@@ -4105,14 +4135,15 @@
         >
           <i class="fas fa-cloud-upload-alt" style="font-size: 1.4em; color: #6c9abf"></i>
           <span style="display: block; font-size: 0.78em; margin: 0.3em 0 0.5em"
-            >Drop all.samples.json, .paths.json, .xlsx, .tsv, or .txt files here</span
+            >Drop all.samples.json, .paths.json, .xlsx, .tsv, or .txt files here &mdash; or an Illumina index-hopping
+            table (.csv / .tsv / .xlsx) to flag possible cross-sample hops</span
           >
           <label class="upload-btn" for="file-upload-input">Browse Files</label>
           <input
             type="file"
             id="file-upload-input"
             multiple
-            accept=".json,.xlsx,.xls,.tsv,.txt"
+            accept=".json,.xlsx,.xls,.tsv,.txt,.csv"
             style="display: none"
             onchange="handleUploadFiles(this.files)"
           />
@@ -4642,6 +4673,8 @@
     <script src="src/js/51_admin_panel.js"></script>
     <script src="src/js/52_tab_align_trends.js"></script>
     <script src="src/js/53_mask_compare.js"></script>
+    <script src="src/js/54_index_hopping.js"></script>
+    <script src="src/js/55_controls.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

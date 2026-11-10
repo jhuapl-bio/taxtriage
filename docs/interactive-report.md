@@ -446,6 +446,14 @@ Flagged rows carry an amber **QC** badge and a left rule in the Summary detectio
 
 ---
 
+### Control samples
+
+Negative and positive controls (samples whose metadata has a `control_type`, i.e. the samplesheet's `negative` / `positive` controls) are part of the report. A **Show controls** switch above the sample list, with a count such as "(1 negative, 1 positive)", hides them from every tab, chart, table and export and drops them from the sample list, or brings them back. It only appears when controls are loaded. `--report_controls hide` opens the report with them hidden. Hidden controls stay in the data, so cross-sample checks such as index hopping still use them, and a sample QC rule that hides a control keeps it hidden even when the switch says show.
+
+### Index-hopping flags
+
+Runs with `--index_hopping` (or a samplesheet `index_hopping` column) add _Index Hop …_ columns, a default organism rule `Index Hop Suspect == true → flag`, and a purple _Index hop_ badge in the banner. You can also drop an Illumina index-hopping table (CSV / TSV / XLSX) on the upload zone of any report to compute the same flags in the browser. See [Index Hopping](index-hopping.md#in-the-html-report).
+
 ## Export
 
 One **Export…** button sits under the _Filters_ heading in the right panel (or press <kbd>Ctrl/⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>). It opens a single popup where the first choice is _what_ to take away:

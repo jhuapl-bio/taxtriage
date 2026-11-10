@@ -105,6 +105,8 @@ function _buildBannerSub(opts) {
     `${totalReadsFmt} reads`,
   ].join(" \u00B7 ");
   const mask = _maskBannerNote(rawSamples);
+  // Index hopping (54_index_hopping.js): badge + popover; text for the PDF cover.
+  const hop = typeof _hopBannerNote === "function" ? _hopBannerNote(rawSamples) : { text: "" };
 
   // Banner: compact stats; the full wording (and masking detail) lives in the tooltip.
   const el = document.getElementById("banner-sub");
@@ -112,10 +114,16 @@ function _buildBannerSub(opts) {
     el.title =
       `${nEnt} ${grouped ? "specimen(s)" : "sample(s)"} \u2022 ${uniqueOrgs} unique organism(s) \u2022 ` +
       `${pctClass} reads aligned \u2022 ${totalReadsFmt} total reads` +
-      (mask.text ? `\n\u26A0 Region masking: ${mask.text}` : "");
+      (mask.text ? `\n\u26A0 Region masking: ${mask.text}` : "") +
+      (hop.text ? `\nIndex hopping: ${hop.text}` : "");
   }
-  // opts.long (PDF cover): keep the masking note inline, since there is no pill there.
-  return opts && opts.long && mask.text ? `${stats} \u00B7 \u26A0 Region masking: ${mask.text}` : stats;
+  // opts.long (PDF cover): keep the masking / hopping notes inline, since there is no pill there.
+  if (!(opts && opts.long)) return stats;
+  return (
+    stats +
+    (mask.text ? ` \u00B7 \u26A0 Region masking: ${mask.text}` : "") +
+    (hop.text ? ` \u00B7 Index hopping: ${hop.text}` : "")
+  );
 }
 
 /* ── Region-masking notice ──────────────────────────────────────────────────

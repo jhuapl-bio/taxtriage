@@ -38,6 +38,7 @@ test_output/
 !scripts/test_built_links.py
 !scripts/test_sample_flags.js
 !scripts/test_insilico_picker.js
+!bin/test_index_hopping.py
 ./nf-core
 tmp*
 ./nf-core

@@ -184,6 +184,9 @@
       if (typeof ttOFlagCaptureConfig === "function") app.organismFlags = ttOFlagCaptureConfig();
     } catch (e) {}
     try {
+      if (typeof TT_CONTROLS_VIEW !== "undefined") app.controlsView = TT_CONTROLS_VIEW;
+    } catch (e) {}
+    try {
       app.sortCol = sortCol;
       app.sortAsc = sortAsc;
     } catch (e) {}
@@ -244,6 +247,9 @@
         ttFlagApplyHide();
         if (typeof ttFlagRenderSummary === "function") ttFlagRenderSummary();
       }
+    } catch (e) {}
+    try {
+      if (typeof ttControlsInit === "function") ttControlsInit(app.controlsView);
     } catch (e) {}
     try {
       if (typeof ttOFlagLoadConfig === "function") {

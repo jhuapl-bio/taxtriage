@@ -184,6 +184,81 @@ body {
 body.report-pdf-printing .banner-mask-pop {
   display: none !important;
 }
+/* Index-hopping pill (54_index_hopping.js); popover reuses .banner-mask-pop. */
+#banner .banner-hop {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2em 0.65em;
+  border-radius: 999px;
+  background: rgba(206, 147, 216, 0.18);
+  border: 1px solid rgba(206, 147, 216, 0.7);
+  color: #f3e5f5;
+  font-size: 0.7em;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+#banner .banner-hop[hidden] {
+  display: none;
+}
+#banner .banner-hop.has-flags {
+  background: rgba(186, 104, 200, 0.38);
+  border-color: #e1bee7;
+}
+#banner .banner-hop:hover,
+#banner .banner-hop:focus-visible,
+#banner .banner-hop.open {
+  background: rgba(186, 104, 200, 0.5);
+  outline: none;
+}
+.banner-hop-pop .bmp-title {
+  color: #e1bee7;
+}
+.banner-mask-pop.banner-hop-pop {
+  max-width: min(820px, calc(100vw - 16px));
+}
+.banner-hop-pop .bhp-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em 0.7em;
+  margin-top: 0.55em;
+}
+.banner-hop-pop .bhp-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  color: #b0bec5;
+  font-size: 0.9em;
+}
+.banner-hop-pop .bhp-controls input {
+  width: 5.5em;
+  padding: 0.15em 0.3em;
+  border: 1px solid #546e7a;
+  border-radius: 4px;
+  background: #37474f;
+  color: #eceff1;
+  font: inherit;
+}
+.banner-hop-pop .bhp-controls button {
+  padding: 0.2em 0.6em;
+  border: 1px solid #7e57c2;
+  border-radius: 4px;
+  background: #4a3a6b;
+  color: #f3e5f5;
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+.banner-hop-pop .bhp-controls button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+body.report-pdf-printing .banner-hop-pop {
+  display: none !important;
+}
 /* Medium widths: the help buttons go icon-only (they keep their tooltips) so
    the stats line isn't squeezed to a stub. */
 @media (max-width: 1280px) {
@@ -8535,4 +8610,20 @@ body.report-pdf-printing #tt-admin-overlay {
 .mcmp-badge[hidden],
 #mcmp-section[hidden] {
   display: none;
+}
+/* Possible index hop (flagged row) and possible SOURCE (54_index_hopping.js).
+   Small and quiet; details are in the hover card. */
+.hop-sus-mark {
+  margin-left: 4px;
+  font-size: 9px;
+  color: #ef6c00;
+  vertical-align: middle;
+  cursor: help;
+}
+.hop-src-mark {
+  margin-left: 4px;
+  font-size: 9px;
+  color: #b39ddb;
+  vertical-align: middle;
+  cursor: help;
 }

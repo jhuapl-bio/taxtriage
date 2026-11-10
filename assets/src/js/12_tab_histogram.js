@@ -1606,6 +1606,7 @@ function _renderOneRow(row) {
         contentSpan.appendChild(_bc);
       }
       if (_oflag) contentSpan.insertAdjacentHTML("beforeend", _orgFlagBadgeHTML(row));
+      if (typeof ttHopBadgesHTML === "function") contentSpan.insertAdjacentHTML("beforeend", ttHopBadgesHTML(row));
       if (typeof ttHmpMarkerHTML === "function") {
         const _hm = ttHmpMarkerHTML(row);
         if (_hm) {
