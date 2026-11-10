@@ -404,6 +404,12 @@ If you use TaxTriage, please cite [10.1093/bioinformatics/btag119](https://doi.o
 }
 ```
 
+## Acknowledgements
+
+This software tool was supported by the Cooperative Agreement Number NU60OE000104, funded by the Centers for Disease Control and Prevention through the Association of Public Health Laboratories.
+
+Its contents are solely the responsibility of the authors and do not necessarily represent the official views of the Centers for Disease Control and Prevention, the Department of Health and Human Services, or the Association of Public Health Laboratories.
+
 ## License
 
 Copyright 2022–2026 The Johns Hopkins University Applied Physics Laboratory LLC.
