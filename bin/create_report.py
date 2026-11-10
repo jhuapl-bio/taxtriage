@@ -772,6 +772,58 @@ def _commensal_site_tag(strain, sample_type):
     return f' <font size="6" color="#e67e22">[{label} flora]</font>'
 
 
+def _index_hop_tag(record):
+    """Index-hopping notes for a PDF row (bin/index_hopping.py); '' when none.
+    Flagged here:   ' [index hop? ~E of N reads expected from DONOR]' (orange).
+    Source of hops: ' [possible hop source -> SAMPLE (~E)]' (grey, informational).
+    Flag only: the row's TASS and call are unchanged."""
+    if not isinstance(record, dict):
+        return ''
+    out = ''
+    hop = record.get('index_hop')
+    if isinstance(hop, dict) and hop.get('suspect'):
+        exp = float(hop.get('expected_reads', 0) or 0)
+        obs = int(hop.get('observed_reads', 0) or 0)
+        donor = str(hop.get('top_donor') or '?').replace('&', '&amp;').replace('<', '&lt;')
+        exp_txt = f'{exp:.1f}' if exp < 10 else f'{exp:,.0f}'
+        out += (f' <font size="6" color="#B26A00">[index hop? ~{exp_txt} of {obs:,} reads '
+                f'expected from {donor}]</font>')
+    src = record.get('index_hop_source')
+    if isinstance(src, dict) and src.get('recipients'):
+        to = ', '.join(f"{r.get('sample', '')} (~{float(r.get('expected_reads', 0) or 0):.1f})"
+                       for r in src['recipients'][:3])
+        more = len(src['recipients']) > 3 or int(src.get('n_recipients', 0) or 0) > 3
+        to = to.replace('&', '&amp;').replace('<', '&lt;') + (', ...' if more else '')
+        out += f' <font size="5.5" color="#8D8D8D">[possible hop source &#8594; {to}]</font>'
+    return out
+
+
+def _index_hop_presence(obj, _depth=0):
+    """(any flagged detection, any donor note) anywhere in the report data."""
+    flagged = source = False
+    if _depth > 12:
+        return flagged, source
+    if isinstance(obj, dict):
+        hop = obj.get('index_hop')
+        if isinstance(hop, dict) and hop.get('suspect'):
+            flagged = True
+        src = obj.get('index_hop_source')
+        if isinstance(src, dict) and src.get('recipients'):
+            source = True
+        vals = obj.values()
+    elif isinstance(obj, (list, tuple)):
+        vals = obj
+    else:
+        return flagged, source
+    for v in vals:
+        if flagged and source:
+            break
+        if isinstance(v, (dict, list, tuple)):
+            f, s = _index_hop_presence(v, _depth + 1)
+            flagged, source = flagged or f, source or s
+    return flagged, source
+
+
 def _is_flora_on_sterile(strain, sample_type):
     """Return True if this organism has commensal flora sites (e.g. skin,
     nasal) AND the sample type is sterile (blood, csf, etc.).
@@ -1830,7 +1882,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             row_marker = ' <font color="#666666" size="7"><i>species</i></font>'
         else:
             row_marker = ' <font color="#666666" size="7"><i>species from qualifying strains</i></font>'
-        flora_tag = _commensal_site_tag(species_record, species_record.get('normalized_sample_site', ''))
+        flora_tag = _commensal_site_tag(species_record, species_record.get('normalized_sample_site', '')) + _index_hop_tag(species_record)
         _mt_tag = _mol_type_tag(species_record.get('mol_type'))
         _hc_prefix = '<b>★</b> ' if indicator_text else ''
         _details_html = (
@@ -1928,7 +1980,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             row_data_style = data_style_small if row_below_zscore else child_strain_data_style
         row_ani_style = ani_style_small if row_below_zscore else ani_style
         strain_key = strain.get('key', '')
-        flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', ''))
+        flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', '')) + _index_hop_tag(strain)
         _mt_tag = _mol_type_tag(strain.get('mol_type'))
         _hc_prefix = '<b>★</b> ' if indicator_text else ''
         if promoted:
@@ -2094,7 +2146,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         else:
             _zscore_sym = ''
 
-        _flora_tag = _commensal_site_tag(best, best.get('normalized_sample_site', ''))
+        _flora_tag = _commensal_site_tag(best, best.get('normalized_sample_site', '')) + _index_hop_tag(best)
         _hc_prefix = '<b>★</b> ' if indicator_text else ''
         _details_html = (
             f'{followup_symbol}{_hc_prefix}{_mt_tag} '
@@ -2512,7 +2564,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 _zscore_sym = f' <font color="#999999">&#9671;</font>{_sample_label}'
             else:
                 _zscore_sym = ''
-            _flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', ''))
+            _flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', '')) + _index_hop_tag(strain)
             _hc_prefix = '<b>★</b> ' if indicator_text else ''
             _details_html = (
                 f'{_hc_prefix}{_mt_tag} '
@@ -4732,6 +4784,27 @@ def create_pdf_template(output_path, samples_dict, args):
         Paragraph('Identifies organisms that are normal flora at the indicated body site but were detected in a normally sterile sample (blood, CSF, or serum).', legend_text_style),
     ],
     ]
+
+    # Index hopping notes (bin/index_hopping.py): explained only when present.
+    _hop_flagged, _hop_source = _index_hop_presence(samples_dict)
+    if _hop_flagged:
+        annotation_rows.append([
+            Paragraph(''),
+            Paragraph('<font color="#B26A00"><b>[index hop?]</b></font>', legend_text_style),
+            Paragraph('Possible Illumina index hopping: another sample in the same sequencing lane has many more '
+                      'reads of this organism, and the reads seen here are about what index hopping from it would '
+                      'produce (expected reads and the source sample are shown). The detection may be bleed-through '
+                      'rather than present in this specimen. Flag only: TASS and the call are unchanged.',
+                      legend_text_style),
+        ])
+    if _hop_source:
+        annotation_rows.append([
+            Paragraph(''),
+            Paragraph('<font color="#8D8D8D"><b>[possible hop source]</b></font>', legend_text_style),
+            Paragraph('Some reads of this organism may have hopped into the listed sample(s) (expected reads in '
+                      'brackets), where a low-level detection is flagged as a possible index hop. Informational '
+                      'only: this detection is unaffected.', legend_text_style),
+        ])
 
     for row in annotation_rows:
         legend_data.append(row)

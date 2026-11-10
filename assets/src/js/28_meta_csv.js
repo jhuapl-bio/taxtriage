@@ -362,6 +362,8 @@ function __ttRunInit() {
   if (typeof ttFlagsInit === "function") ttFlagsInit();
   // Same for the per-organism QC rules (hide gates live in filteredData()).
   if (typeof ttOFlagsInit === "function") ttOFlagsInit();
+  // Control samples: hide them now if the report opens with controls hidden.
+  if (typeof ttControlsInit === "function") ttControlsInit();
 
   buildHmValueSel();
   buildSampleList();

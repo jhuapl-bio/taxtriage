@@ -389,6 +389,12 @@ def parse_args(argv=None):
              "(nothing but the flagged rows).",
     )
     parser.add_argument(
+        "--controls", default="show", choices=["show", "hide"],
+        help="Negative / positive control samples (metadata control_type): 'show' them "
+             "(default) or open the report with them hidden. Either way the report's "
+             "'Show controls' switch above the sample list toggles them.",
+    )
+    parser.add_argument(
         "--vfamr-taxids", default=None, metavar="TSV",
         help="Optional: bvbrc specialty-gene reference TSV "
              "(assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.tsv). Used to recover "
@@ -408,7 +414,7 @@ def parse_args(argv=None):
              "When given, every detection whose sample type maps to an HMP body site (stool, "
              "oral, nasal, skin, throat, vaginal and their synonyms) is compared against the "
              "healthy abundance distribution for that organism -- the same outlier information "
-             "the ODR PDF shows (faded rows + the ◆ n (p%) healthy-sample marker). Without it the "
+             "the ODR PDF shows (faded rows + the ◆ n (p%%) healthy-sample marker). Without it the "
              "report falls back to any HMP fields already present in the paths JSON.",
     )
     parser.add_argument(
@@ -1227,6 +1233,32 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
         _mask_cols["FCS Contaminated bp"] = (int(_fcs["contaminant_bp"])
                                              if _fcs.get("contaminant_bp") not in (None, "") else None)
 
+    # ── Illumina index hopping (bin/index_hopping.py, --index_hopping) ────
+    # Present only on samples matched in an index-hopping table. Flag only:
+    # TASS / Passes Threshold above are unchanged. Back-filled on every row
+    # (_HOP_COLS in main) so mixed runs still line up.
+    _hop_cols = {}
+    _hop = org.get("index_hop")
+    if isinstance(_hop, dict):
+        _rate = _hop.get("top_donor_rate")
+        _hop_cols = {
+            "Index Hop Suspect":        bool(_hop.get("suspect", False)),
+            "Index Hop Expected Reads": round(float(_hop.get("expected_reads", 0) or 0), 2),
+            "Index Hop Explained %":    round(100.0 * float(_hop.get("explained_fraction", 0) or 0), 1),
+            "Index Hop p":              round(float(_hop.get("p_value", 0) or 0), 4),
+            "Index Hop Source":         _hop.get("top_donor") or "",
+            "Index Hop Source Reads":   (int(_hop["top_donor_reads"])
+                                         if _hop.get("top_donor_reads") is not None else None),
+            "Index Hop Rate %":         round(100.0 * float(_rate), 5) if _rate is not None else None,
+            "Index Hop Rate Source":    _hop.get("rate_source") or "",
+        }
+    # Donor side: this organism's reads may have hopped INTO flagged detections
+    # of other samples (a light note, never a flag).
+    _src = org.get("index_hop_source")
+    if isinstance(_src, dict) and _src.get("recipients"):
+        _hop_cols["Index Hop Source Of"] = index_hop_source_text(_src)
+        _hop_cols["Index Hop Reads Out"] = round(float(_src.get("expected_out", 0) or 0), 2)
+
     if int(org.get("hmp_site_count", 0) or 0) > 0:
         _HMP_JSON_SRC[(str(sample_name), str(org.get("key", "")), str(level),
                        str(org.get("name", "Unknown")))] = {k: org.get(k) for k in _HMP_JSON_KEYS}
@@ -1312,6 +1344,7 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
         "Family":              tax.get("family", ""),
         "Genus":               tax.get("genus", ""),
         **_mask_cols,
+        **_hop_cols,
     }
 
 
@@ -1321,6 +1354,24 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
 _MASK_COLS = ["Masked Reads", "Masked Reads %", "Full Genome Length (bp)", "Masked bp",
               "Masked bp %", "Mask Penalty", "FCS Assembly", "FCS Contaminated bp",
               "TASS (unmasked)", "TASS Change (mask)", "Reads (unmasked)", "Breadth % (unmasked)"]
+
+# Columns _flatten_organism adds only for samples matched in an index-hopping
+# table (bin/index_hopping.py). Back-filled like _MASK_COLS.
+_HOP_COLS = ["Index Hop Suspect", "Index Hop Expected Reads", "Index Hop Explained %", "Index Hop p",
+             "Index Hop Source", "Index Hop Source Reads", "Index Hop Rate %", "Index Hop Rate Source",
+             "Index Hop Source Of", "Index Hop Reads Out"]
+
+
+def index_hop_source_text(src):
+    """'Negative_Control_Miseq (~16.6), S2 (~0.8)' -- samples this organism's reads
+    may have hopped into (flagged there), with the expected reads. Mirrored by
+    _ttHopSourceText in assets/src/js/54_index_hopping.js."""
+    return ", ".join(f"{r.get('sample', '')} (~{float(r.get('expected_reads', 0) or 0):.1f})"
+                     for r in (src.get("recipients") or []))
+
+# Default organism rule installed when any detection is an index-hop suspect.
+INDEX_HOP_FLAG_RULE = {"on": True, "action": "flag",
+                       "conds": [{"source": "col", "field": "Index Hop Suspect", "op": "==", "value": "true"}]}
 
 
 def _iter_organisms(json_data, sample_name, mintass=0, microbial_cats=None):
@@ -2939,6 +2990,18 @@ def main():
         print(f"[make_report] region masking: {_n_masked}/{len(sample_meta)} sample(s) masked; "
               f"columns added: {', '.join(_present_mask_cols)}")
 
+    # ── index-hopping columns: present on some rows -> present (blank) on all ─
+    _present_hop_cols = [c for c in _HOP_COLS if any(c in r for r in rows)]
+    if _present_hop_cols:
+        for r in rows:
+            for c in _present_hop_cols:
+                r.setdefault(c, None)
+        _n_hop = sum(1 for m in sample_meta.values()
+                     if ((m or {}).get("index_hopping") or {}).get("applied"))
+        _n_sus = sum(1 for r in rows if r.get("Index Hop Suspect") and r.get("Level") == "Strain")
+        print(f"[make_report] index hopping: {_n_hop}/{len(sample_meta)} sample(s) matched; "
+              f"{_n_sus} strain-level detection(s) flagged as possible index hops")
+
     # ── derive column lists ────────────────────────────────────────────────────
     # These fields are carried on each record for client-side analysis (the
     # Feature Compare view + capability detection) but are NOT human-displayable
@@ -3073,7 +3136,7 @@ def main():
         "preferred_granularity", "control_type", "negative_controls_used",
         "positive_controls_used", "control_fold_threshold", "missing_positive_controls",
         "insilico_controls_used", "insilico_simulator_types", "missing_insilico_controls",
-        "missing_insilico_by_type",
+        "missing_insilico_by_type", "index_hopping",
     }
     run_metadata_records = []
     for sname, smeta in sample_meta.items():
@@ -3213,6 +3276,14 @@ def main():
 
     # ── organism QC flag defaults ─────────────────────────────────────────────
     organism_flags = build_organism_flag_config(args)
+    # Index hopping: highlight the suspects by default (the user can switch the
+    # rule off or to "hide" in the report's Organism QC panel).
+    if any(r.get("Index Hop Suspect") for r in rows):
+        if organism_flags is None:
+            organism_flags = {"enabled": True, "view": "all", "rules": []}
+        if not any(c.get("field") == "Index Hop Suspect"
+                   for r in organism_flags["rules"] for c in r.get("conds", [])):
+            organism_flags["rules"].append(json.loads(json.dumps(INDEX_HOP_FLAG_RULE)))
     if organism_flags:
         print(f"[make_report] Organism QC: {len(organism_flags['rules'])} default rule(s), "
               f"view={organism_flags['view']}")
@@ -3312,6 +3383,7 @@ def main():
         "has_pathogens":         has_pathogens,                # true if a pathogen sheet was loaded
         "sample_flags":          sample_flags,                 # default whole-sample QC rules (None when unconfigured)
         "organism_flags":        organism_flags,               # default per-detection QC rules (None when unconfigured)
+        "controls_view":         getattr(args, "controls", "show"),  # "show" | "hide": initial state of the report's "Show controls" switch
         "report_generated_at":   datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pipeline_revision":     pipeline_revision,            # global branch/tag or "local"
         "pipeline_commit":       pipeline_commit,              # global commit hash or None

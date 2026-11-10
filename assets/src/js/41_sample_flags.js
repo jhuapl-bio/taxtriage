@@ -778,7 +778,11 @@ function ttFlagApplyHide() {
     } else if (_flagAutoHidden.has(id)) {
       //  Only give visibility back if the search auto-hide isn't also holding
       //  it down; otherwise clearing a QC rule would undo the search filter.
-      if (typeof _filterAutoHidden === "undefined" || !_filterAutoHidden.has(id)) sampleHidden[id] = false;
+      if (
+        (typeof _filterAutoHidden === "undefined" || !_filterAutoHidden.has(id)) &&
+        !(typeof _ctlAutoHidden !== "undefined" && _ctlAutoHidden.has(id))
+      )
+        sampleHidden[id] = false;
       _flagAutoHidden.delete(id);
       changed = true;
     }

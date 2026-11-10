@@ -333,6 +333,7 @@ class RowChecker:
     # mask_penalty_power  float >= 0                (default: --mask_penalty_power)
     # See docs/samplesheet.md "Per-sample references and masks".
     BED_FORMATS = (".bed", ".bed.gz")
+    HOP_FORMATS = (".csv", ".tsv", ".txt", ".xlsx", ".csv.gz", ".tsv.gz", ".txt.gz")
 
     def _validate_reference_columns(self, row):
         sample = row.get(self._sample_col, '')
@@ -377,6 +378,19 @@ class RowChecker:
             except (ValueError, AssertionError):
                 raise AssertionError(
                     f"Sample '{sample}': mask_penalty_power must be a number >= 0, got '{pen}'")
+        # index_hopping: this row's Illumina index-hopping table(s) (bcl-convert
+        # Index_Hopping_Counts as CSV / TSV / XLSX; ';'-separated); overrides
+        # --index_hopping. index_sample_id: the row's SampleID in that table when
+        # it is not the `sample` name. See docs/index-hopping.md.
+        hop = paths('index_hopping')
+        for p in hop:
+            assert any(p.lower().endswith(ext) for ext in self.HOP_FORMATS), (
+                f"Sample '{sample}': index_hopping must end with one of "
+                f"{', '.join(self.HOP_FORMATS)}: {p}")
+        if 'index_hopping' in row:
+            row['index_hopping'] = ';'.join(hop)
+        if 'index_sample_id' in row:
+            row['index_sample_id'] = (row.get('index_sample_id') or '').strip()
 
     def _validate_bam(self, row):
         """Handle a pre-aligned row.
@@ -520,7 +534,9 @@ _PIPELINE_COLS = {"fastq_1", "fastq_2", "platform", "type", "sequencing_summary"
                   "single_end", "directory", "needscompressing", "is_fasta", "is_sra", "minimap2_preset",
                   "bam", "is_bam",
                   # per-sample reference / mask columns (see _validate_reference_columns)
-                  "fasta", "mask_fasta", "mask_bed", "mask_mode", "mask_fasta_case", "mask_penalty_power"}
+                  "fasta", "mask_fasta", "mask_bed", "mask_mode", "mask_fasta_case", "mask_penalty_power",
+                  # Illumina index hopping (see _validate_reference_columns)
+                  "index_hopping", "index_sample_id"}
 
 
 def check_samplesheet(file_in, file_out, file_meta=None):

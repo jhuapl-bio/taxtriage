@@ -34,6 +34,7 @@ include { FCS_DOWNLOAD } from '../../modules/local/fcs_download'
 include { BUILD_MASK } from '../../modules/local/build_mask'
 include { BUILD_SAMPLE_MASK } from '../../modules/local/build_sample_mask'
 include { MASK_REPORT } from '../../modules/local/mask_report'
+include { INDEX_HOPPING } from '../../modules/local/index_hopping'
 
 workflow REPORT {
     take:
@@ -390,10 +391,37 @@ workflow REPORT {
                 )
             }
 
+            // ── Step 3b: Illumina index hopping (flag only) ────────────────────
+            // --index_hopping and/or the samplesheet `index_hopping` column give the
+            // demultiplexing index-hopping table(s). Every real and control sample's
+            // JSON is annotated in one pass (a detection is flagged when reads hopping
+            // in from another sample of the same lane could explain it); the
+            // annotated JSONs (same file names) replace the originals in every report
+            // below. TASS and calls are unchanged. Off: the channels are untouched.
+            // See docs/index-hopping.md.
+            ch_ctrl_txt = ALIGNMENT_PER_SAMPLE_CONTROLS.out.txt
+            ch_real_txt = ALIGNMENT_PER_SAMPLE.out.txt
+            def _hop_runwide = index_hopping_param_files(params.index_hopping)
+            if (_hop_runwide || _ref_scan.hop_any) {
+                ch_hop_in = ch_ctrl_txt.mix(ch_real_txt)
+                ch_hop_args = ch_hop_in
+                    .map { meta, json -> meta }
+                    .toSortedList { a, b -> a.id.toString() <=> b.id.toString() }
+                    .map { metas -> index_hopping_inputs(metas, _hop_runwide) }
+                INDEX_HOPPING(
+                    ch_hop_in.map { meta, json -> json }.collect(sort: true),
+                    ch_hop_args.map { it[1] },
+                    ch_hop_args.map { it[0] },
+                )
+                ch_hop_annotated = INDEX_HOPPING.out.jsons.flatten().map { f -> [f.name, f] }
+                ch_ctrl_txt = hop_rejoin(ch_ctrl_txt, ch_hop_annotated)
+                ch_real_txt = hop_rejoin(ch_real_txt, ch_hop_annotated)
+            }
+
             // ── Step 4: Merge outputs from control, insilico, and non-control runs ─
-            all_alignment_outputs = ALIGNMENT_PER_SAMPLE_CONTROLS.out.txt
+            all_alignment_outputs = ch_ctrl_txt
                 .mix(ALIGNMENT_PER_SAMPLE_INSILICO.out.txt)
-                .mix(ALIGNMENT_PER_SAMPLE.out.txt)
+                .mix(ch_real_txt)
 
             // collect all outputs into a single channel
             // ── Simulated datasets are comparison inputs, not deliverables ───────
@@ -451,8 +479,16 @@ workflow REPORT {
             ch_template_src = Channel.fromPath("$projectDir/assets/src", checkIfExists: true)
 
             // ── Collect all per-sample JSON files for the comparison report ───────
-            // Use only non-control samples to avoid skewing the multi-run heatmap
-            ch_comparison_jsons = ALIGNMENT_PER_SAMPLE.out.txt
+            // Real samples AND the negative / positive controls: the report marks
+            // the controls (metadata control_type) and its "Show controls" switch
+            // hides them from every view (--report_controls hide opens it that
+            // way), so they no longer have to be left out to keep the heatmap
+            // clean. Index-hopping flags on the controls show up there too.
+            ch_real_jsons = ch_real_txt
+                .map { meta, json -> json }
+                .collect()
+            ch_comparison_jsons = ch_real_txt
+                .mix(ch_ctrl_txt)
                 .map { meta, json -> json }
                 .collect()
 
@@ -463,7 +499,8 @@ workflow REPORT {
             // Its JSON is also embedded in the HTML report (Trends > Alignment Trends).
             ch_alignment_trends_json = Channel.value(file("$projectDir/assets/NO_FILE_alignment_trends"))
             if (params.alignment_trends && params.depth_profile_windows) {
-                ALIGNMENT_TRENDS( ch_comparison_jsons )
+                // Trends describe the real samples only (controls would skew them).
+                ALIGNMENT_TRENDS( ch_real_jsons )
                 ch_alignment_trends_json = ALIGNMENT_TRENDS.out.json
             }
 
@@ -662,4 +699,51 @@ def with_mask(ch, ch_mask_by_id) {
     return ch.map { t -> [t[0].id, t] }
         .join(ch_mask_by_id)
         .map { id, t, m -> [t, m] }
+}
+
+// ── Illumina index hopping helpers (top-level: strict syntax cannot call closures) ──
+// --index_hopping value -> list of absolute paths ([] when unset). Stops the run
+// when a file does not exist.
+def index_hopping_param_files(value) {
+    if (!value || value.toString() == 'false' || value.toString() == 'true') {
+        return []
+    }
+    return value.toString().split(',').collect { it.trim() }.findAll { it }.collect { p ->
+        def f = file(p)
+        if (!f.exists()) {
+            error "--index_hopping: file not found: ${p}"
+        }
+        f.toString()
+    }
+}
+
+// Sample metas -> [sample-map JSON, [distinct hop files]]. A row's own
+// `index_hopping` column wins over the run-wide files; the map points at files by
+// their position in the list, which INDEX_HOPPING stages as hop01/, hop02/, ...
+def index_hopping_inputs(List metas, List runwide) {
+    def files = []
+    def samples = [:]
+    metas.each { m ->
+        def own = m.index_hopping
+            ? m.index_hopping.toString().split(';').collect { it.trim() }.findAll { it }
+            : runwide
+        def idx = own.collect { p ->
+            def i = files.indexOf(p)
+            if (i < 0) {
+                files << p
+                i = files.size() - 1
+            }
+            i
+        }
+        samples[m.id.toString()] = [files: idx, index_sample_id: m.index_sample_id ?: null]
+    }
+    return [groovy.json.JsonOutput.toJson([samples: samples]), files.collect { file(it) }]
+}
+
+// [meta, json] channel + [file name, annotated json] channel -> [meta, annotated json]
+def hop_rejoin(ch_txt, ch_annotated) {
+    return ch_txt
+        .map { meta, json -> [(json instanceof List ? json[0] : json).name, meta] }
+        .join(ch_annotated)
+        .map { _name, meta, f -> [meta, f] }
 }

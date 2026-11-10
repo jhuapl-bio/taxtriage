@@ -329,6 +329,20 @@ def create_fastq_channel(LinkedHashMap row, List resolved = null) {
     meta.mask_fasta_case    = sheet_col(row, 'mask_fasta_case')?.toLowerCase()
     meta.mask_penalty_power = sheet_col(row, 'mask_penalty_power')
 
+    // ── Illumina index hopping (optional columns) ───────────────────────────
+    // index_hopping   -> this row's index-hopping table(s); overrides --index_hopping
+    // index_sample_id -> the row's SampleID in that table when it is not `sample`
+    // Set only when present, so sheets without them keep the same meta (and
+    // -resume hashes). See docs/index-hopping.md.
+    def _hop_files = sheet_paths(row, 'index_hopping')
+    if (_hop_files) {
+        meta.index_hopping = _hop_files
+    }
+    def _hop_id = sheet_col(row, 'index_sample_id')
+    if (_hop_id) {
+        meta.index_sample_id = _hop_id
+    }
+
     // Control sample columns
     meta.control = (row.control && row.control.toString().toUpperCase() == "TRUE") ? true : false
     // `background` nominates this sample as the source for a dilution / spike-in

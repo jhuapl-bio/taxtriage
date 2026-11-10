@@ -1370,6 +1370,8 @@ function _renderSummaryTable(fd) {
       `<span style="display:inline-block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;max-width:100%">${_orgBadges(
         r,
       )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_oflagBadge}${
+        typeof ttHopBadgesHTML === "function" ? ttHopBadgesHTML(r) : ""
+      }${
         typeof ttHmpMarkerHTML === "function"
           ? ttHmpMarkerHTML(r).replace('data-hmp-mark="1"', `data-hmp-key="${key}"`)
           : ""
