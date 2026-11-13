@@ -21,6 +21,7 @@
     <!-- <script src="pages.js"></script> -->
     <!-- <script src="heatmap_boot.js"></script> -->
     <link rel="stylesheet" href="src/css/main.css" />
+    <link rel="stylesheet" href="src/css/contrast.css" />
   </head>
   <body>
     <!-- ══════════════════════════════════════════════════════════════════════
@@ -108,6 +109,14 @@
 
     <div id="tabbar">
       <button class="tab-btn active" data-tab="summary"><i class="fas fa-clipboard-list"></i> Summary</button>
+      <button
+        class="tab-btn"
+        id="contrast-tab-btn"
+        data-tab="contrast"
+        title="Group samples into 2–4 sets (by metadata, Group by, collection date or hand-picked) and compare what was detected in each: mirrored bars, change, radar, scatter and a stats table."
+      >
+        <i class="fas fa-scale-balanced"></i> Contrast
+      </button>
       <button class="tab-btn" data-tab="heatmap"><i class="fas fa-th"></i> Heatmap</button>
       <button class="tab-btn" data-tab="sunburst" title="Radial taxonomy view sized by selected metric.">
         <i class="fas fa-circle-nodes"></i> Sunburst
@@ -3382,6 +3391,10 @@
           </div>
         </div>
         <!-- /pane-insilico -->
+        <div class="pane" id="pane-contrast">
+          <div id="contrast-root"></div>
+        </div>
+        <!-- /pane-contrast -->
       </div>
       <!-- /content -->
 
@@ -4683,6 +4696,8 @@
     <script src="src/js/53_mask_compare.js"></script>
     <script src="src/js/54_index_hopping.js"></script>
     <script src="src/js/55_controls.js"></script>
+    <script src="src/js/57_tab_contrast.js"></script>
+    <script src="src/js/58_tab_reorder.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

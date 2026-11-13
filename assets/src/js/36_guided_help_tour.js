@@ -124,6 +124,18 @@
       ],
     },
     {
+      tab: "contrast",
+      icon: "fa-scale-balanced",
+      title: "Contrast",
+      fig: FIG.runmeta,
+      desc: "Build 2–4 sets of samples — by any metadata column, the shared Group by selection, collection date / month / season / year / date range, or hand-picked samples — and compare what was detected in each: mirrored bars, change (difference or fold), radar, an A-vs-B scatter and a table with Mann–Whitney p and BH q.",
+      tips: [
+        "Quick sets fill A and B in one click: first vs last value, earlier vs later half, or one set per value.",
+        "Click any organism (bar, dot or table row) for a per-sample strip plot of it in every set.",
+        "Organisms / Groups switches the rows to taxonomic or microbial-category groups; every right-panel filter still applies.",
+      ],
+    },
+    {
       tab: "heatmap",
       icon: "fa-th",
       title: "Heatmap",

@@ -8708,3 +8708,43 @@ body.report-pdf-printing #tt-admin-overlay {
   border-color: #cfd8dc;
   font-weight: 600;
 }
+
+/* ── Tab reordering (58_tab_reorder.js) ── */
+#tabbar .tab-btn.tt-tab-dragging {
+  opacity: 0.85;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  outline: 2px dashed rgba(255, 255, 255, 0.85);
+  outline-offset: -3px;
+  cursor: grabbing;
+}
+#tabbar .tab-btn.active.tt-tab-dragging {
+  background: #fff;
+  color: #0d3c66;
+  outline-color: #1565c0;
+}
+body.tt-tab-drag-active,
+body.tt-tab-drag-active * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+#tabbar .tab-order-reset {
+  margin-left: auto;
+  flex: none;
+  border: none;
+  background: transparent;
+  color: #c9daf8;
+  cursor: pointer;
+  padding: 0.55em 0.9em;
+  font-size: 0.85em;
+}
+#tabbar .tab-order-reset:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+#tabbar .tab-order-reset[hidden] {
+  display: none;
+}
+body.report-pdf-printing #tabbar .tab-order-reset {
+  display: none;
+}
