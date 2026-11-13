@@ -51,6 +51,7 @@ import sys
 # (id, label) in tab-bar order. Must match the data-tab values in assets/heatmap.html.
 TABS = [
     ("summary", "Summary"),
+    ("contrast", "Contrast"),
     ("heatmap", "Heatmap"),
     ("sunburst", "Sunburst"),
     ("proteins", "VF / AMR"),
@@ -79,6 +80,7 @@ TAB_ALIASES = {
     "metadata": "runmeta", "run_metadata": "runmeta", "meta": "runmeta",
     "mapping": "map", "geo": "map",
     "trend": "trends", "longitudinal": "trends",
+    "contrasts": "contrast", "compare_sets": "contrast", "sets": "contrast",
     "in_silico": "insilico", "in-silico": "insilico", "simulation": "insilico",
     "detections": "table",
 }

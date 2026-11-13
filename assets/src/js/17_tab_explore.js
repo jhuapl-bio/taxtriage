@@ -1313,6 +1313,7 @@ const _TAB_DIRTY = {
   map: false,
   runmeta: false,
   trends: false,
+  contrast: false,
   novelty: false,
   insilico: false,
 };

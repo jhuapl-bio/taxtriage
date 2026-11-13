@@ -578,7 +578,9 @@ const TTAdmin = (function () {
     if (state.hidden.length) tabs.hidden = state.hidden.slice();
     if (state.disabled.length) tabs.disabled = state.disabled.slice();
     if (state.default) tabs.default = state.default;
-    if ((cfgTabs.order || []).length) tabs.order = cfgTabs.order.slice();
+    const dragged = window.ttTabOrder && window.ttTabOrder.custom();
+    if (dragged) tabs.order = dragged;
+    else if ((cfgTabs.order || []).length) tabs.order = cfgTabs.order.slice();
     if (Object.keys(cfgTabs.labels || {}).length) tabs.labels = Object.assign({}, cfgTabs.labels);
     out.tabs = tabs;
     const admin = { enabled: cfgAdmin.enabled !== false, allow_tab_toggle: !!cfgAdmin.allow_tab_toggle };

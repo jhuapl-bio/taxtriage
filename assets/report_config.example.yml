@@ -8,7 +8,7 @@
 # The report's Admin dialog (right panel → "Admin…") can download a config
 # built from whatever tab layout you set there.
 #
-# Tab ids: summary, heatmap, sunburst, proteins (VF/AMR), histogram,
+# Tab ids: summary, contrast, heatmap, sunburst, proteins (VF/AMR), histogram,
 #          novelty, metrics, table, runmeta (Metadata), map (Mapping),
 #          trends, insilico.  Aliases like vfamr / metadata / mapping are
 #          accepted; the retired ids tass, coverage and explore now address

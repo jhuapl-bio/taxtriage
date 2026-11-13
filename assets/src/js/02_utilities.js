@@ -1912,6 +1912,11 @@ const PDF_SECTION_INFO = {
     what: "Time-series, host/site breakdowns and the group-level heatmap, network and cross-entry comparison — everything driven by the shared Group by selection.",
     how: "Pick the metadata columns to group on, then read each sub-tab as a different cut of those groups: change over time, host/site composition, group × organism matrix, and group similarity.",
   },
+  contrast: {
+    group: "Provenance & Geography",
+    what: "Two to four user-defined sets of samples compared organism by organism: mirrored bars, change (difference or fold), radar, A-vs-B scatter and a table with Mann–Whitney p / BH q.",
+    how: "Read the set cards first (what each set contains), then the pair summary (shared vs set-only organisms, Jaccard, Bray–Curtis). p / q values are indicative only — samples from one site or run are not independent replicates.",
+  },
 };
 
 function _esc(s) {

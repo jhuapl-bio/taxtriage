@@ -225,6 +225,7 @@ Picking a new color updates the box, its member rows, the heatmap/legend, and an
 | Tab                           | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Summary**                   | ODR-style summary table across all samples, plus KPI cards (e.g. High Consequence count). The primary at-a-glance view.                                                                                                                                                                                                                                                                                                               |
+| **Contrast**                  | Group samples into 2–4 sets (metadata column, Group by selection, collection date / period, or hand-picked) and compare detections between them: mirrored bars, change (Δ / fold), radar, A-vs-B scatter and a stats table. See [Contrast tab](#contrast-tab).                                                                                                                                                                        |
 | **Heatmap**                   | Organism × sample TASS heatmap with the roll-up rescue markers described above.                                                                                                                                                                                                                                                                                                                                                       |
 | **Sunburst**                  | Hierarchical taxonomic composition; slice labels render below the slices.                                                                                                                                                                                                                                                                                                                                                             |
 | **Histogram**                 | Per-position genome coverage histogram, pre-filtered to a chosen organism + sample. Hidden/disabled for run-level species or genus views where per-position data is not meaningful.                                                                                                                                                                                                                                                   |
@@ -235,6 +236,13 @@ Picking a new color updates the box, its member rows, the heatmap/legend, and an
 | **Novelty**                   | Reference-free / open-set detection on the de novo contigs via the chosen backend (kaiju / bracken / mmseqs2): per-sample novelty score & flag, candidate genus+ taxa, a **method-coverage** breakdown (alignment/TASS vs backend rescue vs dark matter), and a **genus TASS-vs-backend** comparison. Column labels track the active backend. Hidden unless `--novelty` produced data. See [Novelty Detection](novelty-detection.md). |
 | **Map**                       | Geographic view; sample collection map plotted from `latitude` / `longitude`. Hidden unless run metadata supplies coordinates.                                                                                                                                                                                                                                                                                                        |
 | **Run Metadata**              | Editable per-sample metadata table plus four analysis sub-tabs (Longitudinal, Geographic Comparison, Host & Disease, Cross-Entry Comparison) driven by recognized metadata columns; see [Run Metadata tab and metadata-driven views](#run-metadata-tab-and-metadata-driven-views). Hidden unless samples or metadata are present.                                                                                                     |
+
+### Rearranging tabs
+
+Drag any tab left or right to move it (or focus it and press **Alt+Shift+←/→**). The order is saved in the browser
+and applies to every report opened there, on top of the report config's `tabs.order`; tabs added in a newer report
+keep their default slot. The **↺ Reset order** button at the end of the tab bar (shown once the order differs from the default)
+restores it. **Admin → Report config** exports the current order as `tabs.order`.
 
 ### Summary tab details
 
@@ -378,6 +386,48 @@ The Run Metadata tab exposes four sub-tabs. Each shows an explanatory warning (i
 All four respect the sidebar filters and recompute live, so they reflect the current TASS cutoff and view level.
 
 ---
+
+## Contrast tab
+
+Groups the samples in view into **2–4 sets** and compares what was detected in each. Every right-panel filter
+applies (hidden samples, TASS cutoff, search, categories, the Strain / Species / Genus view level, specimen merge);
+a sample with no detections after filtering still counts in its set's denominator.
+
+**Building sets.** Each set card picks a field and the values it takes:
+
+- any categorical metadata column the **Group by** picker offers (sample type, site, run, host, country, …);
+- the shared **Group by selection** itself, when one is active;
+- **Collection date**, **Month**, **Season**, **Year** (from `collection_time` / `collection_date`) or a **Date range**;
+- **Hand-picked samples**, with a filter box.
+
+**Quick sets** fill the cards in one click: _First vs last_ value, _Earlier vs later half_, or _One set each_ (up to 4).
+Sets can be renamed; a warning shows when a sample sits in more than one set. **Leave out controls** drops samples
+whose metadata carries a `control_type`.
+
+**Controls bar.** _Organisms / Groups_ (rows are organisms, or organisms summed into groups); _Group by_ — microbial
+category, kingdom, phylum, class, order, family or genus (drives Groups, the Taxa filter, scatter colours and radar
+spokes); _Measure_ — mean % of sample reads, prevalence (% of samples detected), mean reads aligned, mean RPM, or mean
+TASS (0 where not detected); _Taxa_, _Top N_ and a linear / square-root _Scale_. With 3–4 sets, _Compare … with …_
+picks the pair used by the pairwise views.
+
+**Cards.** One per set (samples, organisms, total and aligned reads, Shannon diversity of the mean % of reads profile)
+plus a pair card: shared vs set-only organisms, Jaccard and Bray–Curtis.
+
+**Views (sub-tabs).**
+
+| View          | What it shows                                                                                                    |
+| ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Mirrored bars | Set A to the left, set B to the right, on a shared scale; names coloured when found in only one set.             |
+| Change (Δ)    | Difference (B − A, percentage points for % measures) or log₂ fold change, sorted by size of change.              |
+| Radar         | Every set at once; spokes are Group by groups (organisms when there are fewer than 3 groups) or top organisms.   |
+| Scatter       | Each organism at (A, B) with an equality line; size = share of samples where found, red ring = high consequence. |
+| Table         | Per-set value and found-in counts, Δ, fold, Mann–Whitney U p and Benjamini–Hochberg q; sortable, CSV export.     |
+
+Clicking an organism in any view opens a **per-sample strip plot** under the chart (one dot per sample, mean bar per
+set). p / q values are indicative only: samples from one site, run or batch are not independent replicates, and a set
+with fewer than 3 samples has no test.
+
+Settings and sets persist per report file in the browser (`localStorage`).
 
 ## TASS Cutoff (per sample type)
 
