@@ -4,6 +4,11 @@
        -     "Hide all / Show all" + "Remove all" bulk actions, sample-name
        -     hover tooltip, and the inline rename flow.
 ═══════════════════════════════════════════════════════════════════════════ */
+/** True while the "Show controls" switch (55_controls.js) is holding `id` hidden. */
+function _ttCtlHolds(id) {
+  return typeof _ctlAutoHidden !== "undefined" && _ctlAutoHidden.has(id);
+}
+
 function removeSample(id) {
   const n = DATA.filter((r) => r["Specimen ID"] === id).length;
   if (!confirm(`Delete "${id}" and its ${n} row${n !== 1 ? "s" : ""} from the dataset?\n\nThis cannot be undone.`))
@@ -86,6 +91,7 @@ function _deleteSampleData(id) {
   delete sampleHidden[id];
   delete sampleRescale[id];
   _filterAutoHidden.delete(id);
+  if (typeof ttControlsRelease === "function") ttControlsRelease(id);
   _sampleOrder = _sampleOrder.filter((s) => s !== id);
   if (typeof SPECIMEN_OVERRIDE !== "undefined") delete SPECIMEN_OVERRIDE[id];
   // Re-evaluate VF/AMR tab visibility after the prune
@@ -309,6 +315,7 @@ function toggleAllSamples() {
     // Bulk action is an explicit user override — the search-filter toggle
     // no longer "owns" these samples' visibility.
     _filterAutoHidden.delete(id);
+    if (typeof ttControlsRelease === "function") ttControlsRelease(id);
   });
   buildSampleList();
   _syncToggleAllSamplesBtn();
@@ -445,7 +452,8 @@ function _applyFilterAutoHide(matchedIds) {
         // Matches again (query changed) — restore it, but only because we
         // were the one who hid it, and only if a sample QC rule with a
         // "hide" action isn't holding it down as well.
-        if (typeof _flagAutoHidden === "undefined" || !_flagAutoHidden.has(id)) sampleHidden[id] = false;
+        if ((typeof _flagAutoHidden === "undefined" || !_flagAutoHidden.has(id)) && !_ttCtlHolds(id))
+          sampleHidden[id] = false;
         _filterAutoHidden.delete(id);
         changed = true;
       }
@@ -454,7 +462,8 @@ function _applyFilterAutoHide(matchedIds) {
     // Toggle switched off, or the search box was cleared — give back
     // visibility to everything we auto-hid.
     _filterAutoHidden.forEach((id) => {
-      if (typeof _flagAutoHidden === "undefined" || !_flagAutoHidden.has(id)) sampleHidden[id] = false;
+      if ((typeof _flagAutoHidden === "undefined" || !_flagAutoHidden.has(id)) && !_ttCtlHolds(id))
+        sampleHidden[id] = false;
     });
     _filterAutoHidden.clear();
     changed = true;
@@ -566,6 +575,7 @@ function _sampleDataWarning(id) {
 
 function buildSampleList() {
   const rawSamples = Array.from(_allSampleIds()).filter(Boolean).sort();
+  if (typeof ttControlsSyncUi === "function") ttControlsSyncUi();
 
   // Initialise per-sample state for any new samples
   rawSamples.forEach((id, i) => {
@@ -595,7 +605,11 @@ function buildSampleList() {
   if (!cont) return;
   cont.innerHTML = "";
   _wireSampleListTools();
-  const filteredOrder = _sampleListFilteredOrder();
+  // Controls hidden by the "Show controls" switch (55_controls.js) leave the
+  // list entirely; the switch's own line still counts them.
+  const filteredOrder = _sampleListFilteredOrder().filter(
+    (id) => !(typeof ttControlListHidden === "function" && ttControlListHidden(id)),
+  );
   // Apply the "hide filtered-out samples" toggle before paginating/rendering
   // so the eye icons drawn below reflect the up-to-date hidden state, and so
   // charts elsewhere pick up the change on the redraw() this triggers.
@@ -757,6 +771,7 @@ function buildSampleList() {
       // stop treating it as something the search-filter toggle owns —
       // otherwise clearing the search box would silently flip it back.
       _filterAutoHidden.delete(id);
+      if (typeof ttControlsRelease === "function") ttControlsRelease(id);
       icon.className = `fas ${sampleHidden[id] ? "fa-eye-slash" : "fa-eye"}`;
       btn.style.opacity = sampleHidden[id] ? "0.35" : "1";
       _syncToggleAllSamplesBtn();

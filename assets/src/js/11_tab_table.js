@@ -72,6 +72,12 @@ function renderTableHeaders() {
   visibleCols.forEach((c, i) => {
     const th = document.createElement("th");
     th.textContent = c;
+    // Index-hopping columns: short help on hover (54_index_hopping.js)
+    if (typeof TT_HOP_COL_HELP !== "undefined" && TT_HOP_COL_HELP[c]) {
+      th.addEventListener("mouseover", (ev) => showTip(`<b>${c}</b><br>${TT_HOP_COL_HELP[c]}`, ev));
+      th.addEventListener("mousemove", moveTip);
+      th.addEventListener("mouseout", hideTip);
+    }
     if (c === sortCol) th.classList.add(sortAsc ? "sort-asc" : "sort-desc");
     th.addEventListener("click", () => {
       if (sortCol === c) sortAsc = !sortAsc;

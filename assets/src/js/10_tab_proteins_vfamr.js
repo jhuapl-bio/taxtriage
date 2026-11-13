@@ -62,7 +62,7 @@ function _getOrgCategoryMap() {
   };
   for (let i = 0; i < DATA.length; i++) {
     const r = DATA[i];
-    const cat = r["Microbial Category"] || "Unknown";
+    const cat = r["Microbial Category"] || UNCATEGORIZED;
     const o = (r["Detected Organism"] || "").trim().toLowerCase();
     if (o) {
       add(o, cat);
@@ -84,7 +84,7 @@ function _getOrgCategoryMap() {
      uses (primary / commensal / opportunistic / potential). This is authoritative
      and, crucially, independent of whether the organism ever produced a detection
      row — so a primary pathogen that never aligned, or that fell below the TASS
-     threshold, still classifies as Primary instead of collapsing to Unknown. */
+     threshold, still classifies as Primary instead of collapsing to Uncategorized. */
 const _PROT_CLASS_LABEL = {
   primary: "Primary",
   commensal: "Commensal",
@@ -139,12 +139,12 @@ function _protCategoryFilter() {
 }
 /** Does this hit's linked organism fall in the selected categories?
        A hit with no matching detection (an "Ext" row) has no category of its own,
-       so it is treated as "Unknown" — exactly how filteredData() treats a
+       so it is treated as "Uncategorized" — exactly how filteredData() treats a
        detection row with a blank Microbial Category. */
 function _protRowInCategories(r, catFilter) {
   if (!catFilter) return true;
   const cats = _protRowCategories(r);
-  if (!cats || !cats.size) return catFilter.has("Unknown");
+  if (!cats || !cats.size) return catFilter.has(UNCATEGORIZED);
   for (const c of cats) if (catFilter.has(c)) return true;
   return false;
 }
@@ -1356,7 +1356,7 @@ function _dedupRows(rows) {
       return _tassPrefixSet.has(species.trim().toLowerCase());
     }
     // Global Microbial Category selection — a hit inherits the category of the
-    // detection it links to, so "Primary" alone hides Commensal/Unknown hits.
+    // detection it links to, so "Primary" alone hides Commensal/Uncategorized hits.
     const _catFilter = _protCategoryFilter();
     // Organism prefilter left by a "view VF/AMR" jump: the {kind, key} the
     // Summary chip resolved this detection on. Replaces the old approach of

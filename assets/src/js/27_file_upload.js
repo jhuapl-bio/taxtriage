@@ -23,7 +23,7 @@
       "TASS Score": Math.round(tass * 10) / 10, // 4th col
       "Taxonomic ID #": String(org.key || ""),
       Subkey: String(org.subkey || org.key || ""),
-      "Microbial Category": org.microbial_category || "Unknown",
+      "Microbial Category": canonMicrobialCategory(org.microbial_category),
       "Ann Class": org.annClass || "",
       IsAnnotated: org.is_annotated === "Yes" ? "Yes" : "No",
       "High Consequence": !!org.high_cons,
@@ -64,6 +64,11 @@
       Order: tax.order || "",
       Family: tax.family || "",
       Genus: tax.genus || "",
+      // Index hopping (bin/index_hopping.py): same columns as make_report.
+      ...(org.index_hop && typeof org.index_hop === "object" && typeof _ttHopRowCols === "function"
+        ? _ttHopRowCols(org.index_hop)
+        : {}),
+      ...(org.index_hop_source && typeof _ttHopSourceCols === "function" ? _ttHopSourceCols(org.index_hop_source) : {}),
     };
   }
 
@@ -590,6 +595,10 @@
     step("novelty merge", () => _mergeNovelty());
 
     const combined = [...(BOOT.records || []), ..._uploadedRows];
+    // Uploaded JSON/TSV may carry blank, unrecognised or legacy "Unknown" categories.
+    for (const r of combined) {
+      if (r && typeof r === "object") r["Microbial Category"] = canonMicrobialCategory(r["Microbial Category"]);
+    }
     DATA = combined;
 
     step("contig data", () => {
@@ -641,6 +650,16 @@
       const extraCols = cols.filter((c) => !knownCols.has(c) && !_NON_DISPLAY_COLS.has(c));
       ALL_COLS = [...(BOOT.all_cols || cols).filter((c) => !_NON_DISPLAY_COLS.has(c)), ...extraCols];
       NUMERIC = numeric;
+    });
+
+    // A hopping table loaded in this browser: recompute over the merged rows
+    // (also re-adds the Index Hop columns to ALL_COLS).
+    step("index hopping", () => {
+      if (typeof ttHopOnDataChanged === "function") ttHopOnDataChanged();
+    });
+    // Newly loaded control samples follow the "Show controls" switch.
+    step("controls", () => {
+      if (typeof ttControlsOnDataChanged === "function") ttControlsOnDataChanged();
     });
 
     step("passes-threshold checkbox", () => {
@@ -806,8 +825,40 @@
 
   /* ── public: handle file input change ──────────────────────────────────── */
   window.handleUploadFiles = async function (files) {
-    const fileArr = Array.from(files);
+    let fileArr = Array.from(files);
     if (!fileArr.length) return;
+
+    // ── Illumina index-hopping tables (54_index_hopping.js) ─────────────
+    // A .csv/.tsv/.xlsx whose header is a hopping table (# Reads + index) is
+    // taken out of the detections path here and applied after the other
+    // files are merged, so hops are computed over everything just loaded.
+    const _hopTables = [];
+    if (typeof ttHopTryParseFile === "function") {
+      const rest = [];
+      for (const f of fileArr) {
+        let t = null;
+        try {
+          t = await ttHopTryParseFile(f, true);
+        } catch (e) {
+          t = null;
+        }
+        if (t) _hopTables.push(t);
+        else rest.push(f);
+      }
+      fileArr = rest;
+      if (!fileArr.length) {
+        ttHopAddTables(_hopTables);
+        const st = document.getElementById("upload-status");
+        if (st) {
+          st.style.color = "#6a1b9a";
+          st.textContent =
+            `Loaded index-hopping table ${_hopTables.map((t) => t.name).join(", ")}. ` + ttHopSummaryText();
+        }
+        const inp0 = document.getElementById("file-upload-input");
+        if (inp0) inp0.value = "";
+        return;
+      }
+    }
 
     // ── Per-file progress list ──────────────────────────────────────────
     // Show a spinning bacteria logo next to each file while it is being
@@ -935,6 +986,9 @@
             total_reads: parseFloat(m.total_reads) || existing.total_reads || 0,
             aligned_reads: parseFloat(m.aligned_reads) || existing.aligned_reads || 0,
             total_organism_reads: parseFloat(m.total_organism_reads) || existing.total_organism_reads || 0,
+            // Controls (55_controls.js) and the pipeline's index-hopping summary (54)
+            control_type: m.control_type != null ? m.control_type : existing.control_type || null,
+            index_hopping: m.index_hopping || existing.index_hopping || undefined,
           });
           if (BOOT && BOOT.sample_meta) {
             BOOT.sample_meta[sn] = SAMPLE_META[sn];
@@ -980,6 +1034,16 @@
       const clearBtn = document.getElementById("upload-clear-btn");
       if (clearBtn) clearBtn.classList.remove("hidden");
       _mergeAndRedraw();
+    }
+
+    if (_hopTables.length) {
+      ttHopAddTables(_hopTables);
+      if (_statEl) {
+        const hopLine = document.createElement("div");
+        hopLine.style.cssText = "margin-top:.3em;font-weight:600;color:#6a1b9a";
+        hopLine.textContent = ttHopSummaryText();
+        _statEl.appendChild(hopLine);
+      }
     }
 
     // Reset file input so same file can be re-loaded
@@ -1116,6 +1180,9 @@
 
     // Recompute BSL levels from restored BOOT data
     _computeBslLevels();
+    // Index hopping loaded in this browser: recompute over the remaining rows.
+    if (typeof ttHopOnDataChanged === "function") ttHopOnDataChanged();
+    if (typeof ttControlsOnDataChanged === "function") ttControlsOnDataChanged();
 
     buildSampleList();
     buildTable();

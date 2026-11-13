@@ -184,6 +184,81 @@ body {
 body.report-pdf-printing .banner-mask-pop {
   display: none !important;
 }
+/* Index-hopping pill (54_index_hopping.js); popover reuses .banner-mask-pop. */
+#banner .banner-hop {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2em 0.65em;
+  border-radius: 999px;
+  background: rgba(206, 147, 216, 0.18);
+  border: 1px solid rgba(206, 147, 216, 0.7);
+  color: #f3e5f5;
+  font-size: 0.7em;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+#banner .banner-hop[hidden] {
+  display: none;
+}
+#banner .banner-hop.has-flags {
+  background: rgba(186, 104, 200, 0.38);
+  border-color: #e1bee7;
+}
+#banner .banner-hop:hover,
+#banner .banner-hop:focus-visible,
+#banner .banner-hop.open {
+  background: rgba(186, 104, 200, 0.5);
+  outline: none;
+}
+.banner-hop-pop .bmp-title {
+  color: #e1bee7;
+}
+.banner-mask-pop.banner-hop-pop {
+  max-width: min(820px, calc(100vw - 16px));
+}
+.banner-hop-pop .bhp-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em 0.7em;
+  margin-top: 0.55em;
+}
+.banner-hop-pop .bhp-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  color: #b0bec5;
+  font-size: 0.9em;
+}
+.banner-hop-pop .bhp-controls input {
+  width: 5.5em;
+  padding: 0.15em 0.3em;
+  border: 1px solid #546e7a;
+  border-radius: 4px;
+  background: #37474f;
+  color: #eceff1;
+  font: inherit;
+}
+.banner-hop-pop .bhp-controls button {
+  padding: 0.2em 0.6em;
+  border: 1px solid #7e57c2;
+  border-radius: 4px;
+  background: #4a3a6b;
+  color: #f3e5f5;
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+.banner-hop-pop .bhp-controls button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+body.report-pdf-printing .banner-hop-pop {
+  display: none !important;
+}
 /* Medium widths: the help buttons go icon-only (they keep their tooltips) so
    the stats line isn't squeezed to a stub. */
 @media (max-width: 1280px) {
@@ -1282,7 +1357,7 @@ label.upload-btn {
   body.report-pdf-printing #explore-bubble-wrap svg {
     max-height: 3.5in !important;
   }
-  /* Coverage tab: shrink the sample-color legend above the chart */
+  /* Metrics tab → Coverage Scatter: shrink the sample-color legend */
   body.report-pdf-printing #coverage-legend-wrap {
     font-size: 0.72em !important;
     gap: 4px 8px !important;
@@ -1546,6 +1621,61 @@ tr:hover .watch-star:not(.on) {
   font-size: 0.72rem;
   color: #888;
   margin-top: 0.2em;
+}
+/* Summary-tab KPI row: compact text (other .kpi-card rows keep the sizes above). */
+#summary-kpi-row {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.55em;
+}
+#summary-kpi-row .kpi-card {
+  padding: 0.55em 0.7em;
+}
+#summary-kpi-row .kpi-label {
+  font-size: 0.64rem;
+  margin-bottom: 0.15em;
+}
+#summary-kpi-row .kpi-value {
+  font-size: 1.15rem;
+}
+#summary-kpi-row .kpi-sub {
+  font-size: 0.66rem;
+  margin-top: 0.15em;
+}
+/* Detections card: Organisms / Genera / High Consequence stacked in one box. */
+#summary-kpi-row .kpi-combo {
+  grid-column: span 2;
+  min-width: 0;
+}
+#summary-kpi-row .kpi-combo-hc {
+  border-left-color: #c62828;
+}
+.kpi-combo-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6em;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: #555;
+}
+.kpi-combo-row + .kpi-combo-row {
+  border-top: 1px solid #f0f2f5;
+}
+.kpi-combo-val {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #1f2d3d;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.kpi-combo-note {
+  font-weight: 400;
+  font-size: 0.78em;
+  color: #888;
+  margin-left: 0.35em;
+}
+.kpi-hc-row.kpi-hc {
+  cursor: help;
 }
 #summary-top-wrap table,
 #summary-annot-genus table {
@@ -5017,7 +5147,7 @@ body.report-pdf-printing #map-filter-scope-wrap {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   Coverage tab — collapsible colour legend. One chip per sample buried
+   Metrics tab → Coverage Scatter — collapsible colour legend. One chip per sample buried
    the plot on a large run, so the legend shows a count and opens on
    demand (small runs auto-expand; see drawCoverage).
    ═══════════════════════════════════════════════════════════════════ */
@@ -8535,4 +8665,109 @@ body.report-pdf-printing #tt-admin-overlay {
 .mcmp-badge[hidden],
 #mcmp-section[hidden] {
   display: none;
+}
+
+/* ── Adaptive TASS vs standard TASS (56_adaptive_tass.js) ──────────────────
+   Reuses the masking panel / modal styles (.mcmp-*); only the extras here. */
+#adt-section {
+  margin-bottom: 0.7em;
+}
+#adt-section[hidden] {
+  display: none;
+}
+.adt-inline {
+  font-size: 0.78em;
+  margin-left: 3px;
+  white-space: nowrap;
+}
+#adt-modal .adt-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+.adt-explain {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border: 1px solid #e2e8f2;
+  border-radius: 5px;
+  background: #f7f9fc;
+  font-size: 12px;
+  color: #3e4c59;
+  line-height: 1.45;
+}
+.adt-explain summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #1565c0;
+}
+.adt-explain ul {
+  margin: 4px 0 4px 18px;
+  padding: 0;
+}
+.adt-explain p {
+  margin: 5px 0;
+}
+.adt-plotrow {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin: 4px 0 8px;
+}
+.adt-plot {
+  flex: 0 0 auto;
+}
+.adt-plotnote {
+  font-size: 12px;
+  color: #3e4c59;
+  line-height: 1.5;
+  max-width: 520px;
+  padding-top: 6px;
+}
+.adt-orgs td.adt-why {
+  font-size: 11px;
+  color: #52606d;
+  min-width: 260px;
+}
+/* Possible index hop (flagged row) and possible SOURCE (54_index_hopping.js).
+   Small and quiet; details are in the hover card. */
+.hop-sus-mark {
+  margin-left: 4px;
+  font-size: 9px;
+  color: #ef6c00;
+  vertical-align: middle;
+  cursor: help;
+}
+.hop-src-mark {
+  margin-left: 4px;
+  font-size: 9px;
+  color: #b39ddb;
+  vertical-align: middle;
+  cursor: help;
+}
+/* Positive-control check on Summary detections (55_controls.js ttPosCtlBadgeHTML). */
+.pc-mark {
+  margin-left: 4px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 8.5px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1.4;
+  vertical-align: middle;
+  cursor: help;
+  border: 1px solid currentColor;
+}
+.pc-mark.pc-pass {
+  color: #00897b;
+  background: #e0f2f1;
+}
+.pc-mark.pc-below {
+  color: #b26a00;
+  background: #fff8e1;
+}
+.pc-mark.pc-absent {
+  color: #b0bec5;
+  border-color: #cfd8dc;
+  font-weight: 600;
 }

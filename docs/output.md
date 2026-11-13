@@ -8,15 +8,16 @@ This page describes the files and directories produced by TaxTriage. All paths a
 
 These are the outputs you should review first after a successful run:
 
-| File                   | Location                              | Description                                                                                  |
-| ---------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Combined ODR PDF       | `report/all.odr.pdf`                  | All-sample Organism Discovery Report with confidence-ranked pathogen table                   |
-| Per-sample ODR PDF     | `report/<sample>.odr.pdf`             | Single-sample ODR                                                                            |
-| Interactive Comparison | `report/all.odr.html`                 | Multi-sample interactive comparison report. See [Interactive Report](interactive-report.md). |
-| MultiQC Report         | `report/multiqc_report.html`          | QC stats and alignment metrics across all samples                                            |
-| Krona Plot             | `report/combined_krona_kreports.html` | Interactive radial abundance visualization from Kraken2                                      |
-| Microbial Sheet        | `report/<sample\|all>.odr.txt`        | Full tabular data backing the ODR PDF                                                        |
-| Annotated Workbook     | `report/<sample\|all>.odr.xlsx`       | Excel workbook of the ODR data, including VF/AMR annotation and a Metadata sheet             |
+| File                   | Location                              | Description                                                                                                                                                                    |
+| ---------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Combined ODR PDF       | `report/all.odr.pdf`                  | All-sample Organism Discovery Report with confidence-ranked pathogen table                                                                                                     |
+| Per-sample ODR PDF     | `report/<sample>.odr.pdf`             | Single-sample ODR                                                                                                                                                              |
+| Interactive Comparison | `report/all.odr.html`                 | Multi-sample interactive comparison report. See [Interactive Report](interactive-report.md).                                                                                   |
+| MultiQC Report         | `report/multiqc_report.html`          | QC stats and alignment metrics across all samples                                                                                                                              |
+| Krona Plot             | `report/combined_krona_kreports.html` | Interactive radial abundance visualization from Kraken2                                                                                                                        |
+| Report Data (JSON)     | `report/all.odr.json`                 | All samples' evidence (plus VF/AMR, novelty) in one file; drag onto any report or merge runs. See [Merging Runs](interactive-report.md#merging-runs-into-one-json-allodrjson). |
+| Microbial Sheet        | `report/<sample\|all>.odr.txt`        | Full tabular data backing the ODR PDF                                                                                                                                          |
+| Annotated Workbook     | `report/<sample\|all>.odr.xlsx`       | Excel workbook of the ODR data, including VF/AMR annotation and a Metadata sheet                                                                                               |
 
 ---
 
@@ -28,6 +29,7 @@ These are the outputs you should review first after a successful run:
 │   ├── all.odr.pdf                       # Combined Organism Discovery Report
 │   ├── <sample>.odr.pdf                  # Per-sample ODR
 │   ├── all.odr.html                      # Multi-sample interactive comparison report
+│   ├── all.odr.json                      # All samples' report data in one JSON (input for all.odr.html)
 │   ├── all.odr.txt                       # Combined microbial sheet
 │   ├── all.odr.xlsx                      # Combined annotated workbook (incl. VF/AMR + Metadata)
 │   ├── <sample>.odr.txt                  # Per-sample microbial sheet
@@ -41,6 +43,11 @@ These are the outputs you should review first after a successful run:
 │   ├── <sample>.histo.txt                          # Coverage histogram
 │   ├── <sample>.paths.json                         # Per-sample data backing the interactive report
 │   └── <sample>_removal_stats_by_taxid.xlsx        # Conflict / LCA read-removal stats per taxid
+│
+├── index_hopping/                    # (--index_hopping) flagged detections + annotated JSONs
+│   ├── index_hopping.tsv
+│   ├── index_hopping.json
+│   └── json/<sample>.paths.json
 │
 ├── samtools/
 │   └── <sample>.txt                      # Per-reference coverage
@@ -137,7 +144,7 @@ See [TASS Scoring](TASS-Scoring) for full definitions of each metric.
 
 ### Interactive Comparison Report (`report/all.odr.html`)
 
-A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, coverage/sunburst/explore views, a per-sample-type TASS cutoff slider, species/genus roll-up views, whole-sample QC flags, and a built-in Export-to-PDF button. No server is required - the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
+A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, sunburst and metrics views (TASS comparison, coverage scatter, cross-sample charts), a per-sample-type TASS cutoff slider, species/genus roll-up views, whole-sample QC flags, and a built-in Export-to-PDF button. No server is required - the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
 
 Samples flagged by a QC rule (`--report_flag_*`, or rules added in the report itself) are marked here, not removed: the file still carries every sample's data, so clearing a rule brings a hidden sample straight back. See [Interactive Report → Sample QC flags](interactive-report.md#sample-qc-flags).
 
@@ -152,6 +159,10 @@ Written by default (turn off with `--alignment_trends false`): cross-sample tabl
 ### Region Masking (`masking/`) - Optional
 
 Written only when masking is on (`--fcs`, `--mask_bed`, …): the mask BEDs actually used (`mask.exclude.bed`, `mask.target.bed` - load them in IGV next to the BAMs), per-reference mask summaries, `fcs_assemblies.tsv` (NCBI FCS status of every assembly in the run), `fcs_subset.txt` (the matching FCS rows, reusable as `--fcs_details`), and `all.masking.html` / `.tsv`, a visual report of what masking changed. With `--mask_compare` (default), `unmasked/` holds the baseline per-sample JSONs (the before/after TASS is also folded into each `alignment/<sample>.paths.json`); with `--mask_write_bam`, `bam/` holds each sample's BAM with the masked alignments removed. See [Region Masking](masking.md#outputs).
+
+### Index Hopping (`index_hopping/`) - Optional
+
+Written only with `--index_hopping` (or the samplesheet `index_hopping` column): `index_hopping.tsv` lists every detection that index hopping from another sample of the same lane could explain (observed vs expected reads, p, top donor, hop rate and its source), `index_hopping.json` the per-sample summary, and `json/` the per-sample JSONs with the `index_hop` annotations that the reports were built from. See [Index Hopping](index-hopping.md).
 
 ### Microbial Sheet (`report/<sample>.odr.txt`)
 

@@ -327,13 +327,37 @@ def test_bad_inputs_do_not_crash():
 
 
 # ── audit / summary ───────────────────────────────────────────────────────
-def test_floor_static():
-    parent = {"tass_score_static": 60.0, "members": [{"tass_score_static": 70.0}, {"tass_score": 90.0}]}
-    at.AdaptiveTass.floor_static(parent)
-    assert parent["tass_score_static"] == 90.0
-    parent = {"tass_score_static": 95.0, "members": [{"tass_score_static": 70.0}]}
-    at.AdaptiveTass.floor_static(parent)
-    assert parent["tass_score_static"] == 95.0
+def test_floor_adaptive():
+    # the standard tass_score is never touched; only the adaptive score is floored
+    parent = {"tass_score": 60.0, "tass_score_adaptive": 55.0,
+              "members": [{"tass_score_adaptive": 70.0}, {"tass_score": 90.0}]}
+    at.AdaptiveTass.floor_adaptive(parent)
+    assert parent["tass_score_adaptive"] == 70.0 and parent["tass_score"] == 60.0
+    assert parent["tass_score_adaptive_computed"] == 55.0
+    parent = {"tass_score_adaptive": 95.0, "members": [{"tass_score_adaptive": 70.0}]}
+    at.AdaptiveTass.floor_adaptive(parent)
+    assert parent["tass_score_adaptive"] == 95.0
+    parent = {"tass_score": 50.0, "members": [{"tass_score_adaptive": 70.0}]}
+    at.AdaptiveTass.floor_adaptive(parent)  # no adaptive score: left alone
+    assert "tass_score_adaptive" not in parent
+
+
+def test_standard_reference_used_for_audit_and_stats():
+    # adaptive base weights differ from the standard ones (--adaptive_tass_base):
+    # the audit and the change statistics compare against the STANDARD score
+    strains = pox_high_ani()
+    sc = at.AdaptiveTass(at.AdaptiveConfig(strength=0.0), ani_data=POX_ANI, log=lambda *_: None)
+    sc.prepare("strain", strains, strains)
+    w = base_weights()
+    for s in strains:
+        std = compute_tass_score(data=s, weights=w)
+        a = sc.score(s, "strain", w, compute_tass_score, standard=std - 0.1)
+        assert abs(a - std) < 1e-12               # strength 0: adaptive == static under w
+        assert s["adaptive_tass"]["standard"] == round(std - 0.1, 6)
+    st = sc.summary()["levels"]["strain"]
+    assert st["changed"] == len(strains) and st["raised"] == len(strains)
+    assert abs(st["mean_delta"] - 10.0) < 1e-6
+    assert sc.summary()["primary_score"] == "standard"
 
 
 def test_summary_and_audit_serialisable_and_deterministic():

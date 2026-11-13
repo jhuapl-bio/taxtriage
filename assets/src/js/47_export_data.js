@@ -384,7 +384,7 @@ const TT_PIVOT_ROWS = [
     of: (r) => (r["Detected Organism"] || "") + (r["Taxonomic ID #"] ? " (" + r["Taxonomic ID #"] + ")" : ""),
   },
   { id: "genus", label: "Genus", of: (r) => r["Genus Name"] || r["Genus"] || "" },
-  { id: "category", label: "Microbial Category", of: (r) => r["Microbial Category"] || "Unknown" },
+  { id: "category", label: "Microbial Category", of: (r) => r["Microbial Category"] || UNCATEGORIZED },
   { id: "domain", label: "Domain", of: (r) => r["Domain"] || r["Kingdom"] || "Unknown" },
   { id: "sample", label: "Specimen ID", of: (r) => r["Specimen ID"] || "" },
   { id: "sample_type", label: "Sample Type", of: (r) => r["Sample Type"] || "" },
@@ -664,7 +664,7 @@ const TT_EXPORT_DATASETS = [
   {
     id: "organism_summary",
     label: "Cross-Sample Organisms",
-    tab: "Explore",
+    tab: "Summary",
     desc: "Run-wide rollup per organism: prevalence plus TASS / coverage spread.",
     joinKey: TT_JOIN.ORG,
     filterable: true,
@@ -727,7 +727,7 @@ const TT_EXPORT_DATASETS = [
   {
     id: "coverage",
     label: "Coverage Summary",
-    tab: "Coverage / Histogram",
+    tab: "Histograms",
     desc: "Per specimen x organism breadth, mean depth and depth-bin base counts.",
     joinKey: TT_JOIN.SAMPLE_ORG,
     filterable: true,
@@ -748,7 +748,7 @@ const TT_EXPORT_DATASETS = [
   {
     id: "contigs",
     label: "Coverage by Contig",
-    tab: "Coverage / Histogram",
+    tab: "Histograms",
     desc: "One row per aligned contig / reference sequence.",
     joinKey: TT_JOIN.NONE,
     filterable: true,

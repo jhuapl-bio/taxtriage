@@ -241,6 +241,33 @@ nextflow run jhuapl-bio/taxtriage ... --mask_products --mask_feature_select '^(s
 - **Combining with other masks.** Exclusions still apply inside the product regions: `--fcs`, exclude-mode `--mask_bed`, and a row's own `mask_fasta` / `mask_bed`. A row with `mask_mode target` scores its BED plus its products.
 - **What to expect.** CDS covers about 85–90% of a bacterial or viral genome, so for most bacteria breadth and TASS move only a little; compare `length` with `length_full` in the JSON. The effect is large for eukaryotes, where CDS is a small share of the genome (_S. cerevisiae_: about 70%; _Toxoplasma_ or human: much less), and for `--mask_feature_select` gene panels.
 
+### ANI without the coverage gate (`--ungated_minhash`)
+
+TASS's MinHash/ANI term asks whether the reads belong to this organism rather than a close
+relative. Before it enters TASS it is multiplied by a **coverage gate** made of three factors:
+
+- **depth concentration:** (actual breadth ÷ breadth expected for the read count)^`--depth_concentration_power`;
+- **contig share:** the share of contigs with reads;
+- **breadth sigmoid:** centred at 1% of the genome.
+
+The gate stops pile-up artefacts (a conserved gene, host reads on a small region) from scoring on
+uniqueness alone. A capture panel produces that same pile-up on purpose. For example, _B. pertussis_
+with 2,706 panel reads on its 4.1 Mb genome has a raw MinHash of 0.99 but a gate of 0.61, because
+the reads would cover 9.5% of the genome if spread out and actually cover 1.9%.
+
+Two ways to stop the gate from penalising a panel:
+
+- **Score only the panel space** (`--mask_mode target`, a target BED, or a trimmed reference). The
+  expected and actual breadth then agree, and the gate is about 1.
+- **`--ungated_minhash`** (off by default) drops the gate from the MinHash term. Everything else is
+  unchanged: Gini still uses the depth-concentration penalty, and the read-share step among close
+  relatives still applies.
+  - The would-be gate is kept in the JSON as `minhash_coverage_gate_computed`, and
+    `metadata.ungated_minhash` is `true`.
+  - Use it with care. Without the gate, a handful of uniquely mapping reads anywhere can score as
+    if the organism were well covered.
+  - Pair it with masking and a minimum-read rule, or use it to compare runs rather than to call.
+
 ---
 
 ## Parameters
@@ -277,6 +304,7 @@ nextflow run jhuapl-bio/taxtriage ... --mask_products --mask_feature_select '^(s
 | `--mask_report`              | `true`             | Write `masking/all.masking.html` when masking is on.                                                                                                                                            |
 | `--mask_compare`             | `true`             | Also score every masked sample **without** the mask: before/after TASS in the JSON, the report and the masking report ([Before / after TASS](#before--after-tass)). About doubles scoring time. |
 | `--mask_compare_parallel`    | `false`            | Run that unmasked scoring alongside the masked one (faster, ~2× peak memory) instead of before it.                                                                                              |
+| `--ungated_minhash`          | `false`            | Score the MinHash/ANI term without its coverage gate (targeted panels; see above).                                                                                                              |
 | `--mask_write_bam`           | `false`            | Also write `masking/bam/<sample>.masked.bam` (+ `.bai`) with the masked alignments removed.                                                                                                     |
 | `--mask_report_top`          | `24`               | Coverage tracks drawn in the masking report.                                                                                                                                                    |
 

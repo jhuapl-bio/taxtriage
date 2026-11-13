@@ -1962,7 +1962,7 @@
       });
       var cats = {};
       ms.forEach(function (o) {
-        cats[o.category || "Unknown"] = 1;
+        cats[canonMicrobialCategory(o.category)] = 1;
       });
       var catKeys = Object.keys(cats);
       return {

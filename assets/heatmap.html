@@ -62,6 +62,10 @@
       <span class="banner-mask" id="banner-mask" hidden tabindex="0"
         ><i class="fas fa-eye-slash" aria-hidden="true"></i><span id="banner-mask-label"></span
       ></span>
+      <!-- Index-hopping pill; filled by _hopBannerNote (54_index_hopping.js), hidden until a run or an uploaded hopping table provides results -->
+      <span class="banner-hop" id="banner-hop" hidden tabindex="0"
+        ><i class="fas fa-shuffle" aria-hidden="true"></i><span id="banner-hop-label"></span
+      ></span>
       <button id="pipeline-info-btn" type="button" aria-label="Show pipeline run metadata">
         <i class="fas fa-circle-info"></i><span class="info-btn-label">Run info</span>
       </button>
@@ -105,12 +109,8 @@
     <div id="tabbar">
       <button class="tab-btn active" data-tab="summary"><i class="fas fa-clipboard-list"></i> Summary</button>
       <button class="tab-btn" data-tab="heatmap"><i class="fas fa-th"></i> Heatmap</button>
-      <button class="tab-btn" data-tab="tass"><i class="fas fa-chart-bar"></i> TASS Comparison</button>
       <button class="tab-btn" data-tab="sunburst" title="Radial taxonomy view sized by selected metric.">
         <i class="fas fa-circle-nodes"></i> Sunburst
-      </button>
-      <button class="tab-btn" data-tab="coverage" title="Coverage vs TASS/reads scatter to spot outliers.">
-        <i class="fas fa-layer-group"></i> Coverage
       </button>
       <button
         class="tab-btn tab-optional hidden"
@@ -140,8 +140,12 @@
       >
         <i class="fas fa-lightbulb"></i> Novelty
       </button>
-      <button class="tab-btn" data-tab="explore" title="Cross-sample exploratory charts for multi-metric patterns.">
-        <i class="fas fa-magnifying-glass-chart"></i> Explore
+      <button
+        class="tab-btn"
+        data-tab="metrics"
+        title="TASS comparison bars, the coverage scatter, and cross-sample multi-metric charts (radar, chord, rankings, correlogram)."
+      >
+        <i class="fas fa-magnifying-glass-chart"></i> Metrics
       </button>
       <button class="tab-btn" data-tab="table"><i class="fas fa-table"></i> Table</button>
       <button
@@ -298,6 +302,16 @@
                   >Ⓡ</span
                 >
                 = DNA / RNA ·
+                <span id="sum-hop-legend" hidden
+                  ><i class="fas fa-shuffle hop-sus-mark" aria-hidden="true"></i> = possible index hop (reads may have
+                  come from another sample in the lane) · <i class="fas fa-share hop-src-mark" aria-hidden="true"></i> =
+                  possible source of hopped reads · hover the icons for details ·
+                </span>
+                <span id="sum-pc-legend" hidden data-pc-tip="legend" style="cursor: help"
+                  ><span class="pc-mark pc-pass">PC✓</span> / <span class="pc-mark pc-below">PC✓</span> /
+                  <span class="pc-mark pc-absent">PC–</span> = also in the positive control (passing / not passing
+                  there) / not in it · hover for details ·
+                </span>
                 <span id="sum-level-legend-rollup">
                   <span
                     style="
@@ -688,6 +702,7 @@
             <div class="chart-title">
               Sample × Organism — value heat
               <span id="hm-mcmp-badge" class="mcmp-badge" hidden></span>
+              <span id="hm-adt-badge" class="mcmp-badge" hidden></span>
             </div>
             <div class="tab-controls">
               <label>Value</label>
@@ -734,46 +749,6 @@
           </div>
         </div>
 
-        <!-- TASS COMPARISON -->
-        <div class="pane" id="pane-tass">
-          <div class="chart-wrap">
-            <div class="chart-title">TASS Score by Organism (grouped by taxonomy)</div>
-            <div class="tab-controls">
-              <label>Group by</label>
-              <select id="tass-rank">
-                <option value="Phylum">Phylum</option>
-                <option value="Class">Class</option>
-                <option value="Order">Order</option>
-                <option value="Family">Family</option>
-                <option value="Genus" selected>Genus</option>
-                <option value="Species">Species (organism)</option>
-              </select>
-              <label>Y scale</label>
-              <select id="tass-scale">
-                <option value="log">Log</option>
-                <option value="linear" selected>Linear</option>
-                <option value="sqrt">Sqrt</option>
-              </select>
-              <label title="Which TASS value to plot: the strain score, or the rolled-up species / genus aggregation."
-                >TASS level</label
-              >
-              <select id="tass-level">
-                <option value="strain" selected>Strain</option>
-                <option value="species">Species</option>
-                <option value="genus">Genus</option>
-              </select>
-              <label
-                title="Show or hide the TASS cutoff reference line on the chart"
-                style="display: flex; align-items: center; gap: 4px; cursor: pointer"
-              >
-                <input type="checkbox" id="tass-show-cutoff" checked style="cursor: pointer" />
-                Cutoff line
-              </label>
-            </div>
-            <div id="tass-svg-wrap"></div>
-          </div>
-        </div>
-
         <!-- SUNBURST -->
         <div class="pane" id="pane-sunburst">
           <div class="chart-wrap">
@@ -803,51 +778,6 @@
               reset to root
             </div>
             <div id="sun-panels-container"></div>
-          </div>
-        </div>
-
-        <!-- COVERAGE -->
-        <div class="pane" id="pane-coverage">
-          <div class="chart-wrap">
-            <div class="chart-title">Coverage Scatter</div>
-            <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
-              Compare coverage, depth, reads, and TASS to spot outliers across samples.
-            </div>
-            <div class="tab-controls" style="flex-wrap: wrap; gap: 0.5em">
-              <label>X axis</label>
-              <select id="cov-x-sel">
-                <option value="Breadth %" selected>Breadth %</option>
-                <option value="Mean Depth">Mean Depth</option>
-                <option value="TASS Score">TASS Score</option>
-                <option value="# Reads Aligned"># Reads Aligned</option>
-                <option value="K2 Reads">K2 Reads</option>
-              </select>
-              <label>Y axis</label>
-              <select id="cov-y-sel">
-                <option value="Breadth %">Breadth %</option>
-                <option value="Mean Depth">Mean Depth</option>
-                <option value="TASS Score" selected>TASS Score</option>
-                <option value="# Reads Aligned"># Reads Aligned</option>
-                <option value="K2 Reads">K2 Reads</option>
-              </select>
-              <label>Size by</label>
-              <select id="cov-r-sel">
-                <option value="TASS Score">TASS Score</option>
-                <option value="# Reads Aligned" selected># Reads Aligned</option>
-                <option value="K2 Reads">K2 Reads</option>
-              </select>
-              <label>Axis scale</label>
-              <select id="cov-scale">
-                <option value="log">Log</option>
-                <option value="linear" selected>Linear</option>
-                <option value="sqrt">Sqrt</option>
-              </select>
-            </div>
-            <div id="coverage-svg-wrap"></div>
-            <!-- Colour legend sits BELOW the plot and is a collapsed count by
-                 default (see _renderCovLegend); the one-row-per-sample list
-                 inside it carries its own layout, not this wrapper. -->
-            <div id="coverage-legend-wrap" style="margin: 0.4em 0 0.2em; font-size: 0.82em"></div>
           </div>
         </div>
 
@@ -1516,12 +1446,100 @@
           </div>
         </div>
 
-        <!-- EXPLORE: cross-sample comparison plots -->
-        <div class="pane" id="pane-explore">
-          <div class="chart-title">Explore</div>
+        <!-- METRICS: TASS comparison, coverage scatter and cross-sample comparison plots
+             (formerly the separate TASS Comparison, Coverage and Explore tabs). -->
+        <div class="pane" id="pane-metrics">
+          <div class="chart-title">Metrics</div>
           <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
-            Cross-sample comparison plots for multi-metric patterns and relationships.
+            TASS scores, coverage and cross-sample comparison plots for multi-metric patterns and relationships.
           </div>
+
+          <!-- TASS COMPARISON (bar chart) -->
+          <div class="chart-wrap" id="metrics-tass-section">
+            <div class="chart-title">
+              TASS Comparison
+              <span style="font-size: 0.75em; color: #888; font-weight: 400">
+                — TASS score by organism, grouped by taxonomy</span
+              >
+            </div>
+            <div class="tab-controls">
+              <label>Group by</label>
+              <select id="tass-rank">
+                <option value="Phylum">Phylum</option>
+                <option value="Class">Class</option>
+                <option value="Order">Order</option>
+                <option value="Family">Family</option>
+                <option value="Genus" selected>Genus</option>
+                <option value="Species">Species (organism)</option>
+              </select>
+              <label>Y scale</label>
+              <select id="tass-scale">
+                <option value="log">Log</option>
+                <option value="linear" selected>Linear</option>
+                <option value="sqrt">Sqrt</option>
+              </select>
+              <label title="Which TASS value to plot: the strain score, or the rolled-up species / genus aggregation."
+                >TASS level</label
+              >
+              <select id="tass-level">
+                <option value="strain" selected>Strain</option>
+                <option value="species">Species</option>
+                <option value="genus">Genus</option>
+              </select>
+              <label
+                title="Show or hide the TASS cutoff reference line on the chart"
+                style="display: flex; align-items: center; gap: 4px; cursor: pointer"
+              >
+                <input type="checkbox" id="tass-show-cutoff" checked style="cursor: pointer" />
+                Cutoff line
+              </label>
+            </div>
+            <div id="tass-svg-wrap"></div>
+          </div>
+
+          <!-- COVERAGE SCATTER -->
+          <div class="chart-wrap" id="metrics-coverage-section">
+            <div class="chart-title">Coverage Scatter</div>
+            <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
+              Compare coverage, depth, reads, and TASS to spot outliers across samples.
+            </div>
+            <div class="tab-controls" style="flex-wrap: wrap; gap: 0.5em">
+              <label>X axis</label>
+              <select id="cov-x-sel">
+                <option value="Breadth %" selected>Breadth %</option>
+                <option value="Mean Depth">Mean Depth</option>
+                <option value="TASS Score">TASS Score</option>
+                <option value="# Reads Aligned"># Reads Aligned</option>
+                <option value="K2 Reads">K2 Reads</option>
+              </select>
+              <label>Y axis</label>
+              <select id="cov-y-sel">
+                <option value="Breadth %">Breadth %</option>
+                <option value="Mean Depth">Mean Depth</option>
+                <option value="TASS Score" selected>TASS Score</option>
+                <option value="# Reads Aligned"># Reads Aligned</option>
+                <option value="K2 Reads">K2 Reads</option>
+              </select>
+              <label>Size by</label>
+              <select id="cov-r-sel">
+                <option value="TASS Score">TASS Score</option>
+                <option value="# Reads Aligned" selected># Reads Aligned</option>
+                <option value="K2 Reads">K2 Reads</option>
+              </select>
+              <label>Axis scale</label>
+              <select id="cov-scale">
+                <option value="log">Log</option>
+                <option value="linear" selected>Linear</option>
+                <option value="sqrt">Sqrt</option>
+              </select>
+            </div>
+            <div id="coverage-svg-wrap"></div>
+            <!-- Colour legend sits BELOW the plot and is a collapsed count by
+                 default (see _renderCovLegend); the one-row-per-sample list
+                 inside it carries its own layout, not this wrapper. -->
+            <div id="coverage-legend-wrap" style="margin: 0.4em 0 0.2em; font-size: 0.82em"></div>
+          </div>
+
           <!-- <div class="chart-wrap">
             <div class="tab-controls" style="flex-wrap: wrap; gap: 0.5em 0.8em">
               <label>Color by</label>
@@ -1544,7 +1562,7 @@
             </div>
           </div> -->
 
-          <!-- Plot A: Bubble Scatter — REMOVED (redundant with the Coverage tab).
+          <!-- Plot A: Bubble Scatter — REMOVED (redundant with the Coverage Scatter above).
           <div class="chart-wrap">
             <div class="chart-title">
               Organism Coverage vs TASS Score
@@ -3663,7 +3681,7 @@
           <button
             class="info-tip-btn"
             aria-label="About Microbial Category"
-            data-tip="<b>Microbial Category</b><br>Classifies each detected organism by its typical clinical relevance:<br><br><b>Primary</b> — known pathogen, directly associated with disease<br><b>Commensal</b> — normal flora, usually harmless in healthy individuals<br><b>Opportunistic</b> — can cause disease in immunocompromised hosts<br><b>Potential</b> — possible pathogen under certain conditions<br><b>Unknown</b> — category not determined<br><br>Hold Ctrl/⌘ to select multiple; deselect all to show every category."
+            data-tip="<b>Microbial Category</b><br>Classifies each detected organism by its typical clinical relevance:<br><br><b>Primary</b> — known pathogen, directly associated with disease<br><b>Commensal</b> — normal flora, usually harmless in healthy individuals<br><b>Opportunistic</b> — can cause disease in immunocompromised hosts<br><b>Potential</b> — possible pathogen under certain conditions<br><b>Uncategorized</b> — not listed in the TaxTriage pathogen sheet, so no clinical category has been curated (this says nothing about whether the organism is harmful)<br><br>Hold Ctrl/⌘ to select multiple; deselect all to show every category."
           >
             &#x24D8;
           </button></label
@@ -3678,7 +3696,7 @@
           <option value="Commensal">Commensal</option>
           <option value="Opportunistic">Opportunistic</option>
           <option value="Potential">Potential</option>
-          <option value="Unknown">Unknown</option>
+          <option value="Uncategorized">Uncategorized</option>
         </select>
         <div style="font-size: 0.72em; color: #888; margin-top: -0.15em; margin-bottom: 0.35em">
           Ctrl/&#8984; click to multi-select; deselect all to show all
@@ -3778,6 +3796,37 @@
           <div id="mcmp-summary" class="mcmp-summary"></div>
           <button type="button" id="mcmp-open-btn" class="mcmp-open-btn">
             <i class="fas fa-table"></i> Before / after table
+          </button>
+        </div>
+
+        <!-- Adaptive TASS vs standard TASS (56_adaptive_tass.js); shown only when
+             the run carries match_paths --adaptive_tass results -->
+        <div id="adt-section" hidden>
+          <h3 style="display: flex; align-items: center; gap: 0.4em">
+            Adaptive TASS
+            <button
+              class="info-tip-btn"
+              id="adt-tip-btn"
+              aria-label="Adaptive TASS help"
+              data-tip="&lt;b&gt;Adaptive TASS vs standard TASS&lt;/b&gt;&lt;br&gt;The &lt;b&gt;standard&lt;/b&gt; TASS is always computed and stays the report&#39;s score: every cutoff, filter and tab uses it. This run also computed an &lt;b&gt;adaptive&lt;/b&gt; TASS (--adaptive_tass, off by default), which shifts the score weights per organism by its context in the sample (community complexity, high-ANI organisms of other species, same-genus species, low abundance, roll-ups) and marks ambiguous calls with weak MinHash support down.&lt;br&gt;&lt;br&gt;&lt;b&gt;Heatmap TASS&lt;/b&gt; switches the heatmap (Value = TASS) between the standard score, the adaptive score and the change (green = higher with adaptive, red = lower).&lt;br&gt;&lt;b&gt;Show in tables&lt;/b&gt; adds a small A▴/A▾ adaptive TASS after each TASS in the Summary table (green / red when the call would flip at the cutoff).&lt;br&gt;Hovering any TASS in the Summary or Table tab, or a heatmap cell, always shows both scores and the reasons.&lt;br&gt;&lt;br&gt;&lt;b&gt;Standard vs adaptive&lt;/b&gt; opens the per-sample settings, a scatter of the two scores and a table with pass/fail at the current cutoffs (CSV export). Adaptive weights are heuristics: informational until calibrated."
+            >
+              &#x24D8;
+            </button>
+          </h3>
+          <label for="adt-mode" style="font-size: 0.82em; font-weight: 600; color: #374151; display: block"
+            >Heatmap TASS</label
+          >
+          <select id="adt-mode" style="width: 100%">
+            <option value="standard" selected>Standard (report score)</option>
+            <option value="adaptive">Adaptive</option>
+            <option value="delta">Change (adaptive − standard)</option>
+          </select>
+          <label style="display: flex; align-items: center; gap: 0.35em; font-size: 0.85em; margin: 0.35em 0">
+            <input type="checkbox" id="adt-show-tables" /> Show adaptive TASS in tables
+          </label>
+          <div id="adt-summary" class="mcmp-summary"></div>
+          <button type="button" id="adt-open-btn" class="mcmp-open-btn">
+            <i class="fas fa-balance-scale"></i> Standard vs adaptive
           </button>
         </div>
 
@@ -4088,6 +4137,27 @@
             style="flex-basis: 100%; color: #78909c; font-size: 0.66em"
           ></div>
         </div>
+        <!-- Show / hide every negative + positive control (55_controls.js); shown only when controls are loaded -->
+        <label
+          id="controls-toggle-row"
+          for="show-controls"
+          hidden
+          style="
+            display: none;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 2px 5px;
+            margin: 0 0 4px;
+            font-size: 0.72em;
+            color: #455a64;
+            cursor: pointer;
+          "
+        >
+          <input id="show-controls" type="checkbox" style="margin: 0; cursor: pointer" />
+          <i class="fas fa-vial" aria-hidden="true" style="color: #78909c"></i>
+          <span style="white-space: nowrap">Show controls</span>
+          <span id="controls-toggle-info" style="color: #78909c; white-space: nowrap"></span>
+        </label>
         <div id="sample-list"></div>
         <h3>Upload Data</h3>
         <div
@@ -4105,14 +4175,15 @@
         >
           <i class="fas fa-cloud-upload-alt" style="font-size: 1.4em; color: #6c9abf"></i>
           <span style="display: block; font-size: 0.78em; margin: 0.3em 0 0.5em"
-            >Drop all.samples.json, .paths.json, .xlsx, .tsv, or .txt files here</span
+            >Drop all.samples.json, .paths.json, .xlsx, .tsv, or .txt files here &mdash; or an Illumina index-hopping
+            table (.csv / .tsv / .xlsx) to flag possible cross-sample hops</span
           >
           <label class="upload-btn" for="file-upload-input">Browse Files</label>
           <input
             type="file"
             id="file-upload-input"
             multiple
-            accept=".json,.xlsx,.xls,.tsv,.txt"
+            accept=".json,.xlsx,.xls,.tsv,.txt,.csv"
             style="display: none"
             onchange="handleUploadFiles(this.files)"
           />
@@ -4642,6 +4713,9 @@
     <script src="src/js/51_admin_panel.js"></script>
     <script src="src/js/52_tab_align_trends.js"></script>
     <script src="src/js/53_mask_compare.js"></script>
+    <script src="src/js/54_index_hopping.js"></script>
+    <script src="src/js/55_controls.js"></script>
+    <script src="src/js/56_adaptive_tass.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

@@ -1,0 +1,4 @@
+Lane	SampleID	Sample Project	index	index2	# Reads	% of Hopped Reads	% of All Reads
+1	Miseq Run A	TAXTRIAGE-DEMO	TGCCGGTCAG	TTGTATCAGG	117322		0.754511
+1	Positive Control Miseq	TAXTRIAGE-DEMO	CACTCAATTC	CACAACTTAA	38000		0.244382
+1	Negative Control Miseq	TAXTRIAGE-DEMO	TCTCACACGC	TCACTGTCCG	172		0.001106

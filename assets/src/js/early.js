@@ -42,6 +42,25 @@ function _ttMin(arr) {
 }
 
 const BOOT = window.HEATMAP_BOOT || {};
+/* Microbial categories. Organisms not in the pathogen sheet are "Uncategorized";
+   so is any blank or unrecognised value, including the legacy "Unknown" written
+   before 2026-11. Mirrors bin/microbial_category.py. */
+const UNCATEGORIZED = "Uncategorized";
+const _MICROBIAL_CATEGORY_ALIASES = {
+  primary: "Primary",
+  "primary (sterile)": "Primary",
+  opportunistic: "Opportunistic",
+  potential: "Potential",
+  commensal: "Commensal",
+  uncategorized: UNCATEGORIZED,
+};
+function canonMicrobialCategory(c) {
+  const s = c == null ? "" : String(c).trim().toLowerCase();
+  return _MICROBIAL_CATEGORY_ALIASES[s] || UNCATEGORIZED;
+}
+(BOOT.records || []).forEach((r) => {
+  if (r && typeof r === "object") r["Microbial Category"] = canonMicrobialCategory(r["Microbial Category"]);
+});
 let DATA = BOOT.records || [];
 let ALL_COLS = (BOOT.all_cols || []).filter(
   (c) => c !== "High ANI Matches" && c !== "ANI Annotated" && c !== "HMP Ref Key",

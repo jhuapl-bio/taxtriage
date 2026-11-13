@@ -40,6 +40,7 @@ from collections import defaultdict
 
 import pandas as pd
 
+from microbial_category import normalize_category, canonicalize_categories
 from hmp_outliers import HMP_COLUMNS, HMP_HIDDEN_COLUMNS, annotate_rows, annotate_rows_from_json
 
 # Raw per-organism HMP fields match_paths.py writes into the paths JSON (only
@@ -215,7 +216,8 @@ def parse_args(argv=None):
         default=["all"],
         metavar="CAT",
         help="Microbial category filter (default: Primary). "
-             "Accepted values: Primary, Commensal, Opportunistic, Potential, Unknown. "
+             "Accepted values: Primary, Commensal, Opportunistic, Potential, Uncategorized "
+             "(not in the pathogen sheet; 'Unknown' is accepted as a legacy alias). "
              "Use 'all' to include every category. "
              "Multiple values are allowed, e.g. -mc Primary Potential",
     )
@@ -387,6 +389,13 @@ def parse_args(argv=None):
              "(nothing but the flagged rows).",
     )
     parser.add_argument(
+        "--controls", default="hide", choices=["show", "hide"],
+        help="Negative / positive control samples (metadata control_type): open the "
+             "report with them hidden (default) or 'show' them. Either way the report's "
+             "'Show controls' switch above the sample list toggles them. A report whose "
+             "samples are all controls always opens with them shown.",
+    )
+    parser.add_argument(
         "--vfamr-taxids", default=None, metavar="TSV",
         help="Optional: bvbrc specialty-gene reference TSV "
              "(assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.tsv). Used to recover "
@@ -406,7 +415,7 @@ def parse_args(argv=None):
              "When given, every detection whose sample type maps to an HMP body site (stool, "
              "oral, nasal, skin, throat, vaginal and their synonyms) is compared against the "
              "healthy abundance distribution for that organism -- the same outlier information "
-             "the ODR PDF shows (faded rows + the ◆ n (p%) healthy-sample marker). Without it the "
+             "the ODR PDF shows (faded rows + the ◆ n (p%%) healthy-sample marker). Without it the "
              "report falls back to any HMP fields already present in the paths JSON.",
     )
     parser.add_argument(
@@ -1104,7 +1113,10 @@ def _collect_best_cutoffs(sample_meta):
             aggregated[level]["best_threshold"] = min(thresholds)
     return aggregated or None
 
-_VALID_MICROBIAL_CATS = {"Primary", "Commensal", "Opportunistic", "Potential", "Unknown"}
+_VALID_MICROBIAL_CATS = {"Primary", "Commensal", "Opportunistic", "Potential", "Uncategorized"}
+# Blank, unrecognised or legacy ("Unknown") categories become "Uncategorized"
+# (microbial_category.py).
+_mcat = normalize_category
 
 
 def _resolve_microbial_cats(cat_args):
@@ -1120,7 +1132,8 @@ def _resolve_microbial_cats(cat_args):
         # handle "opportunistic" -> "Opportunistic", title-case normalisation
         # do a case-insensitive lookup against valid set
         matched = next(
-            (v for v in _VALID_MICROBIAL_CATS if v.lower() == raw.strip().lower()),
+            (v for v in _VALID_MICROBIAL_CATS
+             if v.lower() == raw.strip().lower() or (raw.strip().lower() == "unknown" and v == "Uncategorized")),
             None,
         )
         if matched:
@@ -1215,15 +1228,16 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
             "Reads (unmasked)":      int(float(_mc.get("reads_unmasked", 0) or 0)),
             "Breadth % (unmasked)":  round(float(_mc.get("breadth_unmasked", 0) or 0), 2),
         })
-    # Adaptive TASS (match_paths --adaptive_tass): the static score this row
-    # would have without it, the change, and why. Absent from default runs.
+    # Adaptive TASS (match_paths --adaptive_tass): an ADDITIONAL score beside the
+    # standard TASS ("TASS Score" stays standard and drives every cutoff), the
+    # change from standard, and why. Absent from default runs.
     _ad = org.get("adaptive_tass")
     if isinstance(_ad, dict):
-        _st = org.get("tass_score_static")
-        _st = float(_st) if _st is not None else None
+        _av = org.get("tass_score_adaptive")
+        _av = float(_av) if _av is not None else None
         _mask_cols.update({
-            "TASS (static)":          round(_st, 4) if _st is not None else None,
-            "TASS Change (adaptive)": round(tass - _st, 4) if _st is not None else None,
+            "TASS (adaptive)":        round(_av, 4) if _av is not None else None,
+            "TASS Change (adaptive)": round(_av - tass, 4) if _av is not None else None,
             "Adaptive Penalty":       round(float(_ad.get("penalty", 1.0) or 0), 4),
             "Adaptive Cutoff Shift":  _ad.get("cutoff_shift"),
             "Adaptive Reasons":       "; ".join(_ad.get("reasons") or []),
@@ -1233,6 +1247,32 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
         _mask_cols["FCS Assembly"] = _fcs.get("assembly", "")
         _mask_cols["FCS Contaminated bp"] = (int(_fcs["contaminant_bp"])
                                              if _fcs.get("contaminant_bp") not in (None, "") else None)
+
+    # ── Illumina index hopping (bin/index_hopping.py, --index_hopping) ────
+    # Present only on samples matched in an index-hopping table. Flag only:
+    # TASS / Passes Threshold above are unchanged. Back-filled on every row
+    # (_HOP_COLS in main) so mixed runs still line up.
+    _hop_cols = {}
+    _hop = org.get("index_hop")
+    if isinstance(_hop, dict):
+        _rate = _hop.get("top_donor_rate")
+        _hop_cols = {
+            "Index Hop Suspect":        bool(_hop.get("suspect", False)),
+            "Index Hop Expected Reads": round(float(_hop.get("expected_reads", 0) or 0), 2),
+            "Index Hop Explained %":    round(100.0 * float(_hop.get("explained_fraction", 0) or 0), 1),
+            "Index Hop p":              round(float(_hop.get("p_value", 0) or 0), 4),
+            "Index Hop Source":         _hop.get("top_donor") or "",
+            "Index Hop Source Reads":   (int(_hop["top_donor_reads"])
+                                         if _hop.get("top_donor_reads") is not None else None),
+            "Index Hop Rate %":         round(100.0 * float(_rate), 5) if _rate is not None else None,
+            "Index Hop Rate Source":    _hop.get("rate_source") or "",
+        }
+    # Donor side: this organism's reads may have hopped INTO flagged detections
+    # of other samples (a light note, never a flag).
+    _src = org.get("index_hop_source")
+    if isinstance(_src, dict) and _src.get("recipients"):
+        _hop_cols["Index Hop Source Of"] = index_hop_source_text(_src)
+        _hop_cols["Index Hop Reads Out"] = round(float(_src.get("expected_out", 0) or 0), 2)
 
     if int(org.get("hmp_site_count", 0) or 0) > 0:
         _HMP_JSON_SRC[(str(sample_name), str(org.get("key", "")), str(level),
@@ -1245,7 +1285,7 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
         "TASS Score":          round(tass, 100),  # 4th col — 0–100 scale for display
         "Taxonomic ID #":      str(org.get("key", "")),
         "Subkey":              str(org.get("subkey", org.get("key", ""))),
-        "Microbial Category":  org.get("microbial_category", "Unknown"),
+        "Microbial Category":  _mcat(org.get("microbial_category")),
         "Ann Class":           org.get("annClass", ""),
         "IsAnnotated":         "Yes" if org.get("is_annotated", "No") == "Yes" else "No",
         "High Consequence":    bool(org.get("high_cons", False)),
@@ -1319,6 +1359,7 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
         "Family":              tax.get("family", ""),
         "Genus":               tax.get("genus", ""),
         **_mask_cols,
+        **_hop_cols,
     }
 
 
@@ -1329,8 +1370,26 @@ _MASK_COLS = ["Masked Reads", "Masked Reads %", "Full Genome Length (bp)", "Mask
               "Masked bp %", "Mask Penalty", "FCS Assembly", "FCS Contaminated bp",
               "TASS (unmasked)", "TASS Change (mask)", "Reads (unmasked)", "Breadth % (unmasked)",
               # --adaptive_tass
-              "TASS (static)", "TASS Change (adaptive)", "Adaptive Penalty",
+              "TASS (adaptive)", "TASS Change (adaptive)", "Adaptive Penalty",
               "Adaptive Cutoff Shift", "Adaptive Reasons"]
+
+# Columns _flatten_organism adds only for samples matched in an index-hopping
+# table (bin/index_hopping.py). Back-filled like _MASK_COLS.
+_HOP_COLS = ["Index Hop Suspect", "Index Hop Expected Reads", "Index Hop Explained %", "Index Hop p",
+             "Index Hop Source", "Index Hop Source Reads", "Index Hop Rate %", "Index Hop Rate Source",
+             "Index Hop Source Of", "Index Hop Reads Out"]
+
+
+def index_hop_source_text(src):
+    """'Negative_Control_Miseq (~16.6), S2 (~0.8)' -- samples this organism's reads
+    may have hopped into (flagged there), with the expected reads. Mirrored by
+    _ttHopSourceText in assets/src/js/54_index_hopping.js."""
+    return ", ".join(f"{r.get('sample', '')} (~{float(r.get('expected_reads', 0) or 0):.1f})"
+                     for r in (src.get("recipients") or []))
+
+# Default organism rule installed when any detection is an index-hop suspect.
+INDEX_HOP_FLAG_RULE = {"on": True, "action": "flag",
+                       "conds": [{"source": "col", "field": "Index Hop Suspect", "op": "==", "value": "true"}]}
 
 
 def _iter_organisms(json_data, sample_name, mintass=0, microbial_cats=None):
@@ -1345,7 +1404,7 @@ def _iter_organisms(json_data, sample_name, mintass=0, microbial_cats=None):
     def _cat_ok(org):
         if microbial_cats is None:
             return True
-        return org.get("microbial_category", "Unknown") in microbial_cats
+        return _mcat(org.get("microbial_category")) in microbial_cats
 
     # grp = toplevelkey (genus) group; sk_m = subkey (species) group; strain = key.
     #
@@ -1441,12 +1500,12 @@ def load_json_inputs(paths, mintass=0, microbial_cats=None):
                     for sk_m in grp.get("members", []):
                         if float(sk_m.get('tass_score', 0) or 0) < mintass:
                             continue
-                        if microbial_cats is not None and sk_m.get('microbial_category', 'Unknown') not in microbial_cats:
+                        if microbial_cats is not None and _mcat(sk_m.get('microbial_category')) not in microbial_cats:
                             continue
                         for strain in sk_m.get("members", []):
                             if float(strain.get('tass_score', 0) or 0) < mintass:
                                 continue
-                            if microbial_cats is not None and strain.get('microbial_category', 'Unknown') not in microbial_cats:
+                            if microbial_cats is not None and _mcat(strain.get('microbial_category')) not in microbial_cats:
                                 continue
                             _contigs = strain.get("contigs")
                             _dhist   = strain.get("depth_histogram")
@@ -1480,12 +1539,12 @@ def load_json_inputs(paths, mintass=0, microbial_cats=None):
             for sk_m in grp.get("members", []):
                 if float(sk_m.get('tass_score', 0) or 0) < mintass:
                     continue
-                if microbial_cats is not None and sk_m.get('microbial_category', 'Unknown') not in microbial_cats:
+                if microbial_cats is not None and _mcat(sk_m.get('microbial_category')) not in microbial_cats:
                     continue
                 for strain in sk_m.get("members", []):
                     if float(strain.get('tass_score', 0) or 0) < mintass:
                         continue
-                    if microbial_cats is not None and strain.get('microbial_category', 'Unknown') not in microbial_cats:
+                    if microbial_cats is not None and _mcat(strain.get('microbial_category')) not in microbial_cats:
                         continue
                     _contigs = strain.get("contigs")
                     _dhist   = strain.get("depth_histogram")
@@ -2410,7 +2469,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
             "rpr": rpr,
             "tass": tass,
             "passes": tass >= _own_thr(sn),   # detection vs this dataset's own recommended cutoff
-            "category": r.get("Microbial Category", "Unknown"),
+            "category": _mcat(r.get("Microbial Category")),
             # Lineage labels so the report can roll the suite up to Species or
             # Genus, and so a Strain-level detection can still be matched to a
             # series that was collapsed to Species.
@@ -2542,7 +2601,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
                             # key by itself (a taxid, or the accession it is keyed by).
                             label = d.get("name") if len(keys) == 1 else ""
                             name_by_tid[tid] = label or (f"taxid {tid}" if tid.isdigit() else tid)
-                            cat_by_tid[tid] = "Unknown"
+                            cat_by_tid[tid] = "Uncategorized"
                             sp_by_tid[tid] = label or ""
                             gen_by_tid[tid] = ""
             _tot = sum(exp_reads_by_tid.values()) or 1.0
@@ -2713,7 +2772,7 @@ def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=Non
             organisms.append({
                 "taxid": tid,
                 "name": name_by_tid.get(tid, "Unknown"),
-                "category": cat_by_tid.get(tid, "Unknown"),
+                "category": cat_by_tid.get(tid, "Uncategorized"),
                 # Lineage for the report's Species/Genus rollups and for matching
                 # a Strain-level detection against a Species-level series.
                 "species": sp_by_tid.get(tid, ""),
@@ -2952,6 +3011,18 @@ def main():
               f"adaptive TASS: {_n_adaptive}/{len(sample_meta)}; "
               f"columns added: {', '.join(_present_mask_cols)}")
 
+    # ── index-hopping columns: present on some rows -> present (blank) on all ─
+    _present_hop_cols = [c for c in _HOP_COLS if any(c in r for r in rows)]
+    if _present_hop_cols:
+        for r in rows:
+            for c in _present_hop_cols:
+                r.setdefault(c, None)
+        _n_hop = sum(1 for m in sample_meta.values()
+                     if ((m or {}).get("index_hopping") or {}).get("applied"))
+        _n_sus = sum(1 for r in rows if r.get("Index Hop Suspect") and r.get("Level") == "Strain")
+        print(f"[make_report] index hopping: {_n_hop}/{len(sample_meta)} sample(s) matched; "
+              f"{_n_sus} strain-level detection(s) flagged as possible index hops")
+
     # ── derive column lists ────────────────────────────────────────────────────
     # These fields are carried on each record for client-side analysis (the
     # Feature Compare view + capability detection) but are NOT human-displayable
@@ -3086,7 +3157,8 @@ def main():
         "preferred_granularity", "control_type", "negative_controls_used",
         "positive_controls_used", "control_fold_threshold", "missing_positive_controls",
         "insilico_controls_used", "insilico_simulator_types", "missing_insilico_controls",
-        "missing_insilico_by_type", "adaptive_tass",
+        "missing_insilico_by_type", "index_hopping",
+        "adaptive_tass",
     }
     run_metadata_records = []
     for sname, smeta in sample_meta.items():
@@ -3226,6 +3298,14 @@ def main():
 
     # ── organism QC flag defaults ─────────────────────────────────────────────
     organism_flags = build_organism_flag_config(args)
+    # Index hopping: highlight the suspects by default (the user can switch the
+    # rule off or to "hide" in the report's Organism QC panel).
+    if any(r.get("Index Hop Suspect") for r in rows):
+        if organism_flags is None:
+            organism_flags = {"enabled": True, "view": "all", "rules": []}
+        if not any(c.get("field") == "Index Hop Suspect"
+                   for r in organism_flags["rules"] for c in r.get("conds", [])):
+            organism_flags["rules"].append(json.loads(json.dumps(INDEX_HOP_FLAG_RULE)))
     if organism_flags:
         print(f"[make_report] Organism QC: {len(organism_flags['rules'])} default rule(s), "
               f"view={organism_flags['view']}")
@@ -3325,6 +3405,7 @@ def main():
         "has_pathogens":         has_pathogens,                # true if a pathogen sheet was loaded
         "sample_flags":          sample_flags,                 # default whole-sample QC rules (None when unconfigured)
         "organism_flags":        organism_flags,               # default per-detection QC rules (None when unconfigured)
+        "controls_view":         getattr(args, "controls", "hide"),  # "show" | "hide": initial state of the report's "Show controls" switch
         "report_generated_at":   datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pipeline_revision":     pipeline_revision,            # global branch/tag or "local"
         "pipeline_commit":       pipeline_commit,              # global commit hash or None
@@ -3336,6 +3417,8 @@ def main():
         "alignment_trends":      alignment_trends,             # pipeline --alignment_trends results (None when not run)
     })
 
+    # Every category the report shows is one of the five standard labels.
+    canonicalize_categories(payload)
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
     # The payload is inlined in a <script>: a sample/organism/metadata string
     # containing "</script" or "<!--" would otherwise end or derail the element.

@@ -1,5 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-       -  §  TAB: TASS COMPARISON    (data-tab="tass")
+       -  §  METRICS TAB → TASS COMPARISON bar chart  (data-tab="metrics";
+       -     formerly its own "tass" tab — drawn by _drawTab("metrics"))
        -     drawTassChart()  →  D3 grouped bar chart. One group per taxonomy
        -     rank value, one bar per sample, height = max TASS Score.
        -     UI controls: rank selector, Y-scale (linear / log / sqrt).

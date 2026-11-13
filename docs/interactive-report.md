@@ -65,6 +65,54 @@ See [CLI Parameters → Output, Reporting, and Visualization](cli-parameters.md#
 
 ---
 
+## Merging Runs into One JSON (`all.odr.json`)
+
+Every run writes `report/all.odr.json` (module `COMBINE_SAMPLES_JSON`, script `bin/combine_samples_json.py`), which holds the per-sample `*.paths.json` files plus any VF/AMR (`prot_data`) and novelty blocks. It is the input `all.odr.html` is built from.
+
+To combine **several finished runs** into a single file, pass their `all.odr.json` files to the same script:
+
+```bash
+python bin/combine_samples_json.py \
+    -i run1/report/all.odr.json run2/report/all.odr.json run3/report/all.odr.json \
+    -o merged.odr.json
+
+# globs work too (quote them so the script expands them)
+python bin/combine_samples_json.py -i "runs/*/report/all.odr.json" -o merged.odr.json
+```
+
+Then either drag `merged.odr.json` onto any TaxTriage `all.odr.html` report, or build a new HTML report from it:
+
+```bash
+python bin/make_report.py -i merged.odr.json -t assets/heatmap.html -o merged.odr.html
+```
+
+What the merge does:
+
+- **Samples** from every input are listed side by side. Combined inputs are expanded, never nested. Per-sample `*.paths.json` files can be mixed in with `all.odr.json` files.
+- **VF/AMR and novelty** blocks embedded in each input are carried over, so the VF/AMR and Novelty tabs work from the merged file alone. `--annotate-reports` / `--novelty` can add more.
+- **Duplicate sample names.** The report keys samples by name, so two runs that both contain e.g. `Negative_Control` would otherwise collapse into one. By default the later one is renamed to `<name>__<label>`. The label is the run folder name: `run2` for `run2/report/all.odr.json`. The new name is applied everywhere the sample is referenced: metadata, organism rows, control links (`parent_id`, `*_controls_used`), VF/AMR `Specimen ID` and novelty. The old name is kept in `metadata.original_sample_name`.
+- **Provenance.** A top-level `merged_from` list records each input file, its label, how many samples it contributed, and what was renamed or skipped.
+
+| Option                                           | Default            | Meaning                                                                                                                                     |
+| ------------------------------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-i FILE [FILE ...]`                             | required           | `all.odr.json` and/or `*.paths.json` files; globs are expanded                                                                              |
+| `-o FILE`                                        | `all.samples.json` | Output file                                                                                                                                 |
+| `--on-duplicate {rename,skip,keep,error}`        | `rename`           | A name already loaded from an earlier input: rename it, drop it (first one wins), keep both unchanged (the report will merge them), or stop |
+| `--labels LABEL [LABEL ...]`                     | run folder         | One label per `-i` argument, used for renaming                                                                                              |
+| `--tag-all`                                      | off                | Rename every sample to `<name>__<label>`, not only duplicates, so each sample's run is always visible                                       |
+| `-n/--novelty`, `--annotate-reports`, `--pident` | -                  | Add a novelty JSON / annotate reports, same as in the pipeline                                                                              |
+
+```bash
+# label every sample with its run
+python bin/combine_samples_json.py -i jan/report/all.odr.json feb/report/all.odr.json \
+    --labels jan feb --tag-all -o jan_feb.odr.json
+```
+
+!!! note
+Merging only puts samples in one file; it does not rescore anything. Each sample keeps the TASS, cutoffs and weights of the run it came from. To merge samples into one **specimen** inside the report, use [Specimen grouping](#specimen-grouping-merge-samples).
+
+---
+
 ## Granularity: Strain, Species, and Genus
 
 A **View level** dropdown in the controls lets you switch the entire report (tables, heatmap, TASS and coverage plots) between three taxonomic granularities, meaning the level of taxonomic detail each row represents:
@@ -133,7 +181,7 @@ Multiple **samples** (library-level: e.g. a separate DNA and RNA extraction from
 
 **What changes when merge is ON**
 
-Every cross-sample view (Summary, Heatmap, TASS, Coverage, Table, Explore, the Run Metadata analyses, Map markers, VF/AMR genus/property charts and table, and the top banner's specimen/organism/reads counts) switches from one row per **sample** to one row per **specimen**, aggregating the member samples' rows for the same organism at the current view level:
+Every cross-sample view (Summary, Heatmap, Metrics, Table, the Run Metadata analyses, Map markers, VF/AMR genus/property charts and table, and the top banner's specimen/organism/reads counts) switches from one row per **sample** to one row per **specimen**, aggregating the member samples' rows for the same organism at the current view level:
 
 | Field(s)                                                                                                                                                                                                                                        | Aggregation                                                                                                                                 | Rationale                                                                                                   |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -149,7 +197,7 @@ A specimen with only one contributing sample passes through unaggregated. Merged
 
 **Prevalence and TASS-cutoff interaction**
 
-- Prevalence % (Explore, co-occurrence, etc.) is computed against the number of distinct **specimens** with at least one positive detection when merge is on, instead of the number of samples. That denominator is deliberately kept separate from the live TASS slider so it reflects everything that ever tested positive, not just what currently clears the cutoff.
+- Prevalence % (Summary → Cross-Sample, co-occurrence, etc.) is computed against the number of distinct **specimens** with at least one positive detection when merge is on, instead of the number of samples. That denominator is deliberately kept separate from the live TASS slider so it reflects everything that ever tested positive, not just what currently clears the cutoff.
 - The per-sample-type TASS cutoff (see [TASS Cutoff](#tass-cutoff-per-sample-type) below) is unaffected by merging: the cutoff is still applied to each row's `Sample Type` before rows are aggregated into their specimen.
 
 **Conflicting metadata**
@@ -178,12 +226,10 @@ Picking a new color updates the box, its member rows, the heatmap/legend, and an
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Summary**                   | ODR-style summary table across all samples, plus KPI cards (e.g. High Consequence count). The primary at-a-glance view.                                                                                                                                                                                                                                                                                                               |
 | **Heatmap**                   | Organism × sample TASS heatmap with the roll-up rescue markers described above.                                                                                                                                                                                                                                                                                                                                                       |
-| **TASS**                      | TASS-score distribution with the per-sample-type cutoff line.                                                                                                                                                                                                                                                                                                                                                                         |
 | **Sunburst**                  | Hierarchical taxonomic composition; slice labels render below the slices.                                                                                                                                                                                                                                                                                                                                                             |
-| **Coverage**                  | Per-organism coverage profiles.                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **Histogram**                 | Per-position genome coverage histogram, pre-filtered to a chosen organism + sample. Hidden/disabled for run-level species or genus views where per-position data is not meaningful.                                                                                                                                                                                                                                                   |
 | **Trends → Alignment Trends** | Across samples, how often each window of a reference is zero, low or high depth (relative to each sample's mean). Finds recurrent gaps and pile-ups; see [Alignment Trends](alignment-trends.md).                                                                                                                                                                                                                                     |
-| **Explore**                   | Scatter/bubble and correlogram exploration of metrics across organisms and samples.                                                                                                                                                                                                                                                                                                                                                   |
+| **Metrics**                   | **TASS Comparison** bar chart (TASS score by organism, grouped by taxonomy, with the per-sample-type cutoff line), the **Coverage Scatter** (coverage / depth / reads vs TASS, to spot outliers), and cross-sample radar, chord, organism-ranking and correlogram charts. Formerly three separate tabs (TASS Comparison, Coverage, Explore).                                                                                          |
 | **Table**                     | Full sortable, paginated data table with configurable columns (all columns shown by default, including **MicrobeRT Probability** / **MicrobeRT Model** when `--microbert` was used).                                                                                                                                                                                                                                                  |
 | **Proteins (VF/AMR)**         | Virulence-factor and AMR gene annotation table. Hidden unless protein annotations are present.                                                                                                                                                                                                                                                                                                                                        |
 | **Novelty**                   | Reference-free / open-set detection on the de novo contigs via the chosen backend (kaiju / bracken / mmseqs2): per-sample novelty score & flag, candidate genus+ taxa, a **method-coverage** breakdown (alignment/TASS vs backend rescue vs dark matter), and a **genus TASS-vs-backend** comparison. Column labels track the active backend. Hidden unless `--novelty` produced data. See [Novelty Detection](novelty-detection.md). |
@@ -398,6 +444,14 @@ Flagged rows carry an amber **QC** badge and a left rule in the Summary detectio
 
 ---
 
+### Control samples
+
+Negative and positive controls (samples whose metadata has a `control_type`, i.e. the samplesheet's `negative` / `positive` controls) are part of the report. A **Show controls** switch above the sample list, with a count such as "(1 negative, 1 positive)", hides them from every tab, chart, table and export and drops them from the sample list, or brings them back. It only appears when controls are loaded. Controls start **hidden** (switch off); tick the switch to bring them in, or run with `--report_controls show` to open the report with them shown. A report whose samples are all controls opens with them shown, so it is never empty. When the run has a positive control, each organism in the Summary **Detections** table gets a small tag: green **PC✓** = also detected in the positive control and passing there, amber **PC✓** = detected there but not passing, grey **PC–** = not in the positive control. It matches on the same taxid and level, or else the same species, and works while controls are hidden. Hover the tag for the control's TASS and reads. Hidden controls stay in the data, so cross-sample checks such as index hopping still use them, and a sample QC rule that hides a control keeps it hidden even when the switch says show.
+
+### Index-hopping flags
+
+Runs with `--index_hopping` (or a samplesheet `index_hopping` column) add _Index Hop …_ columns, a default organism rule `Index Hop Suspect == true → flag`, and a purple _Index hop_ badge in the banner. You can also drop an Illumina index-hopping table (CSV / TSV / XLSX) on the upload zone of any report to compute the same flags in the browser. See [Index Hopping](index-hopping.md#in-the-html-report).
+
 ## Export
 
 One **Export…** button sits under the _Filters_ heading in the right panel (or press <kbd>Ctrl/⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>). It opens a single popup where the first choice is _what_ to take away:
@@ -506,12 +560,12 @@ A JSON or YAML file that sets the report's layout. Every key is optional. An ann
 title: "Outbreak run 42" # banner + browser-tab title
 tabs:
   hidden: [novelty, insilico] # removed from the tab bar
-  disabled: [explore] # visible but greyed out, not clickable
+  disabled: [metrics] # visible but greyed out, not clickable
   # show:   [summary, heatmap, table]   # whitelist: every other tab is hidden
   default: heatmap # tab the report opens on
   order: [summary, table] # listed tabs first, the rest keep their order
   labels: { table: Detections } # rename tabs
-  # per-tab form also works:  novelty: hidden / explore: disabled
+  # per-tab form also works:  novelty: hidden / metrics: disabled
 admin:
   enabled: true # false = no Admin button and no run info in the HTML
   allow_tab_toggle: true # false = viewers cannot change tab visibility
@@ -519,7 +573,7 @@ admin:
   redact: [paths] # blank run-info fields / param values before embedding
 ```
 
-The tab ids are `summary`, `heatmap`, `tass`, `sunburst`, `coverage`, `proteins` (VF/AMR), `histogram`, `novelty`, `explore`, `table`, `runmeta` (Metadata), `map` (Mapping), `trends` and `insilico`. Aliases such as `vfamr`, `metadata` and `mapping` also work.
+The tab ids are `summary`, `heatmap`, `sunburst`, `proteins` (VF/AMR), `histogram`, `novelty`, `metrics`, `table`, `runmeta` (Metadata), `map` (Mapping), `trends` and `insilico`. Aliases such as `vfamr`, `metadata` and `mapping` also work. The retired ids `tass`, `coverage` and `explore` are accepted as aliases for `metrics`, which now holds those charts, so hiding any of them hides the whole Metrics tab.
 
 `admin.redact` takes run-info field names (`userName`, `workDir`, `commandLine`, …) and param names (`input`, `db`, …). The `paths` token covers the launch, work, project and output dirs, the config files, the command line and the user name. Redacted values are replaced before they are written into the HTML.
 

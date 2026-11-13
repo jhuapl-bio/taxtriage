@@ -61,7 +61,7 @@ from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 import random
 from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
-from optimize_weights import annotate_aggregate_dict, compute_assignment_confidence, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison, find_missing_positive_controls
+from optimize_weights import annotate_aggregate_dict, compute_assignment_confidence, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, canonicalize_categories, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison, find_missing_positive_controls
 from map_taxid import load_taxdump, load_names, get_root
 from utils import taxid_to_rank, calculate_var, load_matchfile
 
@@ -465,9 +465,12 @@ def parse_args(argv=None):
                         help="Blend factor when --optimize_mode hybrid. 1.0 = pure taxid-level, "
                              "0.0 = pure read-level. Default: 0.5.")
     parser.add_argument("--optimize_categories", nargs='+', default=None,
-                        choices=["Primary", "Potential", "Opportunistic", "Commensal", "Unknown"],
+                        choices=["Primary", "Potential", "Opportunistic", "Commensal", "Uncategorized",
+                                 "Unknown"],
                         help="Restrict weight optimization to only these microbial categories. "
-                             "Accepts one or more of: Primary, Potential, Opportunistic, Commensal, Unknown. "
+                             "Accepts one or more of: Primary, Potential, Opportunistic, Commensal, "
+                             "Uncategorized (organisms not in the pathogen sheet; 'Unknown' is accepted "
+                             "as a legacy alias). "
                              "If not set, all categories are included in the optimization objective.")
     # ── Site-aware breadth sigmoid tuning ────────────────────────────────
     parser.add_argument("--breadth_midpoint", type=float, default=0.0005,
@@ -766,6 +769,12 @@ def parse_args(argv=None):
                          "may set its group's representative breadth. Applied together with "
                          "--rep_breadth_min_frac (an accession qualifies if it clears EITHER "
                          "bar). Default: 50000. Set to 0 to disable.")
+    parser.add_argument('--ungated_minhash', action='store_true', default=False,
+                        help="Score the MinHash/ANI term WITHOUT its coverage gate (depth concentration x "
+                             "share of contigs with reads x 1%% breadth sigmoid). For targeted / capture panels, "
+                             "where reads cover a few short regions by design and the gate treats that as a "
+                             "pile-up artefact. Off by default. The would-be gate is kept in the JSON as "
+                             "minhash_coverage_gate_computed.")
     parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.3,
                     help="Power exponent for depth-concentration penalty on Gini. "
                          "Detects the conserved-human-reads pattern: many reads map to a "
@@ -783,12 +792,14 @@ def parse_args(argv=None):
                          "Use this flag to reproduce pre-fix scores.")
     # ── Adaptive TASS weighting (opt-in; see bin/adaptive_tass.py, docs/adaptive-tass.md) ──
     parser.add_argument('--adaptive_tass', action='store_true', default=False,
-                    help="Opt-in: shift the TASS weights per organism from its context in "
-                         "the sample (community complexity, high-ANI organisms of other "
-                         "species, same-genus species, low abundance, roll-ups) and mark "
-                         "ambiguous calls with weak MinHash support down. Off by default; "
-                         "with it off scoring is unchanged. Every organism keeps its static "
-                         "score in 'tass_score_static' and an 'adaptive_tass' audit block.")
+                    help="Opt-in: ALSO compute an adaptive TASS per organism, with the "
+                         "weights shifted by its context in the sample (community complexity, "
+                         "high-ANI organisms of other species, same-genus species, low "
+                         "abundance, roll-ups) and ambiguous calls with weak MinHash support "
+                         "marked down. Off by default. The standard TASS is always computed "
+                         "and stays 'tass_score' (cutoffs, filtering, report); the adaptive "
+                         "score is written beside it as 'tass_score_adaptive' with an "
+                         "'adaptive_tass' audit block.")
     parser.add_argument('--adaptive_tass_strength', type=float, default=1.0,
                     help="Scale of every adaptive shift and penalty, 0-1 (default 1). "
                          "0 reproduces the static scores exactly.")
@@ -797,10 +808,11 @@ def parse_args(argv=None):
                          "low_abundance, rollup; 'all' (default) or 'none'.")
     parser.add_argument('--adaptive_tass_base', type=str, default='sampletype',
                     choices=['sampletype', 'platform', 'global'],
-                    help="Starting weights (and cutoffs) taken from --thresholds_json: "
-                         "'sampletype' = the usual sample type|platform entry (default), "
-                         "'platform' = all|<platform>, 'global' = all|all. Explicit weight "
-                         "flags still win.")
+                    help="Starting weights for the ADAPTIVE score, taken from "
+                         "--thresholds_json: 'sampletype' = the same sample type|platform "
+                         "entry as the standard score (default), 'platform' = all|<platform>, "
+                         "'global' = all|all. Explicit weight flags still win. The standard "
+                         "score and its cutoffs are never affected.")
     parser.add_argument('--adaptive_tass_high_ani', type=float, default=None,
                     help="ANI fraction at/above which organisms of different species "
                          "compete (default: --ani_threshold). Needs --enable_matrix.")
@@ -1679,6 +1691,11 @@ def main():
     for _p, _v in _WEIGHT_DEFAULTS.items():
         if getattr(args, _p, None) is None:
             setattr(args, _p, _v)
+    # --adaptive_tass_base platform|global starts the adaptive score from another
+    # thresholds entry: snapshot the values before the sample-type entry is applied.
+    _pre_json_weight_vals = {_p: getattr(args, _p) for _p in _WEIGHT_DEFAULTS}
+    _pre_json_disparity_w = disparity_w
+    _adaptive_base_bw = None   # best_weights of the adaptive base entry (None = standard weights)
 
     # ── Load per-sample-type thresholds JSON if provided ─────────────────────
     # Two key formats are supported, auto-detected from the JSON content:
@@ -1733,16 +1750,6 @@ def main():
         else:
             _norm_plat = _raw_plat            # pass through as-is
 
-        # --adaptive_tass_base platform|global: start from the all|<platform> or
-        # all|all entry (weights AND cutoffs, which were fitted together) and let
-        # the per-organism adaptation supply the sample-specific part.
-        if _adaptive_cfg is not None and _adaptive_cfg.base != "sampletype":
-            _norm_st = "all"
-            if _adaptive_cfg.base == "global":
-                _norm_plat = "all"
-            print(f"[adaptive_tass] base={_adaptive_cfg.base}: thresholds key lookup uses "
-                  f"'{_norm_st}|{_norm_plat}' instead of the sample type")
-
         def _find_threshold_key(norm_st, norm_plat, domain_suffix=""):
             """Return the first matching key in thresholds_config for the given
             sampletype/platform combination.  domain_suffix is either '' (2-key
@@ -1786,6 +1793,19 @@ def main():
             print(f"Thresholds JSON (2-key) loaded. Sample type '{args.sampletype}' → '{_norm_st}', "
                   f"platform '{args.platform}' → '{_norm_plat}', "
                   f"using thresholds key: '{_st_key}'")
+
+        # --adaptive_tass_base platform|global: the ADAPTIVE score starts from the
+        # all|<platform> or all|all entry; the standard score keeps _st_key.
+        if _adaptive_cfg is not None and _adaptive_cfg.base != "sampletype":
+            _ad_plat = "all" if _adaptive_cfg.base == "global" else _norm_plat
+            _ad_key = _find_threshold_key("all", _ad_plat, "|all" if _is_3key_thresholds else "")
+            if _ad_key is None:
+                print(f"[adaptive_tass] base={_adaptive_cfg.base}: no 'all|{_ad_plat}' entry in "
+                      f"the thresholds JSON; adaptive starts from the standard weights")
+            else:
+                _adaptive_base_bw = dict(thresholds_config[_ad_key].get("best_weights", {}) or {})
+                print(f"[adaptive_tass] base={_adaptive_cfg.base}: adaptive weights start from "
+                      f"'{_ad_key}' (standard score keeps '{_st_key}')")
 
         _best_w = thresholds_config[_st_key].get("best_weights", {})
         # Override defaults with JSON best weights — but never overwrite a param
@@ -1840,6 +1860,34 @@ def main():
     # Score power transform: applied to TASS scores to lift compressed values.
     # score_power < 1 expands the low-score range (0.09^0.5 = 0.30).
     weights['score_power'] = args.score_power
+
+    # Starting weights for the adaptive score: the standard weights, or (with
+    # --adaptive_tass_base platform|global) the same construction from that
+    # thresholds entry. Explicit CLI weight flags win either way.
+    _adaptive_weights = None
+    if _adaptive_base_bw is not None:
+        _av = dict(_pre_json_weight_vals)
+        _adisp = _pre_json_disparity_w
+        for _k, _v in _adaptive_base_bw.items():
+            if _k in _av and _k not in _cli_provided:
+                _av[_k] = _v
+        if "disparity_weight" in _adaptive_base_bw and "disparity_weight" not in _cli_provided:
+            _adisp = _adaptive_base_bw["disparity_weight"]
+        _adaptive_weights = normalize_weights({
+            'mapq_score': args.mapq_weight,
+            'disparity_weight': _adisp,
+            'hmp_weight': _av['hmp_weight'],
+            'gini_weight': _av['gini_weight'],
+            "breadth_weight": _av['breadth_weight'],
+            "minhash_weight": _av['minhash_weight'],
+            'siblings_score': 0,
+            'diamond_identity': args.diamond_identity_weight,
+            "k2_disparity_score_weight": args.k2_disparity_weight,
+        })
+        _adaptive_weights['plasmid_bonus_weight'] = _av['plasmid_bonus_weight']
+        _adaptive_weights['abundance_confidence_weight'] = _av['abundance_confidence_weight']
+        _adaptive_weights['abundance_gate'] = args.abundance_gate
+        _adaptive_weights['score_power'] = _av['score_power']
     """
     # Final Score Calculation
 
@@ -2770,6 +2818,7 @@ def main():
         mapq_gini_power=args.mapq_gini_power,
         contig_penalty_power=args.contig_penalty_power,
         depth_concentration_power=args.depth_concentration_power,
+        minhash_gate=not args.ungated_minhash,
     )
     # for k, v in strain_summary.items():
     #     if v.get('toplevelname') == "Toxoplasma":
@@ -3080,13 +3129,16 @@ def main():
                                  species_field=_sp_field, genus_field=_g_field)
 
     def _tass_raw(data, level):
-        """Raw (0-1) TASS: static, or adaptive when --adaptive_tass is on."""
-        if _adaptive is None:
-            return compute_tass_score(data=data, weights=weights)
-        raw = _adaptive.score(data, level, weights, compute_tass_score)
-        _static = data.get('adaptive_tass', {}).get('static')
-        if _static is not None:
-            data['tass_score_static'] = _scale_tass_value(_mask_adjust(data, _static))
+        """Raw (0-1) STANDARD TASS -- always the score the run reports.
+
+        With --adaptive_tass the adaptive score is computed as well and stored
+        beside it (tass_score_adaptive, same masking / 0-100 scaling); it never
+        replaces the standard score."""
+        raw = compute_tass_score(data=data, weights=weights)
+        if _adaptive is not None:
+            _a = _adaptive.score(data, level, _adaptive_weights or weights,
+                                 compute_tass_score, standard=raw)
+            data['tass_score_adaptive'] = _scale_tass_value(_mask_adjust(data, _a))
         return raw
 
     def _mask_adjust(data, val):
@@ -3358,6 +3410,7 @@ def main():
         mapq_gini_power=args.mapq_gini_power,
         contig_penalty_power=args.contig_penalty_power,
         depth_concentration_power=args.depth_concentration_power,
+        minhash_gate=not args.ungated_minhash,
         group_covered_bp_override=_subkey_union_cb if _subkey_union_cb else None,
         group_coverage_override=_subkey_cov_frac if _subkey_cov_frac else None,
         group_numreads_override=_subkey_numreads_override if _subkey_numreads_override else None,
@@ -3382,6 +3435,7 @@ def main():
         mapq_gini_power=args.mapq_gini_power,
         contig_penalty_power=args.contig_penalty_power,
         depth_concentration_power=args.depth_concentration_power,
+        minhash_gate=not args.ungated_minhash,
         group_covered_bp_override=_toplevelkey_union_cb if _toplevelkey_union_cb else None,
         group_coverage_override=_toplevelkey_cov_frac if _toplevelkey_cov_frac else None,
         group_numreads_override=_toplevelkey_numreads_override if _toplevelkey_numreads_override else None,
@@ -3478,7 +3532,7 @@ def main():
         print(f"[rollup] monotone floor applied to {_n_floored}/{len(subkey_summary)} species")
         if _adaptive is not None:
             for _, sk_data in subkey_summary.items():
-                _adaptive.floor_static(sk_data)
+                _adaptive.floor_adaptive(sk_data)
 
     # ── Presence vs assignment ─────────────────────────────────────────────
     # Scoring N conspecific assemblies independently yields N high scores, and
@@ -3542,7 +3596,7 @@ def main():
         print(f"[rollup] monotone floor applied to {_n_floored}/{len(aggregate_dict)} genera")
         if _adaptive is not None:
             for _, data in aggregate_dict.items():
-                _adaptive.floor_static(data)
+                _adaptive.floor_adaptive(data)
 
     # Species-within-genus assignment, same partition one rank up.
     for _, data in aggregate_dict.items():
@@ -3562,6 +3616,9 @@ def main():
 
     import json
     def write_to_json(output_path, obj):
+        # Every category in the written JSON is one of the five standard labels;
+        # blank / unrecognised values are written as "Uncategorized".
+        canonicalize_categories(obj)
         with open(output_path, "w") as f:
             json.dump(obj, f, separators=(',', ':'), indent=4)
     final_json = annotate_aggregate_dict(
@@ -3871,12 +3928,12 @@ def main():
                 for entry in _type_missing:
                     entry['control_source'] = f'insilico_{_sim_type}'
                     entry['simulator_type'] = _sim_type
-                    _cat = 'Unknown'
+                    _cat = 'Uncategorized'
                     _entry_id = str(entry.get('id', ''))
                     _entry_name = entry.get('name', '')
                     _pinfo = pathogens.get(_entry_id) or pathogens.get(_entry_name)
                     if _pinfo:
-                        _raw_cat = _pinfo.get('callclass', 'Unknown')
+                        _raw_cat = _pinfo.get('callclass', 'Uncategorized')
                         if _raw_cat:
                             _raw_lower = str(_raw_cat).strip().lower()
                             if 'primary' in _raw_lower:
@@ -3910,12 +3967,12 @@ def main():
             for entry in _missing_insilico:
                 entry['control_source'] = 'insilico'
                 # Look up microbial category using taxid or name from pathogens dict
-                _cat = 'Unknown'
+                _cat = 'Uncategorized'
                 _entry_id = str(entry.get('id', ''))
                 _entry_name = entry.get('name', '')
                 _pinfo = pathogens.get(_entry_id) or pathogens.get(_entry_name)
                 if _pinfo:
-                    _raw_cat = _pinfo.get('callclass', 'Unknown')
+                    _raw_cat = _pinfo.get('callclass', 'Uncategorized')
                     # Normalize to standard category names
                     if _raw_cat:
                         _raw_lower = str(_raw_cat).strip().lower()
@@ -4808,6 +4865,7 @@ def main():
         "num_toplevelkeys": len(_all_toplevelkeys),
         "minmapq": args.minmapq,
         "masking": _mask_summary,  # None when no --mask_bed; see docs/masking.md
+        **({"ungated_minhash": True} if args.ungated_minhash else {}),  # --ungated_minhash
         "mapq_breadth_power": args.mapq_breadth_power,
         "weights": dict(weights),
         # --adaptive_tass only (absent otherwise, so default output is unchanged)
@@ -4882,7 +4940,7 @@ def main():
                 "fp_reads": int(fp_reads),
                 "total_reads": int(total_rd),
                 "classification": "TP" if is_tp else "FP",
-                "microbial_category": data.get('microbial_category', 'Unknown'),
+                "microbial_category": data.get('microbial_category', 'Uncategorized'),
             })
 
         # Filter out organisms with zero TP and zero FP reads –
@@ -5073,7 +5131,7 @@ def write_to_tsv(output_path, final_scores, header):
     with open (output_path, 'w') as file:
         file.write(f"{header}\n")
         for entry in final_scores:
-            is_pathogen = entry.get('is_pathogen', "Unknown")
+            is_pathogen = normalize_category(entry.get('is_pathogen'))
             formatname = entry.get('formatname', "N/A")
             sample_name = entry.get('sample_name', "N/A")
             ref = entry.get('ref', "N/A")
@@ -5081,7 +5139,7 @@ def write_to_tsv(output_path, final_scores, header):
             _entry_total = entry.get('total_reads', 0)
             _entry_reads = entry.get('reads_aligned', 0)
             percent_aligned = (100 * _entry_reads / _entry_total) if _entry_total > 0 and _entry_reads > 0 else 0
-            is_pathogen = entry.get('is_pathogen', "Unknown")
+            is_pathogen = normalize_category(entry.get('is_pathogen'))
             status = entry.get('status', "N/A")
             is_annotated= entry.get('is_annotated', "N/A")
             sample_type = entry.get('sample_type', "N/A")

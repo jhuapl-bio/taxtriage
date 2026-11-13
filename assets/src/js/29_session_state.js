@@ -184,6 +184,9 @@
       if (typeof ttOFlagCaptureConfig === "function") app.organismFlags = ttOFlagCaptureConfig();
     } catch (e) {}
     try {
+      if (typeof TT_CONTROLS_VIEW !== "undefined") app.controlsView = TT_CONTROLS_VIEW;
+    } catch (e) {}
+    try {
       app.sortCol = sortCol;
       app.sortAsc = sortAsc;
     } catch (e) {}
@@ -244,6 +247,9 @@
         ttFlagApplyHide();
         if (typeof ttFlagRenderSummary === "function") ttFlagRenderSummary();
       }
+    } catch (e) {}
+    try {
+      if (typeof ttControlsInit === "function") ttControlsInit(app.controlsView);
     } catch (e) {}
     try {
       if (typeof ttOFlagLoadConfig === "function") {
@@ -324,7 +330,8 @@
     } catch (e) {}
     // Restore the active tab (only if visible + enabled).
     if (ui.activeTab) {
-      var btn = document.querySelector('.tab-btn[data-tab="' + ui.activeTab + '"]');
+      var _tabId = typeof ttCanonicalTabId === "function" ? ttCanonicalTabId(ui.activeTab) : ui.activeTab;
+      var btn = document.querySelector('.tab-btn[data-tab="' + _tabId + '"]');
       if (btn && !btn.classList.contains("hidden") && !btn.classList.contains("tab-disabled")) btn.click();
     }
   }

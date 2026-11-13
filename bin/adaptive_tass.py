@@ -5,6 +5,10 @@ adaptive_tass.py -- opt-in, per-organism adaptive TASS weighting.
 Used by match_paths.py when ``--adaptive_tass`` is given. With the flag off this
 module is never imported and scoring is exactly what it was before.
 
+The standard TASS (``tass_score``) is ALWAYS computed and stays the score that
+drives cutoffs, filtering and the report. The adaptive score is an additional,
+informational score (``tass_score_adaptive``) written next to it.
+
 What it does
 ------------
 The static scorer applies ONE weight vector (resolved per sample type /
@@ -57,15 +61,15 @@ Safety
   and the penalty lean on it.
 * Any error while adapting one organism falls back to that organism's static
   score; the error is counted in metadata.adaptive_tass.errors and logged.
-* Every organism carries an ``adaptive_tass`` audit block (static and adaptive
-  score, the weights used, the context and the reasons) and
-  ``tass_score_static`` (what a run without --adaptive_tass reports).
+* Every organism carries an ``adaptive_tass`` audit block (standard and
+  adaptive score, the weights used, the context and the reasons) and
+  ``tass_score_adaptive`` next to the unchanged standard ``tass_score``.
 
 CLI
 ---
     python adaptive_tass.py summarize <sample>.paths.json [--level strain|species|genus|all]
 
-prints static vs adaptive TASS, the change, and the reasons for one output JSON.
+prints standard vs adaptive TASS, the change, and the reasons for one output JSON.
 """
 
 from __future__ import annotations
@@ -473,11 +477,18 @@ class AdaptiveTass:
             t -= CUT_ROLLUP_CREDIT
         return round(100.0 * c.strength * t, 3)
 
-    def score(self, data, level, weights, compute_fn):
-        """Raw (0-1) TASS for one organism: the adaptive score when possible,
-        the static score otherwise. Stamps data['adaptive_tass']."""
+    def score(self, data, level, weights, compute_fn, standard=None):
+        """Raw (0-1) adaptive TASS for one organism (the static score under
+        ``weights`` when it cannot be adapted). Stamps data['adaptive_tass'].
+
+        ``weights`` is the adaptive starting point (--adaptive_tass_base);
+        ``standard`` is the raw standard TASS the report keeps as its score.
+        When given, the audit and the per-level change statistics compare
+        against it; otherwise against the static score under ``weights``."""
         static = compute_fn(data=data, weights=weights)
-        audit = {"level": level, "static": round(_num(static), 6)}
+        ref = static if standard is None else standard
+        audit = {"level": level, "static": round(_num(static), 6),
+                 "standard": round(_num(ref), 6)}
         try:
             if self.disabled_reason:
                 raise _Static(self.disabled_reason)
@@ -513,7 +524,7 @@ class AdaptiveTass:
                 "cutoff_shift": self._cutoff_shift(ctx, mh, level),
                 "reasons": reasons or ["no context term active: static weights"],
             })
-            self._tally(level, static, final)
+            self._tally(level, ref, final)
             data["adaptive_tass"] = audit
             return final
         except _Static as why:
@@ -526,7 +537,7 @@ class AdaptiveTass:
                 self.log(f"[adaptive_tass] WARNING {level} {self._name(data)}: {msg} "
                          f"-- static score kept")
             audit.update({"status": "error", "adaptive": audit["static"], "reasons": [msg]})
-        self._tally(level, static, static)
+        self._tally(level, ref, static)
         data["adaptive_tass"] = audit
         return static
 
@@ -541,16 +552,17 @@ class AdaptiveTass:
         st["max_abs_delta"] = max(st["max_abs_delta"], abs(d))
 
     @staticmethod
-    def floor_static(parent):
-        """Mirror match_paths' monotone roll-up floor on tass_score_static, so
-        tass_score_static is what a run without --adaptive_tass reports."""
-        own = parent.get("tass_score_static")
+    def floor_adaptive(parent):
+        """match_paths' monotone roll-up floor, applied to tass_score_adaptive:
+        a parent's adaptive score is never below its best child's."""
+        own = parent.get("tass_score_adaptive")
         if own is None:
             return
-        kids = [c.get("tass_score_static", c.get("tass_score")) for c in parent.get("members", []) or []]
+        kids = [c.get("tass_score_adaptive") for c in parent.get("members", []) or []]
         best = max((_num(k) for k in kids if k is not None), default=None)
         if best is not None and best > _num(own):
-            parent["tass_score_static"] = best
+            parent["tass_score_adaptive_computed"] = own
+            parent["tass_score_adaptive"] = best
 
     def summary(self):
         """metadata.adaptive_tass block."""
@@ -578,6 +590,8 @@ class AdaptiveTass:
             "genus_field": self.genus_field,
             "minhash_available": self.minhash_available,
             "cutoff_shift_applied": False,
+            # tass_score stays the standard score; adaptive is reported beside it
+            "primary_score": "standard",
             "sample": smp,
             "levels": lv,
             "errors": self.errors,
@@ -631,13 +645,13 @@ def summarize(path, level="strain", out=print):
         f"errors={meta.get('errors')}")
     if meta.get("reason"):
         out(f"  reason: {meta['reason']}")
-    out(f"  {'level':<8}{'organism':<44}{'static':>8}{'adaptive':>9}{'change':>8}{'cut+':>7}  reasons")
+    out(f"  {'level':<8}{'organism':<44}{'standard':>9}{'adaptive':>9}{'change':>8}{'cut+':>7}  reasons")
     for lvl, o in _iter_levels(j.get("organisms", [])):
         if level != "all" and lvl != level:
             continue
         a = o.get("adaptive_tass") or {}
-        st, tt = _num(o.get("tass_score_static")), _num(o.get("tass_score"))
-        out(f"  {lvl:<8}{str(o.get('name'))[:43]:<44}{st:>8.2f}{tt:>9.2f}{tt - st:>+8.2f}"
+        st, tt = _num(o.get("tass_score")), _num(o.get("tass_score_adaptive", o.get("tass_score")))
+        out(f"  {lvl:<8}{str(o.get('name'))[:43]:<44}{st:>9.2f}{tt:>9.2f}{tt - st:>+8.2f}"
             f"{_num(a.get('cutoff_shift')):>+7.1f}  {'; '.join(a.get('reasons') or [])}")
     return 0
 
@@ -646,7 +660,7 @@ def main(argv=None):
     import argparse
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("summarize", help="static vs adaptive TASS for one paths.json")
+    s = sub.add_parser("summarize", help="standard vs adaptive TASS for one paths.json")
     s.add_argument("json")
     s.add_argument("--level", choices=list(LEVELS) + ["all"], default="strain")
     a = p.parse_args(argv)

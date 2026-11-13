@@ -1606,6 +1606,7 @@ function _renderOneRow(row) {
         contentSpan.appendChild(_bc);
       }
       if (_oflag) contentSpan.insertAdjacentHTML("beforeend", _orgFlagBadgeHTML(row));
+      if (typeof ttHopBadgesHTML === "function") contentSpan.insertAdjacentHTML("beforeend", ttHopBadgesHTML(row));
       if (typeof ttHmpMarkerHTML === "function") {
         const _hm = ttHmpMarkerHTML(row);
         if (_hm) {
@@ -1727,9 +1728,15 @@ function _renderOneRow(row) {
       }
       td.style.textAlign = "center";
       td.style.fontWeight = "600";
-      // Region masking: TASS before masking on hover (53_mask_compare.js)
-      if (typeof ttMaskCmpTitle === "function") {
-        const _mt = ttMaskCmpTitle(row);
+      // Region masking: TASS before masking on hover (53_mask_compare.js);
+      // adaptive TASS beside the standard score (56_adaptive_tass.js)
+      {
+        const _mt = [
+          typeof ttMaskCmpTitle === "function" ? ttMaskCmpTitle(row) : "",
+          typeof ttAdaptTitle === "function" ? ttAdaptTitle(row) : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
         if (_mt) td.title = _mt;
       }
       // Species-rollup hit: mark the row with the rescued-row style.

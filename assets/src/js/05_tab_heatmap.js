@@ -11,12 +11,26 @@ function drawHeatmap() {
   wrap.innerHTML = "";
   const fd = filteredData();
   const col = document.getElementById("hm-value-col").value || "# Reads Aligned";
-  // Region masking before/after (53_mask_compare.js, right panel): with the
-  // value set to TASS the cells can show the unmasked TASS or the change.
-  const _mcMode = col === "TASS Score" && typeof ttMaskCmpMode === "function" ? ttMaskCmpMode() : "masked";
-  const _isDelta = _mcMode === "delta";
-  const _val = (r) => (_mcMode === "masked" ? num(r[col]) : ttMaskCmpValue(r, _mcMode));
-  const _colLbl = _mcMode === "unmasked" ? "TASS (unmasked)" : _isDelta ? "TASS change (masked \u2212 unmasked)" : col;
+  // Adaptive TASS (56_adaptive_tass.js, right panel): with the value set to
+  // TASS the cells can show the adaptive score or its change from standard.
+  // Region masking before/after (53_mask_compare.js, right panel): likewise
+  // the unmasked TASS or the change. One alternative view at a time.
+  const _adMode = col === "TASS Score" && typeof ttAdaptMode === "function" ? ttAdaptMode() : "standard";
+  const _mcMode =
+    _adMode === "standard" && col === "TASS Score" && typeof ttMaskCmpMode === "function" ? ttMaskCmpMode() : "masked";
+  const _isDelta = _mcMode === "delta" || _adMode === "delta";
+  const _val = (r) =>
+    _adMode !== "standard" ? ttAdaptValue(r, _adMode) : _mcMode === "masked" ? num(r[col]) : ttMaskCmpValue(r, _mcMode);
+  const _colLbl =
+    _adMode === "adaptive"
+      ? "TASS (adaptive)"
+      : _adMode === "delta"
+      ? "TASS change (adaptive \u2212 standard)"
+      : _mcMode === "unmasked"
+      ? "TASS (unmasked)"
+      : _isDelta
+      ? "TASS change (masked \u2212 unmasked)"
+      : col;
   const rank =
     (document.getElementById("hm-rank") || document.getElementById("tass-rank") || { value: "Genus" }).value || "Genus";
   const showVals = document.getElementById("hm-show-vals").checked;
@@ -298,6 +312,7 @@ function drawHeatmap() {
               v !== null ? (_isDelta ? (v > 0 ? "+" : "") + v.toFixed(1) : v.toLocaleString()) : "n/a"
             }</b><br>TASS: ${tass.toFixed(1)} · ${rankLabel(r, rank)}` +
               (typeof ttMaskCmpTipHTML === "function" ? ttMaskCmpTipHTML(r) : "") +
+              (typeof ttAdaptTipHTML === "function" ? ttAdaptTipHTML(r) : "") +
               (_of
                 ? `<br><span style="color:#ffcc80"><i class="fas fa-flag"></i> Organism QC: ${_of.hits
                     .map((h) => _ttOFlagEsc(h.text))

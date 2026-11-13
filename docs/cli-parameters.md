@@ -351,7 +351,7 @@ path/size/mtime for local FASTAs) and `k`/`w`, so a changed FASTA or k/w rebuild
 | `--show_commensals`        | Show commensal organisms in the final report. Default: hidden.                                                                           |
 | `--show_potentials`        | Show potential pathogens in the final report. Default: hidden.                                                                           |
 | `--show_opportunistics`    | Show opportunistic pathogens in the final report. Default: hidden.                                                                       |
-| `--show_unidentified`      | Show unannotated organisms in the final report. Default: hidden.                                                                         |
+| `--show_unidentified`      | Show Uncategorized organisms (not in the pathogen sheet) in the final report. Default: hidden.                                           |
 | `--remove_commensal`       | Drop commensal taxids from the candidate list before alignment. Ignored for sterile sample types. Default: `FALSE`.                      |
 | `--add_irregular_top_hits` | Add organisms with irregular abundance distributions (z-score outliers) to top hits. Default: `false`.                                   |
 | `--distributions <path>`   | Custom `.tsv.gz` or `.tsv` abundance distributions file (replaces HMP defaults).                                                         |
@@ -368,6 +368,7 @@ path/size/mtime for local FASTAs) and `k`/`w`, so a changed FASTA or k/w rebuild
 | `--gini_weight <float>`               | Weight for the Gini coefficient (coverage distribution inequality).                                                                                                                                                                                                                                                                 |
 | `--breadth_weight <float>`            | Weight for log-based breadth of coverage score.                                                                                                                                                                                                                                                                                     |
 | `--minhash_weight <float>`            | Weight for minhash false-positive filtering score.                                                                                                                                                                                                                                                                                  |
+| `--ungated_minhash`                   | Score the MinHash/ANI term without its coverage gate (depth concentration × share of contigs with reads × 1% breadth sigmoid). For targeted / capture panels, whose reads cover a few short regions by design. Default `false`. See [Region Masking](masking.md) ("ANI without the coverage gate").                                 |
 | `--mapq_weight <float>`               | Weight for MAPQ normalization score. Disabled by default.                                                                                                                                                                                                                                                                           |
 | `--hmp_weight <float>`                | Weight for HMP abundance percentile. Recommend disabling for unknown sample types.                                                                                                                                                                                                                                                  |
 | `--disparity_score_weight <float>`    | Bonus weight for more prevalent organisms. Unused by default.                                                                                                                                                                                                                                                                       |
@@ -496,18 +497,18 @@ Writes the interactive report's tables to spreadsheets during the run, so nobody
 
 ### Datasets
 
-| Id                                       | Tab                  | Contents                                                                                             |
-| ---------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------- |
-| `detections`                             | Summary / Table      | Every detection with all TASS, coverage and taxonomy columns, plus `TASS Cutoff` and `Passes Cutoff` |
-| `detections_meta`                        | Summary / Table      | The same rows with every run-metadata column joined on - long format, ready to pivot                 |
-| `sample_summary`                         | Summary              | One row per specimen: detection counts, aligned reads, strongest hit                                 |
-| `organism_summary`                       | Explore              | Run-wide per-organism rollup: prevalence, TASS / coverage spread, ANI grouping                       |
-| `coverage`, `contigs`                    | Coverage / Histogram | Per specimen × organism breadth and depth; per aligned contig                                        |
-| `vfamr_hits`, `vfamr_genus`, `vfamr_amr` | VF/AMR               | Per-gene hits, genus summary, AMR genes                                                              |
-| `novelty_summary`, `novelty_candidates`  | Novelty              | Per-sample novelty statistics and candidate novel taxa                                               |
-| `run_metadata`, `sample_metadata`        | Run Metadata         | Collection / run metadata; pipeline provenance per sample                                            |
-| `geo`                                    | Map                  | Coordinates and place fields                                                                         |
-| `insilico_datasets`, `insilico_lod`      | In-Silico            | Per subsample dataset scoring; per-organism dilution series and LoD                                  |
+| Id                                       | Tab             | Contents                                                                                             |
+| ---------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------- |
+| `detections`                             | Summary / Table | Every detection with all TASS, coverage and taxonomy columns, plus `TASS Cutoff` and `Passes Cutoff` |
+| `detections_meta`                        | Summary / Table | The same rows with every run-metadata column joined on - long format, ready to pivot                 |
+| `sample_summary`                         | Summary         | One row per specimen: detection counts, aligned reads, strongest hit                                 |
+| `organism_summary`                       | Summary         | Run-wide per-organism rollup: prevalence, TASS / coverage spread, ANI grouping                       |
+| `coverage`, `contigs`                    | Histograms      | Per specimen × organism breadth and depth; per aligned contig                                        |
+| `vfamr_hits`, `vfamr_genus`, `vfamr_amr` | VF/AMR          | Per-gene hits, genus summary, AMR genes                                                              |
+| `novelty_summary`, `novelty_candidates`  | Novelty         | Per-sample novelty statistics and candidate novel taxa                                               |
+| `run_metadata`, `sample_metadata`        | Run Metadata    | Collection / run metadata; pipeline provenance per sample                                            |
+| `geo`                                    | Map             | Coordinates and place fields                                                                         |
+| `insilico_datasets`, `insilico_lod`      | In-Silico       | Per subsample dataset scoring; per-organism dilution series and LoD                                  |
 
 Run `export_data.py --list-datasets` for the live catalog, and `export_data.py -i <report> --list-columns all` for each table's column names (the strings `--export_data_columns` expects).
 
@@ -599,6 +600,7 @@ Each of `--report_org_flag_min_reads`, `--report_org_flag_min_tass` and `--repor
 | `--report_org_flag_criteria <spec>`             | Free-form rules: `;` between rules, `&` between the conditions of a rule (all must hold), each `field:op:value`. `field` is a detection column or one of `ani_max` `ani_partners` `genus_reads` `genus_share` `genus_rank` `genus_members` `sample_read_share` `k2_ratio` `prevalence` `lineage`. Operators: those of `--report_flag_metadata` plus `in` / `!in` (comma list). |
 | `--report_org_flag_action <flag\|hide>`         | `flag` highlights (default); `hide` also removes matching rows from every view.                                                                                                                                                                                                                                                                                                |
 | `--report_org_flag_view <all\|hide\|only>`      | Which rows the report opens on: `all` (flagged highlighted), `hide` (flagged hidden) or `only` (nothing but the flagged rows).                                                                                                                                                                                                                                                 |
+| `--report_controls <show\|hide>`                | Negative / positive control samples in `all.odr.html`: hidden when the report opens (`hide`, default) or shown (`show`). The report's _Show controls_ switch toggles them either way.                                                                                                                                                                                          |
 
 A `--report_flag_rules` JSON file may also carry an `"organism_rules"` block - `{"view": "hide", "rules": [{"action": "hide", "conds": [{"field": "Genus", "op": "in", "value": "Streptococcus"}, {"field": "# Reads Aligned", "op": "<", "value": 50}]}]}` - which replaces the parameters above.
 
@@ -716,6 +718,17 @@ Restrict TASS scoring to part of each reference: ignore NCBI FCS contaminant spa
 | `--mask_compare_parallel` | `false`            | Run that unmasked scoring alongside the masked one (faster, ~2× peak memory).                                                 |
 | `--mask_write_bam`        | `false`            | Also write `masking/bam/<sample>.masked.bam` (+ `.bai`) with the masked alignments removed.                                   |
 | `--mask_report_top`       | `24`               | Coverage tracks drawn in the masking report.                                                                                  |
+
+## Illumina Index Hopping
+
+Flag detections that index hopping from another sample of the same Illumina lane could explain (flag only; TASS and calls are unchanged). Off unless `--index_hopping` or the samplesheet `index_hopping` column is set. See [Index Hopping](index-hopping.md).
+
+| Parameter                | Default | Description                                                                                                                                                                                                                                 |
+| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--index_hopping`        | –       | Comma-separated index-hopping table(s) (bcl-convert `Index_Hopping_Counts` layout) as CSV, TSV or XLSX, applied to every sample. The samplesheet `index_hopping` column overrides it per row; `index_sample_id` names the row in the table. |
+| `--index_hopping_rate`   | `0.001` | Hop rate used when a table has no hopped rows (0.1 %).                                                                                                                                                                                      |
+| `--index_hopping_factor` | `2`     | Multiplier on the expected hopped reads, for uncertainty in the rate.                                                                                                                                                                       |
+| `--index_hopping_alpha`  | `0.01`  | Flag when P(reads ≥ observed \| hopping) ≥ alpha.                                                                                                                                                                                           |
 
 ## Deprecated Parameters
 

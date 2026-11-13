@@ -1,5 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-       -  §  TAB: COVERAGE           (data-tab="coverage")
+       -  §  METRICS TAB → COVERAGE SCATTER  (data-tab="metrics";
+       -     formerly its own "coverage" tab — drawn by _drawTab("metrics"))
        -     drawCoverage()  →  zoomable bubble scatter; X = breadth, Y = depth
        -     by default, bubble size = TASS Score. Each axis (X, Y, R) and the
        -     scale type (linear / log / sqrt) is user-selectable. Colored per

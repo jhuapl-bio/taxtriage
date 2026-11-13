@@ -813,7 +813,7 @@
             "TASS Score": 94.7285,
             "Taxonomic ID #": "1613",
             Subkey: "1613",
-            "Microbial Category": "Unknown",
+            "Microbial Category": "Uncategorized",
             "Ann Class": "Direct",
             IsAnnotated: "No",
             "High Consequence": false,
@@ -863,7 +863,7 @@
             "TASS Score": 97.4541,
             "Taxonomic ID #": "1613",
             Subkey: "1613",
-            "Microbial Category": "Unknown",
+            "Microbial Category": "Uncategorized",
             "Ann Class": "Direct",
             IsAnnotated: "No",
             "High Consequence": false,
@@ -913,7 +913,7 @@
             "TASS Score": 97.4541,
             "Taxonomic ID #": "2742598",
             Subkey: "1613",
-            "Microbial Category": "Unknown",
+            "Microbial Category": "Uncategorized",
             "Ann Class": "Direct",
             IsAnnotated: "No",
             "High Consequence": false,
@@ -71535,7 +71535,7 @@
               "HHS Percentile": "100.0",
               IsAnnotated: "Yes",
               AnnClass: "Direct",
-              "Microbial Category": "Unknown",
+              "Microbial Category": "Uncategorized",
               "High Consequence": "False",
               "Mol Type": null,
               "Taxonomic ID #": "1613",
@@ -72183,7 +72183,7 @@
               "HHS Percentile": "100.0",
               IsAnnotated: "Yes",
               AnnClass: "Direct",
-              "Microbial Category": "Unknown",
+              "Microbial Category": "Uncategorized",
               "High Consequence": "False",
               "Mol Type": null,
               "Taxonomic ID #": "1613",
@@ -72453,7 +72453,7 @@
               "HHS Percentile": "100.0",
               IsAnnotated: "Yes",
               AnnClass: "Direct",
-              "Microbial Category": "Unknown",
+              "Microbial Category": "Uncategorized",
               "High Consequence": "False",
               "Mol Type": null,
               "Taxonomic ID #": "1613",
@@ -108383,7 +108383,7 @@
           <button
             class="info-tip-btn"
             aria-label="About Microbial Category"
-            data-tip="<b>Microbial Category</b><br>Classifies each detected organism by its typical clinical relevance:<br><br><b>Primary</b> — known pathogen, directly associated with disease<br><b>Commensal</b> — normal flora, usually harmless in healthy individuals<br><b>Opportunistic</b> — can cause disease in immunocompromised hosts<br><b>Potential</b> — possible pathogen under certain conditions<br><b>Unknown</b> — category not determined<br><br>Hold Ctrl/⌘ to select multiple; deselect all to show every category."
+            data-tip="<b>Microbial Category</b><br>Classifies each detected organism by its typical clinical relevance:<br><br><b>Primary</b> — known pathogen, directly associated with disease<br><b>Commensal</b> — normal flora, usually harmless in healthy individuals<br><b>Opportunistic</b> — can cause disease in immunocompromised hosts<br><b>Potential</b> — possible pathogen under certain conditions<br><b>Uncategorized</b> — not listed in the TaxTriage pathogen sheet, so no clinical category has been curated (this says nothing about whether the organism is harmful)<br><br>Hold Ctrl/⌘ to select multiple; deselect all to show every category."
           >
             &#x24D8;
           </button></label
@@ -108398,7 +108398,7 @@
           <option value="Commensal">Commensal</option>
           <option value="Opportunistic">Opportunistic</option>
           <option value="Potential">Potential</option>
-          <option value="Unknown">Unknown</option>
+          <option value="Uncategorized">Uncategorized</option>
         </select>
         <div style="font-size: 0.72em; color: #888; margin-top: -0.15em; margin-bottom: 0.35em">
           Ctrl/&#8984; click to multi-select; deselect all to show all
@@ -109991,7 +109991,7 @@
             }
           }
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
-          if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
+          if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Uncategorized")) return false;
           if (kingdomFilter) {
             const bucket = _rowKingdomBucket(r);
             if (!bucket || !kingdomFilter.has(bucket)) return false;
@@ -119145,7 +119145,7 @@
         Commensal: "#1565c0",
         Opportunistic: "#f57c00",
         Potential: "#6a1b9a",
-        Unknown: "#555",
+        Uncategorized: "#555",
       };
       // Longitudinal analysis state — declared here (before init IIFE) to avoid TDZ
       let _longiOrgList = [];
@@ -119291,7 +119291,7 @@
       function _rowKeywords(r) {
         const chips = [];
         const cat = r["Microbial Category"];
-        if (cat && cat !== "Unknown") chips.push({ t: cat, c: "kw-cat" });
+        if (cat && cat !== "Uncategorized") chips.push({ t: cat, c: "kw-cat" });
         const status = r["Status"];
         if (status) chips.push({ t: status, c: "" });
         const annClass = r["Ann Class"];
@@ -120323,7 +120323,7 @@
               `<td colspan="${_visSumCols.length}">${_emptyOnlyMessageHTML(r["Specimen ID"], r.__emptyMeta)}</td></tr>`;
             return;
           }
-          const cat = r["Microbial Category"] || "Unknown";
+          const cat = r["Microbial Category"] || "Uncategorized";
           const cc = _CAT_COLORS[cat] || "#555";
           const hc = isTruthy(r["High Consequence"]);
           const key = _sumRowKey(r);
@@ -121647,7 +121647,7 @@
             }
           }
           if (onlyHC && !isTruthy(r["High Consequence"])) continue;
-          if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) continue;
+          if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Uncategorized")) continue;
           if (kingdomFilter2) {
             const b2 = _rowKingdomBucket(r);
             if (!b2 || !kingdomFilter2.has(b2)) continue;
@@ -121777,7 +121777,7 @@
             }
           }
           if (onlyHC && !isTruthy(r["High Consequence"])) continue;
-          if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) continue;
+          if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Uncategorized")) continue;
           if (kingdomFilter3) {
             const b3 = _rowKingdomBucket(r);
             if (!b3 || !kingdomFilter3.has(b3)) continue;
@@ -122332,7 +122332,7 @@
             e = {
               taxid: taxid || "—",
               name: r["Detected Organism"] || key,
-              cat: r["Microbial Category"] || "Unknown",
+              cat: r["Microbial Category"] || "Uncategorized",
               // Nested: specimen → (member sample → best TASS / coverage for that
               // member). Reduced to one value per specimen at row-build time using
               // the user-selected aggregation (max / median / mean / min / detection).
@@ -122524,7 +122524,7 @@
       }
 
       function _xsCatColor(cat) {
-        return _CAT_COLORS[(cat || "Unknown").split(";")[0]] || "#607d8b";
+        return _CAT_COLORS[(cat || "Uncategorized").split(";")[0]] || "#607d8b";
       }
 
       // ── Specimen merge: toggle + membership editor ───────────────────────────
@@ -133677,7 +133677,7 @@
           // ── Organism rows ────────────────────────────────────────────────
           orgRows.forEach((r, i) => {
             const bg = i % 2 === 0 ? "#fafbff" : "#fff";
-            const cat = r["Microbial Category"] || "Unknown";
+            const cat = r["Microbial Category"] || "Uncategorized";
             const catColor = _CAT_COLORS[cat] || "#555";
             const tass = parseFloat(r["TASS Score"] || 0);
             const reads = parseFloat(r["# Reads Aligned"] || r["% Reads"] || 0);
@@ -133910,7 +133910,7 @@
         tbody.innerHTML = rows
           .map((r, i) => {
             const bg = i % 2 === 0 ? "#fafbff" : "#fff";
-            const cat = r["Microbial Category"] || "Unknown";
+            const cat = r["Microbial Category"] || "Uncategorized";
             const catColor = _CAT_COLORS[cat] || "#555";
             const tass = parseFloat(r["TASS Score"] || 0);
             const bar = `<div style="display:inline-block;width:${Math.round(

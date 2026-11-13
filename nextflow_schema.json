@@ -621,6 +621,7 @@
                 },
                 "adaptive_tass": {
                     "type": "boolean",
+                    "default": false,
                     "description": "Opt-in adaptive TASS weighting: shift the score weights per organism from its context in the sample (community complexity, high-ANI organisms of other species, same-genus species, low abundance, roll-ups) and mark ambiguous calls with weak MinHash support down. Off by default; with it off scoring is unchanged.",
                     "help_text": "Starts from the sample type/platform weights. Every organism keeps its static score (tass_score_static) and an adaptive_tass audit block in the JSON; the report adds TASS (static) / TASS Change (adaptive) columns. The ani term needs --enable_matrix. See docs/adaptive-tass.md.",
                     "fa_icon": "fas fa-sliders-h"
@@ -729,6 +730,12 @@
                     "type": ["number", "null"],
                     "description": "Power transform (gamma) applied to TASS scores. Values < 1 lift compressed scores (e.g. 0.09^0.5=0.30). Preserves monotonic ordering so thresholds still separate TP/FP. Default: no transform.",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "ungated_minhash": {
+                    "type": "boolean",
+                    "description": "Score the MinHash/ANI term of TASS without its coverage gate (depth concentration x share of contigs with reads x 1% breadth sigmoid). For targeted / capture panels, whose reads cover a few short regions by design. Off by default.",
+                    "default": false,
+                    "fa_icon": "fas fa-unlock"
                 },
                 "depth_concentration_power": {
                     "type": "number",
@@ -1123,7 +1130,7 @@
                 },
                 "show_unidentified": {
                     "type": "boolean",
-                    "description": "Show all non or non-identification organisms in the final discovery report",
+                    "description": "Show Uncategorized organisms (not listed in the pathogen sheet) in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "ani_threshold": {
@@ -1684,6 +1691,13 @@
                     "enum": ["all", "hide", "only"],
                     "description": "Which organism rows the report opens on: all (flagged highlighted), hide flagged, or only flagged.",
                     "fa_icon": "fas fa-filter"
+                },
+                "report_controls": {
+                    "type": "string",
+                    "default": "hide",
+                    "enum": ["show", "hide"],
+                    "description": "Negative / positive control samples in the HTML report: open the report with them hidden (default) or shown. The report's 'Show controls' switch above the sample list toggles them either way.",
+                    "fa_icon": "fas fa-vial"
                 }
             }
         },
@@ -2084,6 +2098,45 @@
                     "fa_icon": "fas fa-table"
                 }
             }
+        },
+        "index_hopping": {
+            "title": "Illumina index hopping",
+            "type": "object",
+            "fa_icon": "fas fa-random",
+            "description": "Flag detections that index hopping from another sample of the same Illumina lane could explain. Flag only: TASS and calls are unchanged.",
+            "properties": {
+                "index_hopping": {
+                    "type": "string",
+                    "format": "file-path",
+                    "pattern": "^\\S+$",
+                    "description": "Comma-separated index-hopping table(s) (bcl-convert Index_Hopping_Counts layout) as CSV, TSV or XLSX, applied to every sample. A samplesheet `index_hopping` column overrides it per row.",
+                    "help_text": "Columns recognised (case-insensitive): Lane, SampleID, Sample_Project, index, index2, # Reads, % of Hopped Reads, % of All Reads. Rows with a SampleID are each sample's correctly paired reads; rows without one (or with an index pair that is not the sample's own) are hopped combinations and give per-pair and per-lane hop rates. Samples are matched by `sample` (or the samplesheet `index_sample_id` column); only samples sharing a lane are compared. See docs/index-hopping.md.",
+                    "fa_icon": "fas fa-file-csv"
+                },
+                "index_hopping_rate": {
+                    "type": "number",
+                    "default": 0.001,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Hop rate used when a file has no hopped rows (0.001 = 0.1%).",
+                    "fa_icon": "fas fa-percent"
+                },
+                "index_hopping_factor": {
+                    "type": "number",
+                    "default": 2,
+                    "exclusiveMinimum": 0,
+                    "description": "Multiplier on the expected hopped reads, to allow for uncertainty in the rate.",
+                    "fa_icon": "fas fa-times"
+                },
+                "index_hopping_alpha": {
+                    "type": "number",
+                    "default": 0.01,
+                    "exclusiveMinimum": 0,
+                    "maximum": 1,
+                    "description": "Flag a detection when P(reads >= observed | hopping) >= alpha, i.e. hopping cannot be ruled out at this level.",
+                    "fa_icon": "fas fa-flag"
+                }
+            }
         }
     },
     "allOf": [
@@ -2139,6 +2192,9 @@
         },
         {
             "$ref": "#/definitions/alignment_trends"
+        },
+        {
+            "$ref": "#/definitions/index_hopping"
         },
         {
             "$ref": "#/definitions/region_masking"

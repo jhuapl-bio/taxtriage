@@ -166,7 +166,7 @@ function _ncbiLink(r) {
 function _rowKeywords(r) {
   const chips = [];
   const cat = r["Microbial Category"];
-  if (cat && cat !== "Unknown") chips.push({ t: cat, c: "kw-cat" });
+  if (cat && cat !== UNCATEGORIZED) chips.push({ t: cat, c: "kw-cat" });
   const status = r["Status"];
   if (status) chips.push({ t: status, c: "" });
   const annClass = r["Ann Class"];
@@ -661,9 +661,28 @@ function drawSummary() {
       subFull: aReads.full,
       tipId: "kpi-tip-pct",
     },
-    { label: "Organisms", value: _fmtInt(uniqOrgs), sub: `passing filter<br>Total: ${_fmtInt(total_taxa_notfilter)}` },
-    { label: "Genera", value: _fmtInt(uniqGenera), sub: "unique genera" },
-    { label: "High Consequence", value: _fmtInt(hcCount), sub: "flagged pathogens" },
+    // Organisms, genera and high-consequence counts share one card so the
+    // KPI row stays a single line on typical screen widths.
+    {
+      label: "Detections",
+      combo: [
+        {
+          key: "Organisms",
+          value: _fmtInt(uniqOrgs),
+          note: `of ${_fmtInt(total_taxa_notfilter)}`,
+          title: `${_fmtInt(uniqOrgs)} organisms passing the filters, out of ${_fmtInt(
+            total_taxa_notfilter,
+          )} in the run`,
+        },
+        { key: "Genera", value: _fmtInt(uniqGenera), title: "Unique genera passing the filters" },
+        {
+          key: "High Consequence",
+          value: _fmtInt(hcCount),
+          hc: true,
+          title: hcCount > 0 ? "" : "No flagged high-consequence pathogens",
+        },
+      ],
+    },
     { label: "TASS Cutoff", value: cutVal, sub: cutSub, tipId: "kpi-tip-tass" },
   ];
   //  No Sample QC card here: flag state lives in the right panel (Sample QC /
@@ -672,21 +691,36 @@ function drawSummary() {
   const hcColor = hcCount > 0 ? "#c62828" : "#1565c0";
   const kpiRow = document.getElementById("summary-kpi-row");
   const infoIcon = `<i class="fas fa-circle-info" style="font-size:0.7em;opacity:0.45;margin-left:4px;vertical-align:middle"></i>`;
+  const _comboCard = (c) =>
+    `<div class="kpi-card kpi-combo${hcCount > 0 ? " kpi-combo-hc" : ""}">` +
+    `<div class="kpi-label">${c.label}</div>` +
+    c.combo
+      .map(
+        (it) =>
+          `<div class="kpi-combo-row${it.hc ? " kpi-hc-row" + (hcCount > 0 ? " kpi-hc" : "") : ""}"${
+            it.title ? ` title="${it.title}"` : ""
+          }>` +
+          `<span class="kpi-combo-key">${it.key}${it.hc && hcCount > 0 ? infoIcon : ""}</span>` +
+          `<span class="kpi-combo-val"${it.hc ? ` style="color:${hcColor}"` : ""}>${it.value}` +
+          (it.note ? `<span class="kpi-combo-note">${it.note}</span>` : "") +
+          `</span></div>`,
+      )
+      .join("") +
+    `</div>`;
   kpiRow.innerHTML = cards
-    .map(
-      (c) =>
-        `<div class="kpi-card${c.label === "High Consequence" && hcCount > 0 ? " kpi-hc" : ""}"${
-          c.label === "High Consequence" ? ` style="border-left-color:${hcColor}"` : ""
-        }${c.tipId ? ` id="${c.tipId}" style="cursor:help"` : ""}>` +
-        `<div class="kpi-label">${c.label}${c.tipId || c.label === "High Consequence" ? infoIcon : ""}</div>` +
-        `<div class="kpi-value"${c.full ? ` title="${c.full}"` : ""}>${c.value}</div>` +
-        (c.sub ? `<div class="kpi-sub"${c.subFull ? ` title="${c.subFull}"` : ""}>${c.sub}</div>` : "") +
-        (c.sub2 ? `<div class="kpi-sub"${c.sub2Full ? ` title="${c.sub2Full}"` : ""}>${c.sub2}</div>` : "") +
-        `</div>`,
+    .map((c) =>
+      c.combo
+        ? _comboCard(c)
+        : `<div class="kpi-card"${c.tipId ? ` id="${c.tipId}" style="cursor:help"` : ""}>` +
+          `<div class="kpi-label">${c.label}${c.tipId || c.label === "High Consequence" ? infoIcon : ""}</div>` +
+          `<div class="kpi-value"${c.full ? ` title="${c.full}"` : ""}>${c.value}</div>` +
+          (c.sub ? `<div class="kpi-sub"${c.subFull ? ` title="${c.subFull}"` : ""}>${c.sub}</div>` : "") +
+          (c.sub2 ? `<div class="kpi-sub"${c.sub2Full ? ` title="${c.sub2Full}"` : ""}>${c.sub2}</div>` : "") +
+          `</div>`,
     )
     .join("");
 
-  // High-consequence KPI hover: keep this compact so it cannot cover the
+  // High-consequence KPI hover (the HC row of the Detections card): keep this compact so it cannot cover the
   // top of the summary page when many samples have flagged detections.
   const hcCard = kpiRow.querySelector(".kpi-hc");
   if (hcCard) {
@@ -1340,7 +1374,7 @@ function _renderSummaryTable(fd) {
         `<td colspan="${_visSumCols.length}">${_emptyOnlyMessageHTML(r["Specimen ID"], r.__emptyMeta)}</td></tr>`;
       return;
     }
-    const cat = r["Microbial Category"] || "Unknown";
+    const cat = r["Microbial Category"] || UNCATEGORIZED;
     const cc = _CAT_COLORS[cat] || "#555";
     const hc = isTruthy(r["High Consequence"]);
     const key = _sumRowKey(r);
@@ -1370,6 +1404,8 @@ function _renderSummaryTable(fd) {
       `<span style="display:inline-block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;max-width:100%">${_orgBadges(
         r,
       )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_oflagBadge}${
+        typeof ttHopBadgesHTML === "function" ? ttHopBadgesHTML(r) : ""
+      }${typeof ttPosCtlBadgeHTML === "function" ? ttPosCtlBadgeHTML(r) : ""}${
         typeof ttHmpMarkerHTML === "function"
           ? ttHmpMarkerHTML(r).replace('data-hmp-mark="1"', `data-hmp-key="${key}"`)
           : ""
@@ -1409,13 +1445,19 @@ function _renderSummaryTable(fd) {
       }</td>` +
       `<td><span style="color:${cc};font-weight:600">${cat}</span></td>` +
       (function () {
-        // Region masking before/after (53_mask_compare.js): hover always, arrow on toggle
-        const _mt = typeof ttMaskCmpTitle === "function" ? ttMaskCmpTitle(r) : "";
+        // Region masking before/after (53_mask_compare.js) and adaptive TASS
+        // (56_adaptive_tass.js): hover always, inline value on toggle
+        const _mt = [
+          typeof ttMaskCmpTitle === "function" ? ttMaskCmpTitle(r) : "",
+          typeof ttAdaptTitle === "function" ? ttAdaptTitle(r) : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
         return (
           `<td style="text-align:right;white-space:nowrap"${_mt ? ` title="${_esc(_mt)}"` : ""}>` +
           `${num(r["TASS Score"]).toFixed(1)}${
             typeof ttMaskCmpInlineHTML === "function" ? ttMaskCmpInlineHTML(r) : ""
-          }</td>`
+          }${typeof ttAdaptInlineHTML === "function" ? ttAdaptInlineHTML(r) : ""}</td>`
         );
       })() +
       `<td style="text-align:center">${_summaryRescueCellHTML(r, key)}</td>` +
@@ -3194,7 +3236,7 @@ function _belowCutoffExtraRows() {
       }
     }
     if (onlyHC && !isTruthy(r["High Consequence"])) continue;
-    if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) continue;
+    if (mcFilter && !mcFilter.has(r["Microbial Category"] || UNCATEGORIZED)) continue;
     if (kingdomFilter2) {
       const b2 = _rowKingdomBucket(r);
       if (!b2 || !kingdomFilter2.has(b2)) continue;
@@ -3318,7 +3360,7 @@ function _noveltySubThresholdExtraRows() {
       }
     }
     if (onlyHC && !isTruthy(r["High Consequence"])) continue;
-    if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) continue;
+    if (mcFilter && !mcFilter.has(r["Microbial Category"] || UNCATEGORIZED)) continue;
     if (kingdomFilter3) {
       const b3 = _rowKingdomBucket(r);
       if (!b3 || !kingdomFilter3.has(b3)) continue;

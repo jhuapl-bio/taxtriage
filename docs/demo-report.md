@@ -28,11 +28,9 @@ single self-contained HTML file carrying its own data.
 | --------------------- | ------------------------------------------------------------------------------------------- |
 | **Summary**           | Per-sample overview with the top-scoring organisms and QC flags                             |
 | **Heatmap**           | Organism × sample matrix; switch the cell value between TASS, abundance, coverage and depth |
-| **TASS**              | Score decomposition - how each component contributed to the final confidence                |
-| **Coverage**          | Per-reference coverage tracks with the conflict regions marked                              |
 | **Sunburst**          | Taxonomic composition, drillable from kingdom down to species                               |
 | **Proteins / VF-AMR** | Virulence factor and antimicrobial resistance gene hits                                     |
-| **Explore**           | Free-form filtering across every metric in the run                                          |
+| **Metrics**           | TASS comparison bars, coverage scatter, and cross-sample radar/chord/ranking charts         |
 
 Full documentation of each panel lives in [Interactive Report](interactive-report.md),
 and the scoring behind the heatmap values is described in [TASS Scoring](tass-scoring.md).

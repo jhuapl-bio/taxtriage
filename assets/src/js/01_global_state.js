@@ -284,18 +284,26 @@ const SPECIMEN_META_RESOLVED = {};
    every redraw. They only change when the grouping inputs or the merge toggle
    change, so compute them together once per (signature, merge state). */
 function _specimenCounts() {
-  const key = _specimenSignature() + "" + (specimenMergeEnabled ? "1" : "0");
+  // Controls the "Show controls" switch is hiding (55_controls.js) are left out
+  // of the run's specimen totals, so "n / total" only counts what is in view.
+  const ctlOut =
+    typeof ttControlSamples === "function" && typeof ttControlListHidden === "function"
+      ? new Set(ttControlSamples().filter((s) => ttControlListHidden(s)))
+      : new Set();
+  const key = _specimenSignature() + "" + (specimenMergeEnabled ? "1" : "0") + "|ctl:" + [...ctlOut].sort().join(",");
   if (_SPEC_COUNT_CACHE.key === key) return _SPEC_COUNT_CACHE;
   const all = new Set();
   const positive = new Set();
   const truthy = typeof isTruthy === "function" ? isTruthy : (v) => !!v;
   Object.keys((typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {}).forEach((k) => {
+    if (ctlOut.has(k)) return;
     const v = specimenKey(k);
     if (v) all.add(v);
   });
   if (typeof DATA !== "undefined") {
     for (let i = 0; i < DATA.length; i++) {
       const r = DATA[i];
+      if (ctlOut.has(r["Specimen ID"])) continue;
       const v = specimenKey(r["Specimen ID"]);
       if (!v) continue;
       all.add(v);
@@ -357,6 +365,12 @@ let sortCol = null;
 let sortAsc = true;
 let visibleCols = [];
 let activeTab = "summary";
+// Tab ids that were merged into another tab. Saved sessions, Admin-dialog
+// localStorage and report configs may still name the old ids.
+const TT_LEGACY_TAB_IDS = { tass: "metrics", coverage: "metrics", explore: "metrics" };
+function ttCanonicalTabId(id) {
+  return (id && TT_LEGACY_TAB_IDS[id]) || id;
+}
 
 /* ── Follow-up / watchlist ─────────────────────────────────────────────
          A cross-tab set of organisms the user has starred for follow-up.

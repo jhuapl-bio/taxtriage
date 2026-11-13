@@ -252,6 +252,16 @@ def create_fastq_channel(LinkedHashMap row, List resolved = null) {
         // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
         meta.single_end = (row.fastq_2 && !meta.is_bam) ? false : true
     }
+    // Long reads (ONT / PacBio) are never paired. A fastq_2 on such a row would
+    // otherwise flip single_end to false and send --paired to kraken2 and other
+    // tools, so drop it (loudly: the platform may be mislabelled).
+    if ((meta.platform == 'OXFORD' || meta.platform == 'PACBIO') && !meta.single_end) {
+        println "WARNING: sample '${meta.id}' is ${meta.platform} but has a second read file " +
+                "(${meta.fastq_2}). Long reads are single-end, so it is ignored. If this " +
+                "sample is paired Illumina data, set platform to ILLUMINA."
+        meta.fastq_2    = null
+        meta.single_end = true
+    }
     meta.needscompressing = row.needscompressing ? row.needscompressing : null
 
     // if meta.needscompressing is null or false AND the filename ends with .fastq or .fq then set to true
@@ -318,6 +328,20 @@ def create_fastq_channel(LinkedHashMap row, List resolved = null) {
     meta.mask_mode          = sheet_col(row, 'mask_mode')?.toLowerCase()
     meta.mask_fasta_case    = sheet_col(row, 'mask_fasta_case')?.toLowerCase()
     meta.mask_penalty_power = sheet_col(row, 'mask_penalty_power')
+
+    // ── Illumina index hopping (optional columns) ───────────────────────────
+    // index_hopping   -> this row's index-hopping table(s); overrides --index_hopping
+    // index_sample_id -> the row's SampleID in that table when it is not `sample`
+    // Set only when present, so sheets without them keep the same meta (and
+    // -resume hashes). See docs/index-hopping.md.
+    def _hop_files = sheet_paths(row, 'index_hopping')
+    if (_hop_files) {
+        meta.index_hopping = _hop_files
+    }
+    def _hop_id = sheet_col(row, 'index_sample_id')
+    if (_hop_id) {
+        meta.index_sample_id = _hop_id
+    }
 
     // Control sample columns
     meta.control = (row.control && row.control.toString().toUpperCase() == "TRUE") ? true : false
