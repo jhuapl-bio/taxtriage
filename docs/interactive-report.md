@@ -401,6 +401,9 @@ a sample with no detections after filtering still counts in its set's denominato
 - **Hand-picked samples**, with a filter box.
 
 **Quick sets** fill the cards in one click: _First vs last_ value, _Earlier vs later half_, or _One set each_ (up to 4).
+Choosing **Hand-picked samples** in Quick sets adds a search box (sample name, library, date or any metadata value):
+the buttons then work on the matching samples in time order, and **Matches → A / B / …** puts every match straight
+into that set, named after the search (e.g. search `Site1` → A, `Site2` → B).
 Sets can be renamed; a warning shows when a sample sits in more than one set. **Leave out controls** drops samples
 whose metadata carries a `control_type`.
 

@@ -80,6 +80,7 @@
     tdir: -1,
     tall: false,
     pfield: "",
+    pq: "",
     sscale: "log",
     ssort: "sum",
     sel: "",
@@ -131,7 +132,7 @@
       var o = JSON.parse(localStorage.getItem(LS) || "null");
       if (o)
         Object.keys(S).forEach(function (k) {
-          if (k !== "sel" && k !== "q" && o[k] !== undefined) S[k] = o[k];
+          if (k !== "sel" && k !== "q" && k !== "pq" && o[k] !== undefined) S[k] = o[k];
         });
     } catch (e) {
       /* storage blocked */
@@ -141,7 +142,7 @@
     try {
       var o = {};
       Object.keys(S).forEach(function (k) {
-        if (k !== "sel" && k !== "q") o[k] = S[k];
+        if (k !== "sel" && k !== "q" && k !== "pq") o[k] = S[k];
       });
       localStorage.setItem(LS, JSON.stringify(o));
     } catch (e) {
@@ -242,7 +243,17 @@
     var ent = function (eid) {
       var e = ents[eid];
       if (!e) {
-        e = ents[eid] = { sid: eid, name: eid, members: [], t: null, total: 0, control: false, meta: {}, sgroup: [] };
+        e = ents[eid] = {
+          sid: eid,
+          name: eid,
+          members: [],
+          t: null,
+          total: 0,
+          control: false,
+          meta: {},
+          sgroup: [],
+          text: "",
+        };
         order.push(eid);
       }
       return e;
@@ -254,6 +265,16 @@
       var e = ent(keyOfId(id));
       e.members.push(id);
       var rec = Object.assign({}, sm, RM[id] || {});
+      // Every scalar metadata value, for the sample searches (not just the set-field columns).
+      e.text +=
+        " " +
+        id +
+        " " +
+        Object.keys(rec)
+          .map(function (k) {
+            return cellValues(rec, k).join(" ");
+          })
+          .join(" ");
       var tr = Number(sm.total_reads != null ? sm.total_reads : sm.input_data && sm.input_data.reads);
       if (isFinite(tr) && tr > 0) e.total += tr;
       cands.forEach(function (c) {
@@ -350,6 +371,38 @@
       return !(S.exclCtl && s.control);
     });
   }
+  // Text a sample search matches against: name, member libraries, date and every metadata value.
+  function sampleHay(s) {
+    return (
+      s.name +
+      " " +
+      s.members.join(" ") +
+      " " +
+      (s.text || "") +
+      " " +
+      s.day +
+      " " +
+      Object.keys(s.meta)
+        .map(function (k) {
+          return s.meta[k].join(" ");
+        })
+        .join(" ")
+    ).toLowerCase();
+  }
+  function sampleMatches(s, q) {
+    return !q || sampleHay(s).indexOf(q) >= 0;
+  }
+  // Samples the Quick sets search box ("Hand-picked samples") currently matches, in time order.
+  function quickMatches() {
+    var q = (S.pq || "").trim().toLowerCase();
+    return pool()
+      .filter(function (s) {
+        return sampleMatches(s, q);
+      })
+      .sort(function (a, b) {
+        return (a.t || 0) - (b.t || 0) || natural(a.name, b.name);
+      });
+  }
   function fieldLabel(f) {
     if (TIME_FIELDS[f]) return TIME_FIELDS[f];
     if (f === "sgroup") return "Group by selection";
@@ -439,14 +492,16 @@
     f = f || bestField();
     var vals =
       f === "samples" || f === "range"
-        ? pool()
-            .slice()
-            .sort(function (a, b) {
-              return (a.t || 0) - (b.t || 0) || natural(a.name, b.name);
-            })
-            .map(function (s) {
-              return { v: s.sid, n: 1, day: s.day };
-            })
+        ? (f === "samples"
+            ? quickMatches()
+            : pool()
+                .slice()
+                .sort(function (a, b) {
+                  return (a.t || 0) - (b.t || 0) || natural(a.name, b.name);
+                })
+          ).map(function (s) {
+            return { v: s.sid, n: 1, day: s.day };
+          })
         : realValues(f);
     var mk = function (vs) {
       if (f === "range") {
@@ -933,21 +988,19 @@
   }
   function setsHtml() {
     var fields = availFields(),
-      pf =
-        S.pfield && fields.indexOf(S.pfield) >= 0 && S.pfield !== "samples" && S.pfield !== "range"
-          ? S.pfield
-          : bestField();
+      pf = S.pfield && fields.indexOf(S.pfield) >= 0 && S.pfield !== "range" ? S.pfield : bestField();
     var h =
       '<div class="ab-card ab-sets"><div class="ab-preset"><b>Quick sets</b> by <select data-k="pfield">' +
       fields
         .filter(function (f) {
-          return f !== "samples" && f !== "range";
+          return f !== "range";
         })
         .map(function (f) {
           return opt(f, fieldLabel(f), pf);
         })
         .join("") +
       "</select>" +
+      (pf === "samples" ? quickSearchHtml() : "") +
       '<button type="button" class="ab-btn" data-preset="fl" title="Set A = the first value, Set B = the last">First vs last</button>' +
       '<button type="button" class="ab-btn" data-preset="half" title="Earlier half of the values vs the later half">Earlier vs later half</button>' +
       '<button type="button" class="ab-btn" data-preset="each" title="One set per value (up to 4)">One set each (≤4)</button>' +
@@ -1001,6 +1054,54 @@
       h += '<button type="button" class="ab-add" data-add="1">+ Add set ' + LETTERS[S.sets.length] + "</button>";
     return h + "</div></div>";
   }
+  // Quick sets → Hand-picked samples: a mini search whose matches feed the preset
+  // buttons (in time order) or go straight into a set with "Matches → A/B/…".
+  function quickCount() {
+    var m = quickMatches(),
+      names = m.slice(0, 40).map(function (s) {
+        return s.name;
+      });
+    return {
+      text: m.length + " match" + (m.length === 1 ? "" : "es"),
+      title: m.length
+        ? names.join("\n") + (m.length > names.length ? "\n… +" + (m.length - names.length) + " more" : "")
+        : "No samples match",
+      n: m.length,
+    };
+  }
+  function quickSearchHtml() {
+    var c = quickCount();
+    return (
+      '<span class="ab-pqbox"><input type="search" class="ab-pq" value="' +
+      esc(S.pq || "") +
+      '" placeholder="Search samples / metadata…" title="Narrow the samples the buttons use: name, library, date or any metadata value">' +
+      '<span class="ab-pqn' +
+      (c.n ? "" : " zero") +
+      '" title="' +
+      esc(c.title) +
+      '">' +
+      c.text +
+      "</span>" +
+      S.sets
+        .map(function (st, i) {
+          return (
+            '<button type="button" class="ab-btn ab-assign" data-assign="' +
+            i +
+            '" style="--c:' +
+            COLORS[i] +
+            '" title="Put every matching sample into Set ' +
+            LETTERS[i] +
+            ' (replaces what it holds)">' +
+            sw(i) +
+            "Matches → " +
+            LETTERS[i] +
+            "</button>"
+          );
+        })
+        .join("") +
+      "</span>"
+    );
+  }
   function setBody(st, i) {
     if (st.field === "range") {
       var days = pool()
@@ -1050,20 +1151,7 @@
           return natural(a.stype, b.stype) || (a.t || 0) - (b.t || 0) || natural(a.name, b.name);
         })
         .filter(function (s) {
-          if (!q) return true;
-          var hay =
-            s.name +
-            " " +
-            s.members.join(" ") +
-            " " +
-            s.day +
-            " " +
-            Object.keys(s.meta)
-              .map(function (k) {
-                return s.meta[k].join(" ");
-              })
-              .join(" ");
-          return hay.toLowerCase().indexOf(q) >= 0;
+          return sampleMatches(s, q);
         })
         .map(function (s) {
           return { v: s.sid, l: s.name, sub: sampleSub(s) };
@@ -2406,6 +2494,17 @@
         save();
         return rerender();
       }
+      if ((b = t.closest("[data-assign]"))) {
+        var ai = +b.getAttribute("data-assign"),
+          ms = quickMatches().map(function (s) {
+            return s.sid;
+          });
+        if (!ms.length || !S.sets[ai]) return;
+        S.sets[ai] = { field: "samples", vals: ms, label: (S.pq || "").trim() };
+        S.q[ai] = "";
+        save();
+        return rerender();
+      }
       if ((b = t.closest("[data-preset]"))) {
         var f = (host.querySelector('select[data-k="pfield"]') || {}).value;
         S.sets = preset(b.getAttribute("data-preset"), f);
@@ -2540,7 +2639,7 @@
       if (k === "pfield") {
         S.pfield = t.value;
         save();
-        return;
+        return rerender(); // shows / hides the Hand-picked samples search
       }
       if (k === "exclCtl" || k === "tall") {
         S[k] = t.checked;
@@ -2576,6 +2675,18 @@
     });
     host.addEventListener("input", function (e) {
       var t = e.target;
+      if (t.classList.contains("ab-pq")) {
+        // Live count only — no re-render, so the box keeps focus while typing.
+        S.pq = t.value;
+        var c = quickCount(),
+          n = host.querySelector(".ab-pqn");
+        if (n) {
+          n.textContent = c.text;
+          n.title = c.title;
+          n.classList.toggle("zero", !c.n);
+        }
+        return;
+      }
       if (!t.classList.contains("ab-q")) return;
       var i = t.getAttribute("data-i");
       S.q[i] = t.value;

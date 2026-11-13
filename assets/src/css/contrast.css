@@ -552,3 +552,36 @@ table.ab-table {
 .ab-away {
   color: #8a5a00;
 }
+
+/* Quick sets → Hand-picked samples: mini search + "Matches → A/B/…" */
+.ab-pqbox {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.ab-pq {
+  font: inherit;
+  font-size: 0.76rem;
+  width: 15rem;
+  border: 1px solid var(--tt-border, #dee2e6);
+  border-radius: 6px;
+  padding: 0.18rem 0.4rem;
+  background: #fff;
+}
+.ab-pqn {
+  font-size: 0.72rem;
+  color: #56707f;
+  white-space: nowrap;
+  cursor: help;
+}
+.ab-pqn.zero {
+  color: #b42318;
+  font-weight: 600;
+}
+.ab-assign {
+  border-color: var(--c, #dee2e6);
+}
+.ab-assign .ab-sw {
+  margin-right: 0.25rem;
+}
