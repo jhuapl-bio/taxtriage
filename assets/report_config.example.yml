@@ -10,7 +10,7 @@
 #
 # Tab ids: summary, heatmap, sunburst, proteins (VF/AMR), histogram,
 #          novelty, metrics, table, runmeta (Metadata), map (Mapping),
-#          trends, insilico.  Aliases like vfamr / metadata / mapping are
+#          trends, contrast, insilico.  Aliases like vfamr / metadata / mapping are
 #          accepted; the retired ids tass, coverage and explore now address
 #          the Metrics tab (which holds those charts).
 # ─────────────────────────────────────────────────────────────────────────────

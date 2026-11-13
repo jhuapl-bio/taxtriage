@@ -8727,7 +8727,12 @@ body.report-pdf-printing #tt-admin-overlay {
 .adt-orgs td.adt-why {
   font-size: 11px;
   color: #52606d;
-  min-width: 260px;
+  white-space: normal;
+  min-width: 180px;
+  max-width: 300px;
+}
+.adt-orgs td:nth-child(2) {
+  max-width: 260px;
 }
 /* Possible index hop (flagged row) and possible SOURCE (54_index_hopping.js).
    Small and quiet; details are in the hover card. */

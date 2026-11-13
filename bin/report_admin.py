@@ -61,6 +61,7 @@ TABS = [
     ("runmeta", "Metadata"),
     ("map", "Mapping"),
     ("trends", "Trends"),
+    ("contrast", "Contrast"),
     ("insilico", "In-Silico"),
 ]
 TAB_IDS = [t for t, _ in TABS]
@@ -79,6 +80,7 @@ TAB_ALIASES = {
     "metadata": "runmeta", "run_metadata": "runmeta", "meta": "runmeta",
     "mapping": "map", "geo": "map",
     "trend": "trends", "longitudinal": "trends",
+    "contrasts": "contrast", "compare_sets": "contrast", "sets": "contrast",
     "in_silico": "insilico", "in-silico": "insilico", "simulation": "insilico",
     "detections": "table",
 }

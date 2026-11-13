@@ -21,6 +21,7 @@
     <!-- <script src="pages.js"></script> -->
     <!-- <script src="heatmap_boot.js"></script> -->
     <link rel="stylesheet" href="src/css/main.css" />
+    <link rel="stylesheet" href="src/css/contrast.css" />
   </head>
   <body>
     <!-- ══════════════════════════════════════════════════════════════════════
@@ -171,6 +172,14 @@
         title="Longitudinal trends, host &amp; disease breakdowns, the group heatmap / network / cross-entry views, and cross-sample alignment trends."
       >
         <i class="fas fa-chart-line"></i> Trends
+      </button>
+      <button
+        class="tab-btn"
+        id="contrast-tab-btn"
+        data-tab="contrast"
+        title="Group samples into 2–4 sets (by metadata, Group by, collection date or hand-picked) and compare what was detected in each: mirrored bars, change, radar, scatter and a stats table."
+      >
+        <i class="fas fa-scale-balanced"></i> Contrast
       </button>
       <button
         class="tab-btn tab-optional hidden"
@@ -3383,6 +3392,10 @@
           </div>
         </div>
         <!-- /pane-insilico -->
+        <div class="pane" id="pane-contrast">
+          <div id="contrast-root"></div>
+        </div>
+        <!-- /pane-contrast -->
       </div>
       <!-- /content -->
 
@@ -4716,6 +4729,7 @@
     <script src="src/js/54_index_hopping.js"></script>
     <script src="src/js/55_controls.js"></script>
     <script src="src/js/56_adaptive_tass.js"></script>
+    <script src="src/js/57_tab_contrast.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

@@ -916,7 +916,7 @@ $$
 
 ### 9.7 Per-Organism Adaptive Weights (Optional)
 
-Everything above uses one weight vector for the whole sample. With `--adaptive_tass` each organism's vector is shifted by its context in the sample (community complexity, high-ANI organisms of other species, same-genus species, low abundance, roll-ups) and ambiguous calls with weak MinHash support are marked down. Off by default; the static score is kept alongside as `tass_score_static`. See [Adaptive TASS](adaptive-tass.md).
+Everything above uses one weight vector for the whole sample. With `--adaptive_tass` each organism's vector is shifted by its context in the sample (community complexity, high-ANI organisms of other species, same-genus species, low abundance, roll-ups) and ambiguous calls with weak MinHash support are marked down. Off by default. The standard score is always computed and stays `tass_score` (cutoffs, filters, report); the adaptive score is written beside it as `tass_score_adaptive` and compared with it in the HTML report. See [Adaptive TASS](adaptive-tass.md).
 
 ---
 

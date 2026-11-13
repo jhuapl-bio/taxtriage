@@ -359,8 +359,10 @@ function _adSampleTable() {
   return rows
     ? `<table class="mcmp-table mcmp-stbl"><thead><tr><th>Sample</th><th>Status</th><th>Strength</th><th>Terms</th>` +
         `<th>Base</th><th title="Species-level richness × evenness, 0-1">Complexity</th><th title="--enable_matrix ANI available">ANI</th>` +
-        `<th title="Strains whose adaptive TASS differs from standard">Strains changed</th><th>Higher</th><th>Lower</th>` +
-        `<th>Mean change</th><th>Max |change|</th></tr></thead><tbody>${rows}</tbody></table>`
+        `<th title="Strains whose adaptive TASS differs from standard by any amount">Strains changed</th>` +
+        `<th title="Adaptive higher than standard, by any amount">Higher (any)</th>` +
+        `<th title="Adaptive lower than standard, by any amount">Lower (any)</th>` +
+        `<th title="Mean adaptive − standard over all strains, TASS points">Mean change</th><th>Max |change|</th></tr></thead><tbody>${rows}</tbody></table>`
     : "";
 }
 
@@ -438,7 +440,8 @@ function _adRenderModal() {
   ov.querySelector(".adt-plotnote").innerHTML = rows.length
     ? `<b>${rows.length}</b> organism${rows.length === 1 ? "" : "s"} shown.<br>` +
       `Points on the diagonal score the same both ways; above it adaptive is higher ` +
-      `(<span style="color:#2e7d32">${up}</span>), below it lower (<span style="color:#c62828">${down}</span>).<br>` +
+      `(<span style="color:#2e7d32">${up}</span>), below it lower (<span style="color:#c62828">${down}</span>; ` +
+      `changes of ${_AD_EPS} point or more).<br>` +
       `Dashed lines are the current cutoff. <span style="color:#2e7d32">Green</span> points would pass only with ` +
       `adaptive TASS (${gained}); <span style="color:#c62828">red</span> points pass with standard TASS but would ` +
       `fail with adaptive (${lost}).<br><span style="color:#6b7480">The report keeps the standard call for every organism.</span>`

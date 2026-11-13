@@ -4157,6 +4157,9 @@ function _drawTab(tab) {
         _switchMetaSub(_activeMetaSub);
       }
       break;
+    case "contrast":
+      if (window.ttContrast) window.ttContrast.render(document.getElementById("contrast-root"));
+      break;
   }
   _TAB_DIRTY[tab] = false;
   _TAB_RENDERED[tab] = true;

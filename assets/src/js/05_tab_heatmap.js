@@ -472,7 +472,11 @@ function drawHeatmap() {
     .attr("font-size", 9)
     .attr("fill", "#666")
     .text(
-      _isDelta
+      _adMode === "delta"
+        ? "TASS change (adaptive \u2212 standard)"
+        : _adMode === "adaptive"
+        ? `Adaptive TASS \u00b7 ${scaleMode}`
+        : _isDelta
         ? "TASS change from masking"
         : _mcMode === "unmasked"
         ? `Unmasked TASS \u00b7 ${scaleMode}`

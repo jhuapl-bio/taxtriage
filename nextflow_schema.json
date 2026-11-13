@@ -622,8 +622,8 @@
                 "adaptive_tass": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Opt-in adaptive TASS weighting: shift the score weights per organism from its context in the sample (community complexity, high-ANI organisms of other species, same-genus species, low abundance, roll-ups) and mark ambiguous calls with weak MinHash support down. Off by default; with it off scoring is unchanged.",
-                    "help_text": "Starts from the sample type/platform weights. Every organism keeps its static score (tass_score_static) and an adaptive_tass audit block in the JSON; the report adds TASS (static) / TASS Change (adaptive) columns. The ani term needs --enable_matrix. See docs/adaptive-tass.md.",
+                    "description": "Opt-in: also compute an adaptive TASS per organism, with the score weights shifted by its context in the sample (community complexity, high-ANI organisms of other species, same-genus species, low abundance, roll-ups) and ambiguous calls with weak MinHash support marked down. Off by default. The standard TASS is always computed and stays the score used for cutoffs, filtering and the report.",
+                    "help_text": "Starts from the sample type/platform weights. Each organism keeps its standard tass_score and gains tass_score_adaptive plus an adaptive_tass audit block in the JSON; the HTML report adds an Adaptive TASS panel (standard vs adaptive heatmap, hover details, comparison table) and TASS (adaptive) / TASS Change (adaptive) columns. The ani term needs --enable_matrix. See docs/adaptive-tass.md.",
                     "fa_icon": "fas fa-sliders-h"
                 },
                 "adaptive_tass_strength": {
@@ -631,7 +631,7 @@
                     "default": 1.0,
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Scale of every adaptive shift and penalty (0-1). 0 reproduces the static scores exactly.",
+                    "description": "Scale of every adaptive shift and penalty (0-1). 0 makes the adaptive score equal the standard score.",
                     "fa_icon": "fas fa-sliders-h"
                 },
                 "adaptive_tass_terms": {
@@ -645,7 +645,7 @@
                     "type": "string",
                     "default": "sampletype",
                     "enum": ["sampletype", "platform", "global"],
-                    "description": "Starting weights and cutoffs for --adaptive_tass from the thresholds JSON: sampletype (usual sample type|platform entry), platform (all|<platform>) or global (all|all).",
+                    "description": "Starting weights for the adaptive score from the thresholds JSON: sampletype (same sample type|platform entry as the standard score), platform (all|<platform>) or global (all|all). The standard score and its cutoffs are never affected.",
                     "fa_icon": "fas fa-sliders-h"
                 },
                 "adaptive_tass_high_ani": {
