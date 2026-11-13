@@ -491,18 +491,18 @@ Writes the interactive report's tables to spreadsheets during the run, so nobody
 
 ### Datasets
 
-| Id                                       | Tab                  | Contents                                                                                             |
-| ---------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------- |
-| `detections`                             | Summary / Table      | Every detection with all TASS, coverage and taxonomy columns, plus `TASS Cutoff` and `Passes Cutoff` |
-| `detections_meta`                        | Summary / Table      | The same rows with every run-metadata column joined on - long format, ready to pivot                 |
-| `sample_summary`                         | Summary              | One row per specimen: detection counts, aligned reads, strongest hit                                 |
-| `organism_summary`                       | Explore              | Run-wide per-organism rollup: prevalence, TASS / coverage spread, ANI grouping                       |
-| `coverage`, `contigs`                    | Coverage / Histogram | Per specimen × organism breadth and depth; per aligned contig                                        |
-| `vfamr_hits`, `vfamr_genus`, `vfamr_amr` | VF/AMR               | Per-gene hits, genus summary, AMR genes                                                              |
-| `novelty_summary`, `novelty_candidates`  | Novelty              | Per-sample novelty statistics and candidate novel taxa                                               |
-| `run_metadata`, `sample_metadata`        | Run Metadata         | Collection / run metadata; pipeline provenance per sample                                            |
-| `geo`                                    | Map                  | Coordinates and place fields                                                                         |
-| `insilico_datasets`, `insilico_lod`      | In-Silico            | Per subsample dataset scoring; per-organism dilution series and LoD                                  |
+| Id                                       | Tab             | Contents                                                                                             |
+| ---------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------- |
+| `detections`                             | Summary / Table | Every detection with all TASS, coverage and taxonomy columns, plus `TASS Cutoff` and `Passes Cutoff` |
+| `detections_meta`                        | Summary / Table | The same rows with every run-metadata column joined on - long format, ready to pivot                 |
+| `sample_summary`                         | Summary         | One row per specimen: detection counts, aligned reads, strongest hit                                 |
+| `organism_summary`                       | Summary         | Run-wide per-organism rollup: prevalence, TASS / coverage spread, ANI grouping                       |
+| `coverage`, `contigs`                    | Histograms      | Per specimen × organism breadth and depth; per aligned contig                                        |
+| `vfamr_hits`, `vfamr_genus`, `vfamr_amr` | VF/AMR          | Per-gene hits, genus summary, AMR genes                                                              |
+| `novelty_summary`, `novelty_candidates`  | Novelty         | Per-sample novelty statistics and candidate novel taxa                                               |
+| `run_metadata`, `sample_metadata`        | Run Metadata    | Collection / run metadata; pipeline provenance per sample                                            |
+| `geo`                                    | Map             | Coordinates and place fields                                                                         |
+| `insilico_datasets`, `insilico_lod`      | In-Silico       | Per subsample dataset scoring; per-organism dilution series and LoD                                  |
 
 Run `export_data.py --list-datasets` for the live catalog, and `export_data.py -i <report> --list-columns all` for each table's column names (the strings `--export_data_columns` expects).
 
@@ -594,7 +594,7 @@ Each of `--report_org_flag_min_reads`, `--report_org_flag_min_tass` and `--repor
 | `--report_org_flag_criteria <spec>`             | Free-form rules: `;` between rules, `&` between the conditions of a rule (all must hold), each `field:op:value`. `field` is a detection column or one of `ani_max` `ani_partners` `genus_reads` `genus_share` `genus_rank` `genus_members` `sample_read_share` `k2_ratio` `prevalence` `lineage`. Operators: those of `--report_flag_metadata` plus `in` / `!in` (comma list). |
 | `--report_org_flag_action <flag\|hide>`         | `flag` highlights (default); `hide` also removes matching rows from every view.                                                                                                                                                                                                                                                                                                |
 | `--report_org_flag_view <all\|hide\|only>`      | Which rows the report opens on: `all` (flagged highlighted), `hide` (flagged hidden) or `only` (nothing but the flagged rows).                                                                                                                                                                                                                                                 |
-| `--report_controls <show\|hide>`                | Negative / positive control samples in `all.odr.html`: `show` (default) or open the report with them hidden. The report's _Show controls_ switch toggles them either way.                                                                                                                                                                                                      |
+| `--report_controls <show\|hide>`                | Negative / positive control samples in `all.odr.html`: hidden when the report opens (`hide`, default) or shown (`show`). The report's _Show controls_ switch toggles them either way.                                                                                                                                                                                          |
 
 A `--report_flag_rules` JSON file may also carry an `"organism_rules"` block - `{"view": "hide", "rules": [{"action": "hide", "conds": [{"field": "Genus", "op": "in", "value": "Streptococcus"}, {"field": "# Reads Aligned", "op": "<", "value": 50}]}]}` - which replaces the parameters above.
 

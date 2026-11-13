@@ -35,32 +35,7 @@
           .join(""),
       )
       .join("")}</svg>`,
-    tass: `<svg viewBox="0 0 200 120">${[60, 84, 48, 96, 72]
-      .map(
-        (h, i) =>
-          `<rect x="${28 + i * 32}" y="${104 - h}" width="20" height="${h}" rx="3" fill="#1565c0" opacity="${
-            0.55 + i * 0.09
-          }"/>`,
-      )
-      .join("")}<line x1="18" y1="104" x2="186" y2="104" stroke="#9bb8d6" stroke-width="2"/></svg>`,
     sunburst: `<svg viewBox="0 0 200 120"><g transform="translate(100,62)"><circle r="16" fill="#1565c0"/><path d="M0 0 L0 -34 A34 34 0 0 1 29 -17 Z" fill="#42a5f5"/><path d="M0 0 L29 -17 A34 34 0 0 1 29 17 Z" fill="#90caf9"/><path d="M0 0 L29 17 A34 34 0 0 1 -29 17 Z" fill="#64b5f6"/><path d="M0 0 L-29 17 A34 34 0 0 1 0 -34 Z" fill="#2196f3"/><path d="M0 -34 L0 -52 A52 52 0 0 1 45 -26 Z" fill="#bbdefb"/><path d="M0 -52 A52 52 0 0 1 45 -26" fill="none"/></g></svg>`,
-    coverage: `<svg viewBox="0 0 200 120"><line x1="22" y1="100" x2="186" y2="100" stroke="#9bb8d6" stroke-width="2"/><line x1="22" y1="100" x2="22" y2="16" stroke="#9bb8d6" stroke-width="2"/>${[
-      [50, 40],
-      [70, 55],
-      [90, 38],
-      [110, 70],
-      [130, 50],
-      [150, 78],
-      [95, 60],
-      [60, 72],
-    ]
-      .map(
-        ([x, y], i) =>
-          `<circle cx="${x}" cy="${y}" r="6" fill="${
-            ["#1565c0", "#ff7f0e", "#2ca02c", "#d62728"][i % 4]
-          }" opacity="0.85"/>`,
-      )
-      .join("")}</svg>`,
     proteins: `<svg viewBox="0 0 200 120"><path d="M70 20 C110 40 90 80 130 100 M130 20 C90 40 110 80 70 100" stroke="#1565c0" stroke-width="3" fill="none"/>${[
       28, 44, 60, 76,
     ]
@@ -81,7 +56,7 @@
           }"/>`,
       )
       .join("")}<line x1="18" y1="104" x2="186" y2="104" stroke="#9bb8d6" stroke-width="2"/></svg>`,
-    explore: `<svg viewBox="0 0 200 120"><line x1="22" y1="100" x2="186" y2="100" stroke="#9bb8d6" stroke-width="2"/><polyline points="30,80 60,50 90,64 120,32 150,46 178,24" fill="none" stroke="#1565c0" stroke-width="3"/>${[
+    metrics: `<svg viewBox="0 0 200 120"><line x1="22" y1="100" x2="186" y2="100" stroke="#9bb8d6" stroke-width="2"/><polyline points="30,80 60,50 90,64 120,32 150,46 178,24" fill="none" stroke="#1565c0" stroke-width="3"/>${[
       [30, 80],
       [60, 50],
       [90, 64],
@@ -160,17 +135,6 @@
       ],
     },
     {
-      tab: "tass",
-      icon: "fa-chart-bar",
-      title: "TASS Comparison",
-      fig: FIG.tass,
-      desc: "Compares TASS confidence scores side-by-side so you can rank detections and see how each sits against the per-sample-type cutoff.",
-      tips: [
-        "Bars are coloured by sample using the same colours as the right panel.",
-        "Use it to justify which calls clear the confidence threshold.",
-      ],
-    },
-    {
       tab: "sunburst",
       icon: "fa-circle-nodes",
       title: "Sunburst",
@@ -179,17 +143,6 @@
       tips: [
         "Click a wedge to zoom into that branch; click the centre to zoom out.",
         "Switch the sizing metric from the controls above.",
-      ],
-    },
-    {
-      tab: "coverage",
-      icon: "fa-layer-group",
-      title: "Coverage",
-      fig: FIG.coverage,
-      desc: "Plots coverage against TASS or read count so outliers jump out — e.g. high reads but low breadth. Each point is a detection, coloured by its sample.",
-      tips: [
-        "Point colours match the sample colours in the right panel.",
-        "Open a detection's coverage comparison to overlay genome-position profiles.",
       ],
     },
     {
@@ -212,14 +165,15 @@
       ],
     },
     {
-      tab: "explore",
+      tab: "metrics",
       icon: "fa-magnifying-glass-chart",
-      title: "Explore",
-      fig: FIG.explore,
-      desc: "Cross-sample exploratory charts for spotting multi-metric patterns and trends across the whole run — the place to slice the data freely.",
+      title: "Metrics",
+      fig: FIG.metrics,
+      desc: "Every metric chart in one place. The TASS Comparison bars rank detections against the per-sample-type cutoff; the Coverage Scatter plots coverage against TASS or read count so outliers jump out; and the radar, chord, rankings and correlogram charts show multi-metric patterns across the whole run.",
       tips: [
-        "Choose axes/metrics from the controls to build your own comparison.",
-        "Use it to hunt for batch effects or sample-type trends.",
+        "Bars and points are coloured by sample, using the same colours as the right panel.",
+        "Toggle the TASS cutoff line to see which calls clear the confidence threshold.",
+        "In the Coverage Scatter, look for high reads but low breadth — those deserve a closer look.",
       ],
     },
     {
@@ -722,22 +676,6 @@
         tips: ["Hover any cell for the exact value."],
       },
     ],
-    tass: [
-      {
-        sel: "#pane-tass .tab-controls",
-        icon: "fa-sliders",
-        title: "Comparison controls",
-        desc: "Set the rank, colour scaling, taxonomic level and whether the per-sample-type cutoff line is drawn.",
-        tips: ["Toggle the cutoff to see which calls clear the threshold."],
-      },
-      {
-        sel: "#tass-svg-wrap",
-        icon: "fa-chart-bar",
-        title: "TASS chart",
-        desc: "Confidence scores side-by-side, coloured by sample using the same colours as the right panel.",
-        tips: [],
-      },
-    ],
     sunburst: [
       {
         sel: "#sun-metric",
@@ -752,22 +690,6 @@
         title: "Radial taxonomy",
         desc: "Inner rings are higher ranks (kingdom→genus), outer rings species/strains. Click a wedge to zoom in; click the centre to zoom out.",
         tips: ["Add a panel to compare two samples side-by-side."],
-      },
-    ],
-    coverage: [
-      {
-        sel: "#pane-coverage .tab-controls",
-        icon: "fa-sliders",
-        title: "Axes & scaling",
-        desc: "Choose what the X, Y and bubble-size axes represent, plus the colour scaling.",
-        tips: ["High reads + low breadth outliers jump out here."],
-      },
-      {
-        sel: "#coverage-svg-wrap",
-        icon: "fa-layer-group",
-        title: "Coverage scatter",
-        desc: "Each point is a detection, coloured by its sample. Open a point's comparison to overlay genome-position profiles.",
-        tips: [],
       },
     ],
     proteins: [
@@ -802,20 +724,62 @@
         tips: [],
       },
     ],
-    explore: [
+    metrics: [
       {
-        sel: "#pane-explore .tab-controls",
+        sel: "#metrics-tass-section .tab-controls",
         icon: "fa-sliders",
-        title: "Build a comparison",
-        desc: "Choose the colour-by, size-by and scaling to slice the run across any metrics you like.",
-        tips: ["Good for hunting batch effects or sample-type trends."],
+        title: "TASS Comparison controls",
+        desc: "Set the rank, Y-axis scaling, TASS level (strain / species / genus) and whether the per-sample-type cutoff line is drawn.",
+        tips: ["Toggle the cutoff to see which calls clear the threshold."],
       },
       {
-        sel: "#explore-bubble-wrap",
-        icon: "fa-magnifying-glass-chart",
-        title: "Exploratory charts",
-        desc: "Cross-sample bubble and radar views for spotting multi-metric patterns.",
+        sel: "#tass-svg-wrap",
+        icon: "fa-chart-bar",
+        title: "TASS Comparison bars",
+        desc: "Confidence scores side-by-side, coloured by sample using the same colours as the right panel.",
         tips: [],
+      },
+      {
+        sel: "#metrics-coverage-section .tab-controls",
+        icon: "fa-sliders",
+        title: "Coverage Scatter axes",
+        desc: "Choose what the X, Y and bubble-size axes represent, plus the axis scaling.",
+        tips: ["High reads + low breadth outliers jump out here."],
+      },
+      {
+        sel: "#coverage-svg-wrap",
+        icon: "fa-layer-group",
+        title: "Coverage Scatter",
+        desc: "Each point is a detection, coloured by its sample. Open a point's comparison to overlay genome-position profiles.",
+        tips: [],
+      },
+      {
+        sel: "#explore-radar-wrap",
+        icon: "fa-magnifying-glass-chart",
+        title: "Multi-metric radar",
+        desc: "Each organism's metrics normalised 0–1 and drawn as one polygon, so you can compare profiles at a glance.",
+        tips: ["Pick which organisms to show from the list below the chart."],
+      },
+      {
+        sel: "#explore-chord-wrap",
+        icon: "fa-circle-nodes",
+        title: "Sample × category chord",
+        desc: "Chord width shows how reads (or TASS) flow between samples and microbial categories or genera.",
+        tips: [],
+      },
+      {
+        sel: "#explore-lolli-wrap",
+        icon: "fa-ranking-star",
+        title: "Organism rankings",
+        desc: "Organisms sorted by the chosen metric, optionally overlaid across samples.",
+        tips: [],
+      },
+      {
+        sel: "#explore-corr-wrap",
+        icon: "fa-table-cells",
+        title: "Metric correlogram",
+        desc: "Pairwise Pearson correlation between the selected metrics across the filtered rows.",
+        tips: ["Good for hunting batch effects or metrics that move together."],
       },
     ],
     table: [

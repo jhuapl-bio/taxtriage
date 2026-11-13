@@ -1357,7 +1357,7 @@ label.upload-btn {
   body.report-pdf-printing #explore-bubble-wrap svg {
     max-height: 3.5in !important;
   }
-  /* Coverage tab: shrink the sample-color legend above the chart */
+  /* Metrics tab → Coverage Scatter: shrink the sample-color legend */
   body.report-pdf-printing #coverage-legend-wrap {
     font-size: 0.72em !important;
     gap: 4px 8px !important;
@@ -1621,6 +1621,61 @@ tr:hover .watch-star:not(.on) {
   font-size: 0.72rem;
   color: #888;
   margin-top: 0.2em;
+}
+/* Summary-tab KPI row: compact text (other .kpi-card rows keep the sizes above). */
+#summary-kpi-row {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.55em;
+}
+#summary-kpi-row .kpi-card {
+  padding: 0.55em 0.7em;
+}
+#summary-kpi-row .kpi-label {
+  font-size: 0.64rem;
+  margin-bottom: 0.15em;
+}
+#summary-kpi-row .kpi-value {
+  font-size: 1.15rem;
+}
+#summary-kpi-row .kpi-sub {
+  font-size: 0.66rem;
+  margin-top: 0.15em;
+}
+/* Detections card: Organisms / Genera / High Consequence stacked in one box. */
+#summary-kpi-row .kpi-combo {
+  grid-column: span 2;
+  min-width: 0;
+}
+#summary-kpi-row .kpi-combo-hc {
+  border-left-color: #c62828;
+}
+.kpi-combo-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6em;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: #555;
+}
+.kpi-combo-row + .kpi-combo-row {
+  border-top: 1px solid #f0f2f5;
+}
+.kpi-combo-val {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #1f2d3d;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.kpi-combo-note {
+  font-weight: 400;
+  font-size: 0.78em;
+  color: #888;
+  margin-left: 0.35em;
+}
+.kpi-hc-row.kpi-hc {
+  cursor: help;
 }
 #summary-top-wrap table,
 #summary-annot-genus table {
@@ -5092,7 +5147,7 @@ body.report-pdf-printing #map-filter-scope-wrap {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   Coverage tab — collapsible colour legend. One chip per sample buried
+   Metrics tab → Coverage Scatter — collapsible colour legend. One chip per sample buried
    the plot on a large run, so the legend shows a count and opens on
    demand (small runs auto-expand; see drawCoverage).
    ═══════════════════════════════════════════════════════════════════ */
@@ -8626,4 +8681,30 @@ body.report-pdf-printing #tt-admin-overlay {
   color: #b39ddb;
   vertical-align: middle;
   cursor: help;
+}
+/* Positive-control check on Summary detections (55_controls.js ttPosCtlBadgeHTML). */
+.pc-mark {
+  margin-left: 4px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 8.5px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1.4;
+  vertical-align: middle;
+  cursor: help;
+  border: 1px solid currentColor;
+}
+.pc-mark.pc-pass {
+  color: #00897b;
+  background: #e0f2f1;
+}
+.pc-mark.pc-below {
+  color: #b26a00;
+  background: #fff8e1;
+}
+.pc-mark.pc-absent {
+  color: #b0bec5;
+  border-color: #cfd8dc;
+  font-weight: 600;
 }

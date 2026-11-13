@@ -330,7 +330,8 @@
     } catch (e) {}
     // Restore the active tab (only if visible + enabled).
     if (ui.activeTab) {
-      var btn = document.querySelector('.tab-btn[data-tab="' + ui.activeTab + '"]');
+      var _tabId = typeof ttCanonicalTabId === "function" ? ttCanonicalTabId(ui.activeTab) : ui.activeTab;
+      var btn = document.querySelector('.tab-btn[data-tab="' + _tabId + '"]');
       if (btn && !btn.classList.contains("hidden") && !btn.classList.contains("tab-disabled")) btn.click();
     }
   }
