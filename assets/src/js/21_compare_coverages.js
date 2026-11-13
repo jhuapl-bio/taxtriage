@@ -1097,27 +1097,248 @@ function body_set(html) {
   document.getElementById("xs-body").innerHTML = html;
 }
 
-// ── View 2: prevalence + TASS distribution (box & whisker) ───────────
+// ── View 2: prevalence + TASS distribution + relative abundance vs healthy ──
+// One row per organism, four panels side by side:
+//   1. Prevalence  — stacked bar: passing specimens (solid) + detected below
+//                    the cutoff (light), out of every specimen in the run.
+//   2. TASS        — dual violin (top = passing, bottom = all specimens incl.
+//                    0s) with an inner box (IQR + whiskers), the passing median,
+//                    the TASS filter cutoff and ◆ markers where a negative /
+//                    positive control carries the same organism (controls are
+//                    read from DATA, so they show even while hidden).
+//   3. % reads vs healthy (HMP) — log axis; grey band = healthy 5–95 % range,
+//                    box = IQR, tick = median for the body site; one dot per
+//                    specimen at its % reads, coloured by HMP status, hollow
+//                    when below the cutoff.
+//   4. What we see — status mix bar + one-line verdict (n above healthy,
+//                    within, never seen in healthy, sterile site).
+const _XS_CTL_COLORS = { negative: "#7b1fa2", positive: "#00897b" };
+function _xsCtlColor(t) {
+  return _XS_CTL_COLORS[t] || "#6d4c41";
+}
+// Control-sample detections per taxid (or organism name), straight from DATA
+// so hidden controls still mark the rows. Max TASS per control sample.
+function _xsControlHits() {
+  const out = new Map();
+  if (typeof ttControlType !== "function" || typeof DATA === "undefined") return out;
+  // Same level rule as filteredData(): rows without a Level are strain rows.
+  const lvl = (document.getElementById("view-level") || {}).value || "Strain";
+  const perSample = new Map();
+  DATA.forEach((r) => {
+    const s = r && r["Specimen ID"];
+    if (!s) return;
+    const ct = ttControlType(s);
+    if (!ct) return;
+    if ((r["Level"] || "Strain") !== lvl) return;
+    const key = (r["Taxonomic ID #"] || "").toString() || r["Detected Organism"] || "";
+    if (!key) return;
+    const k2 = key + "\u0001" + s;
+    const t = num(r["TASS Score"]);
+    const cur = perSample.get(k2);
+    if (cur && cur.tass >= t) return;
+    perSample.set(k2, {
+      key,
+      sample: s,
+      type: ct,
+      tass: t,
+      reads: num(r["# Reads Aligned"]),
+      pct: parseFloat(r["% Reads"]),
+      pass: isTruthy(r["Passes Threshold"]),
+      hidden: typeof sampleHidden !== "undefined" && !!sampleHidden[s],
+    });
+  });
+  perSample.forEach((v) => {
+    if (!out.has(v.key)) out.set(v.key, []);
+    out.get(v.key).push(v);
+  });
+  return out;
+}
+const _XS_HMP_ORDER = ["Elevated", "Absent in healthy", "Sterile site", "Within healthy range", ""];
+const _XS_HMP_LABEL = {
+  Elevated: "above healthy",
+  "Absent in healthy": "never in healthy",
+  "Sterile site": "sterile site",
+  "Within healthy range": "within healthy",
+  "": "no healthy ref",
+};
+function _xsHmpColor(st) {
+  if (!st) return "#b0bec5";
+  return typeof _hmpStatusColor === "function" ? _hmpStatusColor(st) : "#868e96";
+}
+function _xsLogX(v) {
+  if (typeof _hmpX === "function") return _hmpX(v);
+  if (!(v > 0)) return 0;
+  return Math.min(1, Math.max(0, (Math.log10(v) + 6) / 8));
+}
+function _xsPctFmt(v) {
+  if (typeof _hmpFmtPct === "function") return _hmpFmtPct(v);
+  return isFinite(v) ? v.toPrecision(3) + "%" : "—";
+}
+// Per-organism summary of the healthy comparison: status counts (passing
+// specimens first; all detections when none pass), healthy reference bands per
+// body site, observed % reads stats.
+function _xsHmpSummary(r) {
+  const ab = r.abund || [];
+  const pool = ab.some((a) => a.pass) ? ab.filter((a) => a.pass) : ab;
+  const counts = {};
+  _XS_HMP_ORDER.forEach((k) => (counts[k] = 0));
+  pool.forEach((a) => (counts[a.st in counts ? a.st : ""] += 1));
+  const zs = pool.filter((a) => a.st === "Elevated" || a.st === "Within healthy range").map((a) => a.z);
+  const zFin = zs.filter((z) => isFinite(z)).sort((a, b) => a - b);
+  const pcts = pool.map((a) => a.pct).filter((v) => isFinite(v));
+  const prevs = pool.map((a) => a.prev).filter((v) => isFinite(v));
+  // Healthy reference per body site (most-used site first).
+  const sites = new Map();
+  ab.forEach((a) => {
+    if (!a.site || a.st === "Sterile site") return;
+    let s = sites.get(a.site);
+    if (!s) {
+      s = { site: a.site, n: 0, keys: new Set() };
+      sites.set(a.site, s);
+    }
+    s.n += 1;
+    a.ref
+      .split("|")
+      .filter(Boolean)
+      .forEach((k) => s.keys.add(k));
+  });
+  const ref = (typeof TT_HMP !== "undefined" && TT_HMP && TT_HMP.ref) || {};
+  const siteList = [...sites.values()]
+    .sort((a, b) => b.n - a.n)
+    .map((s) => {
+      const ents = [...s.keys].map((k) => ref[k]).filter(Boolean);
+      const one = ents.length === 1 ? ents[0] : null;
+      return {
+        site: s.site,
+        n: s.n,
+        q: one && one.q && one.q.length === 5 ? one.q : null,
+        m: ents.reduce((t, e) => t + (e.m || 0), 0),
+        sd: ents.reduce((t, e) => t + (e.s || 0), 0),
+        hn: ents.reduce((t, e) => t + (e.n || 0), 0),
+        hN: ents.length ? ents[0].N || 0 : 0,
+        hasRef: ents.length > 0,
+      };
+    });
+  return {
+    pool,
+    nPool: pool.length,
+    counts,
+    medZ: zFin.length ? _xsQuart(zFin, 0.5) : NaN,
+    maxZ: zFin.length ? zFin[zFin.length - 1] : NaN,
+    medPct: pcts.length
+      ? _xsQuart(
+          pcts.slice().sort((a, b) => a - b),
+          0.5,
+        )
+      : NaN,
+    minPct: pcts.length ? Math.min(...pcts) : NaN,
+    maxPct: pcts.length ? Math.max(...pcts) : NaN,
+    healthyPrev: prevs.length ? prevs[0] : NaN,
+    sites: siteList,
+    anyHmp: pool.some((a) => a.st),
+  };
+}
+// One-line verdict for the "What we see" column.
+function _xsHmpVerdict(h) {
+  const c = h.counts,
+    n = h.nPool;
+  if (!n) return { text: "no detections", color: "#b0bec5" };
+  if (!h.anyHmp) return { text: "no healthy (HMP) ref", color: "#90a4ae" };
+  if (c["Sterile site"] === n) return { text: "sterile site", color: _xsHmpColor("Sterile site") };
+  const out = c["Elevated"] + c["Absent in healthy"] + c["Sterile site"];
+  if (out) {
+    const neverOnly = c["Absent in healthy"] && !c["Elevated"];
+    return {
+      text: neverOnly ? `${c["Absent in healthy"]}/${n} never in healthy` : `${out}/${n} above healthy`,
+      color: _xsHmpColor(neverOnly ? "Absent in healthy" : "Elevated"),
+      bold: true,
+    };
+  }
+  if (c["Within healthy range"])
+    return { text: `${c["Within healthy range"]}/${n} within healthy`, color: _xsHmpColor("Within healthy range") };
+  return { text: "no healthy (HMP) ref", color: "#90a4ae" };
+}
+// Small deterministic jitter so overlapping dots stay visible.
+function _xsJit(i) {
+  return ((((i * 2654435761) >>> 0) % 1000) / 1000 - 0.5) * 2;
+}
+
 function _xsRenderDist(rows, agg) {
   const topN = parseInt((document.getElementById("xs-topn") || {}).value || "25", 10);
   const ordered = [...rows].sort((a, b) => b.sampleCount - a.sampleCount || b.medianTass - a.medianTass).slice(0, topN);
-  body_set(
-    '<div class="xs-note">Top organisms by prevalence. Bar = % passing · <b>dual violin</b> of TASS: <span style="color:#1565c0">top</span> = specimens passing the cutoff, <span style="color:#90a4ae">bottom</span> = all specimens (below-cutoff detections and 0s included). Tick = passing median. Hover for the five-number summary.</div><div id="xs-dist-svg"></div>',
-  );
+  const hmpOn = typeof ttHmpAvailable === "function" && ttHmpAvailable();
+  const ctlHits = _xsControlHits();
+  const anyCtl = ordered.some((r) => ctlHits.has(String(r.taxid)) || ctlHits.has(r.name));
+  const cutoff = parseFloat((document.getElementById("filter-min") || {}).value) || 0;
+  const dot = (c, hollow) =>
+    `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:-1px;${
+      hollow ? `border:1.5px solid ${c};background:#fff` : `background:${c}`
+    }"></span>`;
+  const legend =
+    `<div class="xs-note xs-dist-legend">` +
+    `<b>Prevalence</b>: solid = passing, light = detected below the cutoff, of all specimens in view (bar colour = pathogen type). ` +
+    `<b>TASS</b>: dual violin, <span style="color:#1565c0">top</span> = passing specimens, <span style="color:#90a4ae">bottom</span> = all specimens (0 where absent); dark bar = IQR, thin line = range, tick = passing median` +
+    (cutoff > 0 ? `, <span style="color:#c62828">dashed</span> = TASS filter (${cutoff})` : "") +
+    (anyCtl
+      ? `; <span style="color:${_xsCtlColor("negative")}">◆</span> negative / <span style="color:${_xsCtlColor(
+          "positive",
+        )}">◆</span> positive control with the same organism (shown even when controls are hidden)`
+      : "") +
+    `.<br><b>% reads vs healthy (HMP)</b>: log scale; grey band = healthy 5–95% range for the body site, box = IQR, tick = healthy median; one dot per specimen ` +
+    `${dot(_xsHmpColor("Elevated"))} above healthy ${dot(_xsHmpColor("Within healthy range"))} within ${dot(
+      _xsHmpColor("Absent in healthy"),
+    )} never seen in healthy / sterile ${dot("#b0bec5")} no reference, ${dot(
+      "#607d8b",
+      true,
+    )} hollow = below cutoff. ` +
+    `<b>What we see</b> summarises the passing specimens. Hover a row for the numbers.</div>`;
+  body_set(legend + '<div id="xs-dist-svg" style="overflow-x:auto"></div>');
   const wrap = document.getElementById("xs-dist-svg");
-  const W = wrap.clientWidth || 760;
-  const rowH = 34,
-    mT = 24,
-    mB = 30,
-    mL = 200,
-    mGap = 24;
+  const Wv = wrap.clientWidth || 980;
+  const rowH = 40,
+    mT = 34,
+    mB = 26,
+    mL = 210,
+    prevW = 110,
+    gap = 30,
+    hmpW = 230,
+    verdW = 150;
+  const fixed = mL + prevW + gap + gap + hmpW + gap + verdW + 10;
+  const boxW = Math.max(180, Wv - fixed);
+  const W = fixed + boxW;
   const H = ordered.length * rowH + mT + mB;
-  const prevW = 120; // width reserved for prevalence bar
-  const boxX0 = mL + prevW + mGap;
-  const boxW = Math.max(160, W - boxX0 - 60);
+  const boxX0 = mL + prevW + gap;
+  const hmpX0 = boxX0 + boxW + gap;
+  const verdX0 = hmpX0 + hmpW + gap;
   const x = d3.scaleLinear().domain([0, 100]).range([0, boxW]);
   const xp = d3.scaleLinear().domain([0, 100]).range([0, prevW]);
+  const xh = (v) => hmpX0 + _xsLogX(v) * hmpW;
   const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).attr("viewBox", `0 0 ${W} ${H}`);
+  const hdr = (cx, t) =>
+    svg
+      .append("text")
+      .attr("x", cx)
+      .attr("y", 11)
+      .attr("text-anchor", "middle")
+      .style("font-size", "10px")
+      .style("font-weight", "600")
+      .style("fill", "#455a64")
+      .text(t);
+  hdr(mL + prevW / 2, "Prevalence");
+  hdr(boxX0 + boxW / 2, "TASS across specimens");
+  hdr(hmpX0 + hmpW / 2, hmpOn ? "% reads vs healthy (HMP)" : "% reads (relative abundance)");
+  hdr(verdX0 + verdW / 2, "What we see");
+  // zebra rows
+  ordered.forEach((r, i) => {
+    if (i % 2)
+      svg
+        .append("rect")
+        .attr("x", 0)
+        .attr("y", mT + i * rowH)
+        .attr("width", W)
+        .attr("height", rowH)
+        .attr("fill", "#f8fafb");
+  });
 
   // TASS axis ticks
   [0, 25, 50, 75, 100].forEach((t) => {
@@ -1131,46 +1352,94 @@ function _xsRenderDist(rows, agg) {
     svg
       .append("text")
       .attr("x", boxX0 + x(t))
-      .attr("y", mT - 10)
-      .attr("text-anchor", "middle")
+      .attr("y", mT - 9)
+      .attr("text-anchor", t === 100 ? "end" : t === 0 ? "start" : "middle")
       .style("font-size", "9px")
       .style("fill", "#90a4ae")
       .text(t);
   });
-  svg
-    .append("text")
-    .attr("x", boxX0 + boxW / 2)
-    .attr("y", H - 6)
-    .attr("text-anchor", "middle")
-    .style("font-size", "10px")
-    .style("fill", "#607d8b")
-    .text("TASS score across samples");
-  svg
-    .append("text")
-    .attr("x", mL + prevW / 2)
-    .attr("y", H - 6)
-    .attr("text-anchor", "middle")
-    .style("font-size", "10px")
-    .style("fill", "#607d8b")
-    .text("% of samples");
+  if (cutoff > 0 && cutoff <= 100) {
+    svg
+      .append("line")
+      .attr("x1", boxX0 + x(cutoff))
+      .attr("x2", boxX0 + x(cutoff))
+      .attr("y1", mT - 4)
+      .attr("y2", H - mB + 4)
+      .attr("stroke", "#c62828")
+      .attr("stroke-width", 1)
+      .attr("stroke-dasharray", "3,3")
+      .attr("opacity", 0.7);
+  }
+  // % reads log axis ticks (even decades)
+  const lb = (typeof TT_HMP !== "undefined" && TT_HMP && TT_HMP.bins) || { lo: -6, hi: 2 };
+  for (let d = Math.ceil(lb.lo); d <= lb.hi; d += 2) {
+    const v = Math.pow(10, d);
+    const xx = xh(v);
+    svg
+      .append("line")
+      .attr("x1", xx)
+      .attr("x2", xx)
+      .attr("y1", mT - 6)
+      .attr("y2", H - mB + 4)
+      .attr("stroke", "#eceff1");
+    svg
+      .append("text")
+      .attr("x", xx)
+      .attr("y", mT - 9)
+      .attr("text-anchor", d === Math.ceil(lb.lo) ? "start" : d + 2 > lb.hi ? "end" : "middle")
+      .style("font-size", "9px")
+      .style("fill", "#90a4ae")
+      .text(d >= 0 ? v + "%" : d >= -2 ? v.toFixed(-d) + "%" : "1e" + d + "%");
+  }
+  const foot = (cx, t) =>
+    svg
+      .append("text")
+      .attr("x", cx)
+      .attr("y", H - 6)
+      .attr("text-anchor", "middle")
+      .style("font-size", "10px")
+      .style("fill", "#607d8b")
+      .text(t);
+  foot(mL + prevW / 2, "% of specimens");
+  foot(boxX0 + boxW / 2, "TASS score");
+  foot(hmpX0 + hmpW / 2, "% of sample reads (log)");
 
   ordered.forEach((r, i) => {
     const y = mT + i * rowH + rowH / 2;
     const col = _xsCatColor(r.cat);
-    // organism label
-    svg
+    const ctl = ctlHits.get(String(r.taxid)) || ctlHits.get(r.name) || [];
+    const hs = _xsHmpSummary(r);
+    // organism label (+ category / control hint underneath)
+    const lab = svg
       .append("text")
       .attr("x", mL - 8)
-      .attr("y", y)
+      .attr("y", y - 4)
       .attr("text-anchor", "end")
       .attr("dominant-baseline", "middle")
       .style("font-size", "10px")
       .style("font-style", "italic")
       .style("fill", "#37474f")
-      .text(r.name.length > 30 ? r.name.slice(0, 29) + "…" : r.name)
-      .append("title")
-      .text(`${r.name} (${r.cat})`);
-    // prevalence bar
+      .text((r.hc ? "● " : "") + (r.name.length > 32 ? r.name.slice(0, 31) + "…" : r.name));
+    lab.append("title").text(`${r.name} (${r.cat})`);
+    const sub = svg
+      .append("text")
+      .attr("x", mL - 8)
+      .attr("y", y + 8)
+      .attr("text-anchor", "end")
+      .attr("dominant-baseline", "middle")
+      .style("font-size", "8.5px")
+      .style("fill", "#90a4ae");
+    sub.append("tspan").style("fill", col).text(r.cat);
+    if (ctl.length) {
+      const types = [...new Set(ctl.map((c) => c.type))];
+      types.forEach((t) =>
+        sub.append("tspan").style("fill", _xsCtlColor(t)).style("font-weight", "700").text(` · ◆ in ${t} ctrl`),
+      );
+    }
+    // prevalence: stacked pass + below-cutoff bar
+    const tot = r.total || 1;
+    const passW = xp(r.samplePct);
+    const belowW = Math.max(0, Math.min(prevW - passW, xp(((r.belowCount || 0) / tot) * 100)));
     svg
       .append("rect")
       .attr("x", mL)
@@ -1179,33 +1448,46 @@ function _xsRenderDist(rows, agg) {
       .attr("height", 14)
       .attr("fill", "#eceff1")
       .attr("rx", 2);
+    if (belowW > 0)
+      svg
+        .append("rect")
+        .attr("x", mL + passW)
+        .attr("y", y - 7)
+        .attr("width", belowW)
+        .attr("height", 14)
+        .attr("fill", col)
+        .attr("opacity", 0.28);
     svg
       .append("rect")
       .attr("x", mL)
       .attr("y", y - 7)
-      .attr("width", xp(r.samplePct))
+      .attr("width", passW)
       .attr("height", 14)
       .attr("fill", col)
       .attr("opacity", 0.85)
       .attr("rx", 2);
-    // On-chart count label removed — the prevalence (count / total / %) and
-    // full TASS spread are shown on hover over the row instead.
-    // ── dual violin for TASS ─────────────────────────────────────────────
-    // Top half = distribution among specimens PASSING the cutoff; bottom half =
-    // all specimens (below-cutoff detections plus 0s for absent specimens).
+    svg
+      .append("text")
+      .attr("x", mL + prevW - 3)
+      .attr("y", y)
+      .attr("text-anchor", "end")
+      .attr("dominant-baseline", "middle")
+      .style("font-size", "8.5px")
+      .style("fill", r.samplePct > 80 ? "#fff" : "#546e7a")
+      .text(`${r.sampleCount}/${tot}`);
+
+    // ── TASS dual violin + inner box ──
     const s = [...r.tassVals].sort((a, b) => a - b);
     const yb = y;
-    const maxHalf = rowH / 2 - 3;
-    // baseline
+    const maxHalf = rowH / 2 - 4;
     svg
       .append("line")
-      .attr("x1", boxX0 + x(0))
+      .attr("x1", boxX0)
       .attr("x2", boxX0 + x(100))
       .attr("y1", yb)
       .attr("y2", yb)
       .attr("stroke", "#cfd8dc")
       .attr("stroke-width", 0.75);
-    // bottom half — all specimens (incl below-cutoff / 0)
     if ((r.tassAll || []).length) {
       svg
         .append("path")
@@ -1216,7 +1498,6 @@ function _xsRenderDist(rows, agg) {
         .attr("stroke-opacity", 0.45)
         .attr("stroke-width", 0.75);
     }
-    // top half — passing specimens
     if (s.length) {
       svg
         .append("path")
@@ -1231,8 +1512,26 @@ function _xsRenderDist(rows, agg) {
       q3 = s.length ? _xsQuart(s, 0.75) : 0,
       lo = s.length ? s[0] : 0,
       hi = s.length ? s[s.length - 1] : 0;
-    // passing median tick (top half)
     if (s.length) {
+      // inner box: whisker (range) + IQR bar, like a violin's embedded box plot
+      svg
+        .append("line")
+        .attr("x1", boxX0 + x(lo))
+        .attr("x2", boxX0 + x(hi))
+        .attr("y1", yb - 2)
+        .attr("y2", yb - 2)
+        .attr("stroke", "#263238")
+        .attr("stroke-opacity", 0.35)
+        .attr("stroke-width", 1);
+      svg
+        .append("line")
+        .attr("x1", boxX0 + x(q1))
+        .attr("x2", boxX0 + x(q3) + (q3 === q1 ? 1.5 : 0))
+        .attr("y1", yb - 2)
+        .attr("y2", yb - 2)
+        .attr("stroke", "#263238")
+        .attr("stroke-opacity", 0.7)
+        .attr("stroke-width", 3.5);
       svg
         .append("line")
         .attr("x1", boxX0 + x(med))
@@ -1241,21 +1540,275 @@ function _xsRenderDist(rows, agg) {
         .attr("y2", yb)
         .attr("stroke", col)
         .attr("stroke-width", 1.5);
+      svg
+        .append("circle")
+        .attr("cx", boxX0 + x(med))
+        .attr("cy", yb - 2)
+        .attr("r", 1.8)
+        .attr("fill", "#fff");
     }
+    // control markers (◆ on the baseline)
+    ctl.forEach((c) => {
+      const cx = boxX0 + x(Math.max(0, Math.min(100, c.tass)));
+      svg
+        .append("path")
+        .attr("d", `M ${cx} ${yb - 5} L ${cx + 4} ${yb} L ${cx} ${yb + 5} L ${cx - 4} ${yb} Z`)
+        .attr("fill", c.hidden ? "#fff" : _xsCtlColor(c.type))
+        .attr("stroke", _xsCtlColor(c.type))
+        .attr("stroke-width", 1.2);
+    });
+
+    // ── % reads vs healthy (HMP) strip ──
+    const hy0 = y - rowH / 2 + 5,
+      hy1 = y + rowH / 2 - 5;
+    svg
+      .append("rect")
+      .attr("x", hmpX0)
+      .attr("y", hy0)
+      .attr("width", hmpW)
+      .attr("height", hy1 - hy0)
+      .attr("fill", "#fff")
+      .attr("stroke", "#eceff1");
+    const bandSites = hs.sites.filter((b) => b.hasRef).slice(0, 2);
+    bandSites.forEach((b, bi) => {
+      const by = y + (bandSites.length === 2 ? (bi ? 5 : -5) : 0);
+      if (b.q) {
+        const qx = b.q.map((v) => xh(v));
+        svg
+          .append("line")
+          .attr("x1", qx[0])
+          .attr("x2", qx[4])
+          .attr("y1", by)
+          .attr("y2", by)
+          .attr("stroke", "#ced4da")
+          .attr("stroke-width", 4)
+          .attr("stroke-linecap", "round");
+        svg
+          .append("rect")
+          .attr("x", qx[1])
+          .attr("y", by - 4)
+          .attr("width", Math.max(1.5, qx[3] - qx[1]))
+          .attr("height", 8)
+          .attr("fill", "#adb5bd")
+          .attr("fill-opacity", 0.55)
+          .attr("stroke", "#868e96")
+          .attr("stroke-width", 0.6);
+        svg
+          .append("line")
+          .attr("x1", qx[2])
+          .attr("x2", qx[2])
+          .attr("y1", by - 5)
+          .attr("y2", by + 5)
+          .attr("stroke", "#495057")
+          .attr("stroke-width", 1.2);
+      } else if (b.m > 0) {
+        const mx = xh(b.m);
+        svg
+          .append("line")
+          .attr("x1", mx)
+          .attr("x2", mx)
+          .attr("y1", by - 5)
+          .attr("y2", by + 5)
+          .attr("stroke", "#495057")
+          .attr("stroke-width", 1.2);
+      }
+      if (bandSites.length > 1 || hs.sites.length > 1)
+        svg
+          .append("text")
+          .attr("x", hmpX0 + 3)
+          .attr("y", by)
+          .attr("dominant-baseline", "middle")
+          .style("font-size", "7.5px")
+          .style("fill", "#868e96")
+          .text(b.site);
+    });
+    if (hmpOn && !bandSites.length) {
+      const anyAbsent = hs.counts["Absent in healthy"] > 0;
+      const allSterile = hs.nPool && hs.counts["Sterile site"] === hs.nPool;
+      const note = allSterile
+        ? "sterile site: none expected"
+        : anyAbsent
+        ? "not seen in healthy"
+        : hs.anyHmp
+        ? ""
+        : "no healthy ref";
+      if (note)
+        svg
+          .append("text")
+          .attr("x", hmpX0 + 4)
+          .attr("y", hy0 + 7)
+          .attr("dominant-baseline", "middle")
+          .style("font-size", "7.5px")
+          .style("font-style", "italic")
+          .style("fill", allSterile || anyAbsent ? _xsHmpColor("Absent in healthy") : "#90a4ae")
+          .text(note);
+    }
+    // specimen dots (passing drawn last, on top)
+    const pts = (r.abund || [])
+      .filter((a) => isFinite(a.pct))
+      .sort((a, b) => (a.pass === b.pass ? 0 : a.pass ? 1 : -1));
+    const amp = Math.min(7, (hy1 - hy0) / 2 - 3);
+    pts.forEach((a, k) => {
+      const c = _xsHmpColor(a.st);
+      svg
+        .append("circle")
+        .attr("cx", xh(Math.max(a.pct, 1e-12)))
+        .attr("cy", y + _xsJit(k + i * 31) * amp)
+        .attr("r", a.pass ? 3.2 : 2.7)
+        .attr("fill", a.pass ? c : "#fff")
+        .attr("fill-opacity", a.pass ? 0.9 : 1)
+        .attr("stroke", a.pass ? "#fff" : c)
+        .attr("stroke-width", a.pass ? 0.7 : 1.3);
+    });
+    if (isFinite(hs.medPct) && pts.length > 2) {
+      const mx = xh(hs.medPct);
+      svg
+        .append("line")
+        .attr("x1", mx)
+        .attr("x2", mx)
+        .attr("y1", hy0 + 1)
+        .attr("y2", hy1 - 1)
+        .attr("stroke", "#263238")
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "2,2")
+        .attr("opacity", 0.6);
+    }
+
+    // ── What we see: status mix bar + verdict ──
+    const vd = _xsHmpVerdict(hs);
+    const mixW = verdW - 4;
+    let cx0 = verdX0;
+    if (hs.nPool && hs.anyHmp) {
+      _XS_HMP_ORDER.forEach((k) => {
+        const n = hs.counts[k];
+        if (!n) return;
+        const w = (n / hs.nPool) * mixW;
+        svg
+          .append("rect")
+          .attr("x", cx0)
+          .attr("y", y - 13)
+          .attr("width", Math.max(1, w - 0.5))
+          .attr("height", 6)
+          .attr("fill", _xsHmpColor(k))
+          .attr("opacity", 0.85);
+        cx0 += w;
+      });
+    }
+    svg
+      .append("text")
+      .attr("x", verdX0)
+      .attr("y", y + 1)
+      .attr("dominant-baseline", "middle")
+      .style("font-size", "9.5px")
+      .style("font-weight", vd.bold ? "700" : "400")
+      .style("fill", vd.color)
+      .text(vd.text);
+    const bits = [];
+    if (isFinite(hs.medPct)) bits.push(`med ${_xsPctFmt(hs.medPct)} reads`);
+    if (isFinite(hs.medZ))
+      bits.push(
+        `z ${
+          Math.abs(hs.medZ) >= 1000
+            ? hs.medZ.toExponential(1)
+            : Math.abs(hs.medZ) >= 100
+            ? hs.medZ.toFixed(0)
+            : hs.medZ.toFixed(1)
+        }`,
+      );
+    if (bits.length)
+      svg
+        .append("text")
+        .attr("x", verdX0)
+        .attr("y", y + 12)
+        .attr("dominant-baseline", "middle")
+        .style("font-size", "8.5px")
+        .style("fill", "#78909c")
+        .text(bits.join(" · "));
+
+    // ── tooltip ──
     const _allStat = _xsBoxStats(r.tassAll || []);
-    const tipHtml =
-      `<b>${r.name}</b><br>${r.cat} · ${r.sampleCount}/${
+    const trow = (k, v) =>
+      `<tr><td style="color:#ffd580;padding-right:10px;white-space:nowrap">${k}</td><td>${v}</td></tr>`;
+    let tipHtml =
+      `<div style="max-width:460px"><b>${r.name}</b><br>${r.cat} · ${r.sampleCount}/${
         r.total != null ? r.total : agg.totalSpecimensAll != null ? agg.totalSpecimensAll : agg.totalSamples
       } passing (${r.samplePct.toFixed(1)}%)` +
       (r.belowCount ? `<br><span style="color:#b0bec5">${r.belowCount} more detected below the cutoff</span>` : "") +
-      `<br><span style="color:#90caf9">Passing TASS</span> — min ${lo.toFixed(1)} · Q1 ${q1.toFixed(
+      `<br><span style="color:#90caf9">Passing TASS</span>: min ${lo.toFixed(1)} · Q1 ${q1.toFixed(
         1,
       )} · med ${med.toFixed(1)} · Q3 ${q3.toFixed(1)} · max ${hi.toFixed(1)}` +
       (_allStat
-        ? `<br><span style="color:#b0bec5">All specimens</span> — min ${_allStat.min.toFixed(
+        ? `<br><span style="color:#b0bec5">All specimens</span>: min ${_allStat.min.toFixed(
             1,
           )} · med ${_allStat.med.toFixed(1)} · max ${_allStat.max.toFixed(1)} (n=${_allStat.n})`
         : "");
+    tipHtml += `<table style="border-collapse:collapse;font-size:0.88em;margin:5px 0 2px">`;
+    if (isFinite(hs.medPct))
+      tipHtml += trow(
+        "% reads (what we see)",
+        `median ${_xsPctFmt(hs.medPct)}, range ${_xsPctFmt(hs.minPct)} to ${_xsPctFmt(hs.maxPct)} over ${
+          hs.nPool
+        } specimen(s)`,
+      );
+    hs.sites.forEach((b) => {
+      if (!b.hasRef) return;
+      const rng = b.q ? `, 5–95% ${_xsPctFmt(b.q[0])} to ${_xsPctFmt(b.q[4])}, median ${_xsPctFmt(b.q[2])}` : "";
+      tipHtml += trow(
+        `Healthy ${b.site} (HMP)`,
+        `mean ${_xsPctFmt(b.m)} ± ${_xsPctFmt(b.sd)}${rng}; carried by ${Math.round(
+          b.hn,
+        ).toLocaleString()} of ${Math.round(b.hN).toLocaleString()} healthy samples` +
+          (b.hN ? ` (${((100 * b.hn) / b.hN).toFixed(b.hn / b.hN < 0.01 ? 2 : 1)}%)` : ""),
+      );
+    });
+    if (hs.anyHmp) {
+      const parts = _XS_HMP_ORDER
+        .filter((k) => hs.counts[k])
+        .map((k) => `<span style="color:${_xsHmpColor(k)};font-weight:700">${hs.counts[k]}</span> ${_XS_HMP_LABEL[k]}`);
+      tipHtml += trow("Healthy comparison", parts.join(" · "));
+      if (isFinite(hs.medZ))
+        tipHtml += trow(
+          "Z-score",
+          `median ${hs.medZ.toFixed(2)}, max ${hs.maxZ.toFixed(2)} <span style="color:#aaa">(elevated at ≥ ${
+            typeof TT_HMP_Z !== "undefined" ? TT_HMP_Z : 2
+          })</span>`,
+        );
+    } else if (hmpOn) {
+      tipHtml += trow("Healthy comparison", `<span style="color:#aaa">no HMP reference for these sample types</span>`);
+    }
+    if (ctl.length)
+      tipHtml += trow(
+        "Controls",
+        ctl
+          .map(
+            (c) =>
+              `<span style="color:${
+                c.type === "negative" ? "#ce93d8" : c.type === "positive" ? "#80cbc4" : "#bcaaa4"
+              }">${c.sample}</span> (${c.type}): TASS ${c.tass.toFixed(1)}, ${_fmtInt(c.reads)} reads${
+                isFinite(c.pct) ? `, ${_xsPctFmt(c.pct)}` : ""
+              }${c.pass ? "" : ", below cutoff"}${c.hidden ? " · hidden" : ""}`,
+          )
+          .join("<br>"),
+      );
+    tipHtml += `</table>`;
+    const spec = hs.pool
+      .filter((a) => isFinite(a.pct))
+      .sort((a, b) => b.pct - a.pct)
+      .slice(0, 8);
+    if (spec.length)
+      tipHtml +=
+        `<div style="font-size:0.85em;color:#ccc">Top specimens: ` +
+        spec
+          .map(
+            (a) =>
+              `${a.sample || a.sn} <span style="color:${_xsHmpColor(a.st)}">${_xsPctFmt(a.pct)}${
+                isFinite(a.z) ? ` (z ${a.z.toFixed(1)})` : a.st === "Absent in healthy" ? " (new)" : ""
+              }</span>`,
+          )
+          .join(" · ") +
+        (hs.pool.length > spec.length ? ` · +${hs.pool.length - spec.length} more` : "") +
+        `</div>`;
+    tipHtml += `</div>`;
     svg
       .append("rect")
       .attr("x", 0)
@@ -3557,14 +4110,8 @@ function _drawTab(tab) {
     case "heatmap":
       drawHeatmap();
       break;
-    case "tass":
-      drawTassChart();
-      break;
     case "sunburst":
       if (window.drawSunburst) window.drawSunburst();
-      break;
-    case "coverage":
-      drawCoverage();
       break;
     case "proteins":
       if (HAS_PROT) drawProteins();
@@ -3572,8 +4119,16 @@ function _drawTab(tab) {
     case "histogram":
       if (window.drawHistogram) window.drawHistogram();
       break;
-    case "explore":
-      drawExplore();
+    case "metrics":
+      // One pane, three sections (formerly the TASS Comparison, Coverage and
+      // Explore tabs). Each is guarded so one failing chart can't blank the rest.
+      [drawTassChart, drawCoverage, drawExplore].forEach((fn) => {
+        try {
+          fn();
+        } catch (e) {
+          console.error("[metrics] " + fn.name + " failed:", e);
+        }
+      });
       break;
     case "novelty":
       if (HAS_NOVELTY) drawNovelty();

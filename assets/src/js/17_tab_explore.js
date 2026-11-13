@@ -1,5 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-       -  §  TAB: EXPLORE            (data-tab="explore")
+       -  §  TAB: METRICS            (data-tab="metrics"; formerly "Explore")
+       -     The Metrics pane also hosts the TASS Comparison bar chart
+       -     (06_tab_tass.js) and the Coverage Scatter (08_tab_coverage.js);
+       -     _drawTab("metrics") draws all three.
        -     drawExplore() — top-level dispatcher; reads the explore-mode
        -     selector (bubble / chord / radar / lollipop) and calls one of:
        -        _drawExploreBubble()   — coverage % vs TASS scatter, sized by
@@ -1302,12 +1305,10 @@ document.addEventListener("mouseup", () => {
 const _TAB_DIRTY = {
   summary: false,
   heatmap: false,
-  tass: false,
   sunburst: false,
-  coverage: false,
   proteins: false,
   histogram: false,
-  explore: false,
+  metrics: false,
   table: false,
   map: false,
   runmeta: false,

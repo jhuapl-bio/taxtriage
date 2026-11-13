@@ -389,10 +389,11 @@ def parse_args(argv=None):
              "(nothing but the flagged rows).",
     )
     parser.add_argument(
-        "--controls", default="show", choices=["show", "hide"],
-        help="Negative / positive control samples (metadata control_type): 'show' them "
-             "(default) or open the report with them hidden. Either way the report's "
-             "'Show controls' switch above the sample list toggles them.",
+        "--controls", default="hide", choices=["show", "hide"],
+        help="Negative / positive control samples (metadata control_type): open the "
+             "report with them hidden (default) or 'show' them. Either way the report's "
+             "'Show controls' switch above the sample list toggles them. A report whose "
+             "samples are all controls always opens with them shown.",
     )
     parser.add_argument(
         "--vfamr-taxids", default=None, metavar="TSV",
@@ -3383,7 +3384,7 @@ def main():
         "has_pathogens":         has_pathogens,                # true if a pathogen sheet was loaded
         "sample_flags":          sample_flags,                 # default whole-sample QC rules (None when unconfigured)
         "organism_flags":        organism_flags,               # default per-detection QC rules (None when unconfigured)
-        "controls_view":         getattr(args, "controls", "show"),  # "show" | "hide": initial state of the report's "Show controls" switch
+        "controls_view":         getattr(args, "controls", "hide"),  # "show" | "hide": initial state of the report's "Show controls" switch
         "report_generated_at":   datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pipeline_revision":     pipeline_revision,            # global branch/tag or "local"
         "pipeline_commit":       pipeline_commit,              # global commit hash or None

@@ -1872,20 +1872,10 @@ const PDF_SECTION_INFO = {
     what: "A samples × organisms grid in which each cell's colour encodes the selected metric (TASS score, reads, or coverage).",
     how: "Darker cells are higher values. Scan across a row to see which samples share an organism; scan down a column to profile one sample. Empty cells mean the organism was not detected there.",
   },
-  tass: {
-    group: "Detection Confidence",
-    what: "TASS confidence scores for each detection drawn side-by-side as bars, coloured by sample.",
-    how: "Taller bars are more confident detections. Compare each bar against the TASS cutoff — bars below it are weak calls. Bar colours match the sample legend.",
-  },
   sunburst: {
     group: "Taxonomic Composition",
     what: "A radial view of the taxonomy: inner rings are higher ranks (kingdom→genus), outer rings are species/strains, sized by the chosen metric.",
     how: "Wider wedges represent a larger share of the metric. Trace a wedge outward to follow a lineage from genus down to strain; the centre is the root of the tree.",
-  },
-  coverage: {
-    group: "Confidence & Coverage",
-    what: "A scatter of genome coverage against TASS score (or read count); each point is one detection, coloured by sample.",
-    how: "Points high and to the right are strong, well-covered detections. Outliers — e.g. many reads but low breadth — sit away from the main cluster and deserve a closer look.",
   },
   proteins: {
     group: "Virulence & Resistance",
@@ -1897,10 +1887,10 @@ const PDF_SECTION_INFO = {
     what: "Per-contig / per-genome read-depth distributions showing how sequencing depth is spread across each reference genome.",
     how: "Even, full-width coverage indicates a genuine, well-covered genome; spiky or sparse coverage suggests partial or ambiguous mapping. Bin size varies with genome length.",
   },
-  explore: {
-    group: "Cross-Sample Patterns",
-    what: "Free-form cross-sample charts for spotting multi-metric trends, batch effects, and sample-type patterns across the whole run.",
-    how: "Pick the axes/metrics that answer your question; clusters and trends reveal samples that behave alike or stand apart.",
+  metrics: {
+    group: "Confidence, Coverage & Cross-Sample Patterns",
+    what: "TASS Comparison bars (confidence score per organism, coloured by sample), the Coverage Scatter (genome coverage against TASS score or read count, one point per detection), and cross-sample radar, chord, ranking and correlogram charts for multi-metric patterns.",
+    how: "In the TASS bars, taller is more confident; compare each bar against the TASS cutoff line. In the Coverage Scatter, points high and to the right are strong, well-covered detections, while outliers (e.g. many reads but low breadth) deserve a closer look. The remaining charts reveal samples and organisms that behave alike or stand apart.",
   },
   table: {
     group: "Detection Records",

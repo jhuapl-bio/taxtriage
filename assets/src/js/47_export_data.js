@@ -664,7 +664,7 @@ const TT_EXPORT_DATASETS = [
   {
     id: "organism_summary",
     label: "Cross-Sample Organisms",
-    tab: "Explore",
+    tab: "Summary",
     desc: "Run-wide rollup per organism: prevalence plus TASS / coverage spread.",
     joinKey: TT_JOIN.ORG,
     filterable: true,
@@ -727,7 +727,7 @@ const TT_EXPORT_DATASETS = [
   {
     id: "coverage",
     label: "Coverage Summary",
-    tab: "Coverage / Histogram",
+    tab: "Histograms",
     desc: "Per specimen x organism breadth, mean depth and depth-bin base counts.",
     joinKey: TT_JOIN.SAMPLE_ORG,
     filterable: true,
@@ -748,7 +748,7 @@ const TT_EXPORT_DATASETS = [
   {
     id: "contigs",
     label: "Coverage by Contig",
-    tab: "Coverage / Histogram",
+    tab: "Histograms",
     desc: "One row per aligned contig / reference sequence.",
     joinKey: TT_JOIN.NONE,
     filterable: true,

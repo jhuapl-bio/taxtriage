@@ -237,10 +237,10 @@ process CREATE_COMPARISON_REPORT {
         if (params.report_org_flag_view && params.report_org_flag_view != 'all') org_bits << "--org-flag-view ${params.report_org_flag_view}"
     }
     def org_flag_arg = org_bits.join(' ')
-    // Control samples: only the non-default 'hide' is passed, so the default
-    // command line is unchanged.
-    if (params.report_controls && params.report_controls.toString() == 'hide') {
-        org_flag_arg = (org_flag_arg + ' --controls hide').trim()
+    // Control samples: hidden by default (make_report.py --controls hide). Only
+    // the non-default 'show' is passed, so the default command line is unchanged.
+    if (params.report_controls && params.report_controls.toString() == 'show') {
+        org_flag_arg = (org_flag_arg + ' --controls show').trim()
     }
     // ── In-silico subsampling suite feed ──────────────────────────────────────
     // Subsample dataset JSON(s) — used only to build the suite tab (not the heatmap).

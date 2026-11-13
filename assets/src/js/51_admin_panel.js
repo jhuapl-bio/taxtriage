@@ -62,7 +62,10 @@ const TTAdmin = (function () {
       if (!raw) return null;
       const s = JSON.parse(raw);
       if (!s || !Array.isArray(s.hidden) || !Array.isArray(s.disabled)) return null;
-      return { hidden: s.hidden, disabled: s.disabled, default: s.default || null };
+      // Map ids of tabs merged since this was saved (e.g. explore → metrics).
+      const canon = (id) => (typeof ttCanonicalTabId === "function" ? ttCanonicalTabId(id) : id);
+      const uniqIds = (a) => Array.from(new Set(a.map(canon)));
+      return { hidden: uniqIds(s.hidden), disabled: uniqIds(s.disabled), default: canon(s.default) || null };
     } catch (e) {
       return null;
     }

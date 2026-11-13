@@ -1649,9 +1649,9 @@
                 },
                 "report_controls": {
                     "type": "string",
-                    "default": "show",
+                    "default": "hide",
                     "enum": ["show", "hide"],
-                    "description": "Negative / positive control samples in the HTML report: show them (default) or open the report with them hidden. The report's 'Show controls' switch above the sample list toggles them either way.",
+                    "description": "Negative / positive control samples in the HTML report: open the report with them hidden (default) or shown. The report's 'Show controls' switch above the sample list toggles them either way.",
                     "fa_icon": "fas fa-vial"
                 }
             }

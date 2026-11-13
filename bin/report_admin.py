@@ -26,19 +26,20 @@ Report config (--report_config, JSON or YAML)
     title: "Outbreak run 42"          # optional banner title
     tabs:
       hidden:   [novelty, insilico]   # removed from the tab bar
-      disabled: [explore]             # shown greyed out, not clickable
+      disabled: [metrics]             # shown greyed out, not clickable
       show:     [summary, heatmap]    # whitelist (everything else hidden); optional
       default:  heatmap               # tab the report opens on
       order:    [summary, table]      # listed tabs first, the rest keep their order
       labels:   {table: Detections}   # rename tabs
-      # A mapping form is accepted too:  tabs: {novelty: hidden, explore: disabled}
+      # A mapping form is accepted too:  tabs: {novelty: hidden, metrics: disabled}
     admin:
       enabled: true                   # show the Admin button + dialog
       allow_tab_toggle: true          # viewers may change tab visibility in the dialog
       sections: [tabs, params, run, versions, config]
       redact: [paths, userName]       # blank these run-info fields / param values
 
-Tab ids: see TABS below (aliases such as "vfamr", "metadata", "mapping" work).
+Tab ids: see TABS below (aliases such as "vfamr", "metadata", "mapping" work;
+the retired ids "tass", "coverage" and "explore" map to "metrics").
 """
 
 import argparse
@@ -51,13 +52,11 @@ import sys
 TABS = [
     ("summary", "Summary"),
     ("heatmap", "Heatmap"),
-    ("tass", "TASS Comparison"),
     ("sunburst", "Sunburst"),
-    ("coverage", "Coverage"),
     ("proteins", "VF / AMR"),
     ("histogram", "Histograms"),
     ("novelty", "Novelty"),
-    ("explore", "Explore"),
+    ("metrics", "Metrics"),
     ("table", "Table"),
     ("runmeta", "Metadata"),
     ("map", "Mapping"),
@@ -73,7 +72,10 @@ TAB_ALIASES = {
     # Alignment Trends is a sub-tab of Trends, so its names address that tab.
     "alignment_trends": "trends", "align_trends": "trends", "aligntrends": "trends",
     "depth_trends": "trends",
-    "tass_comparison": "tass",
+    # TASS Comparison, Coverage and Explore were merged into the Metrics tab;
+    # their old ids still address it so existing report configs keep working.
+    "tass": "metrics", "tass_comparison": "metrics", "coverage": "metrics",
+    "explore": "metrics", "metric": "metrics",
     "metadata": "runmeta", "run_metadata": "runmeta", "meta": "runmeta",
     "mapping": "map", "geo": "map",
     "trend": "trends", "longitudinal": "trends",
@@ -217,7 +219,7 @@ def normalize_config(raw, source=None):
         if not tid:
             continue
         word = str(v).strip().lower() if not isinstance(v, bool) else ("show" if v else "hide")
-        if isinstance(v, dict):          # {explore: {state: disabled, label: X}}
+        if isinstance(v, dict):          # {metrics: {state: disabled, label: X}}
             word = str(v.get("state", "show")).strip().lower()
             if v.get("label"):
                 t["labels"][tid] = str(v["label"])

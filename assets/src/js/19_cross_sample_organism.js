@@ -87,6 +87,31 @@ function _aniMatchesFor(r) {
   return [];
 }
 
+// Per-specimen relative abundance + healthy (HMP) comparison for one organism:
+// keeps the detection with the highest "% Reads" per specimen, with that row's
+// HMP status / z / body site / reference key (50_hmp_outliers.js). Feeds the
+// "% reads vs healthy" strip of the Prevalence & TASS view.
+function _xsAbundAdd(map, sn, r) {
+  const pct = parseFloat(r["% Reads"]);
+  const cur = map.get(sn);
+  if (cur && !(isFinite(pct) && (!isFinite(cur.pct) || pct > cur.pct))) return;
+  const z = parseFloat(r["HMP Z-Score"]);
+  const pctl = parseFloat(r["HMP Healthy Percentile"]);
+  const prev = parseFloat(r["HMP Prevalence %"]);
+  map.set(sn, {
+    sample: String(r["Specimen ID"] == null ? "" : r["Specimen ID"]),
+    pct: isFinite(pct) ? pct : NaN,
+    st: r["HMP Status"] || "",
+    z: isFinite(z) ? z : NaN,
+    pctl: isFinite(pctl) ? pctl : NaN,
+    prev: isFinite(prev) ? prev : NaN,
+    site: r["HMP Body Site"] || "",
+    ref: String(r["HMP Ref Key"] || ""),
+    type: r["Sample Type"] || "",
+    tass: num(r["TASS Score"]),
+  });
+}
+
 // Aggregate filteredData() → one entry per organism (keyed by taxid).
 // Per sample we keep the MAX TASS / coverage so a single organism that
 // appears at several taxonomic levels in one sample counts once.
@@ -130,6 +155,7 @@ function _xsAggregate(fd) {
         covMemb: new Map(),
         reads: 0,
         readsBySpec: new Map(), // specimen → summed reads (passing view)
+        abund: new Map(), // specimen → best % reads + HMP figures (_xsAbundAdd)
         hc: false,
         aniMatches: new Map(), // partner taxid → max ANI %
         aniAnnotated: false,
@@ -147,6 +173,7 @@ function _xsAggregate(fd) {
     const _rd = num(r["# Reads Aligned"]);
     e.reads += _rd;
     e.readsBySpec.set(sn, (e.readsBySpec.get(sn) || 0) + _rd);
+    _xsAbundAdd(e.abund, sn, r);
     if (isTruthy(r["High Consequence"])) e.hc = true;
     if (_aniAnnotated(r)) e.aniAnnotated = true;
     _aniMatchesFor(r).forEach((m) => {
@@ -173,7 +200,7 @@ function _xsAggregate(fd) {
       if (!dkey) return;
       let d = detByOrg.get(dkey);
       if (!d) {
-        d = { tass: new Map(), cov: new Map(), reads: new Map() };
+        d = { tass: new Map(), cov: new Map(), reads: new Map(), abund: new Map() };
         detByOrg.set(dkey, d);
       }
       const _t = num(r["TASS Score"]);
@@ -182,6 +209,7 @@ function _xsAggregate(fd) {
       if (!d.tass.has(sn) || _t > d.tass.get(sn)) d.tass.set(sn, _t);
       if (!d.cov.has(sn) || _c > d.cov.get(sn)) d.cov.set(sn, _c);
       d.reads.set(sn, (d.reads.get(sn) || 0) + _rd);
+      _xsAbundAdd(d.abund, sn, r);
     });
   } catch (_e) {
     /* fall back to pass-only counts if the un-thresholded pass fails */
@@ -238,6 +266,14 @@ function _xsAggregate(fd) {
     const tassAll = _pad(_detTass, _totalSpecimens);
     const covAll = _pad(_detCov, _totalSpecimens);
     const readsAll = _pad(_detReads, _totalSpecimens);
+    // Every detected specimen (passing or below the cutoff) with its relative
+    // abundance and healthy-range status; `pass` marks those clearing the cutoff.
+    const _abSrc = _detected && _detected.abund && _detected.abund.size ? _detected.abund : e.abund;
+    const abund = [];
+    _abSrc.forEach((v, sn) => abund.push(Object.assign({ sn, pass: tassMap.has(sn) }, v)));
+    e.abund.forEach((v, sn) => {
+      if (!_abSrc.has(sn)) abund.push(Object.assign({ sn, pass: true }, v));
+    });
     rows.push({
       taxid: e.taxid,
       name: e.name,
@@ -269,6 +305,7 @@ function _xsAggregate(fd) {
       tassAll: tassAll,
       covAll: covAll,
       readsAll: readsAll,
+      abund: abund,
       tassMap: tassMap,
       covMap: covMap,
       samples: new Set(tassMap.keys()),
