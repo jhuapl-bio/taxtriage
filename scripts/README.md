@@ -18,6 +18,18 @@ scripts/pathogen_db/build_pathogen_db.sh -o pathogen_build/ -e you@org.org -t 8
 
 Many workflow scripts in `../bin/` also work standalone (`download_fastas.py`, `append_taxid.py`, `resolve_sra.py`, `export_data.py`, `spike_into_background.py`, ...); they are indexed on the same docs page.
 
+## Containers
+
+| Script              | Purpose                                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `image_manifest.py` | Images a run mode needs (Docker / Singularity / Apptainer / Podman), resolved by `nextflow run -preview` + `nextflow inspect`; writes a manifest and a pull script, `--pull` runs it. |
+
+```bash
+python3 scripts/image_manifest.py                                  # full + light-k2/fasta/both, docker
+python3 scripts/image_manifest.py --engine singularity --mode light-k2 --core-only --offline --pull
+python3 scripts/image_manifest.py --custom "denovo=--db {DB} --use_denovo"   # any param combination
+```
+
 ## Developer helpers
 
 `test_*.js`, `test_*.py`, `bench_*.js`, `verify_*.js`: interactive-report and metadata tests.

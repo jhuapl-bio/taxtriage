@@ -1400,9 +1400,13 @@ workflow TAXTRIAGE {
     ch_collated_versions = ch_versions.unique().collectFile(name: 'all_mqc_versions.yml')
     ch_multiqc_files = ch_multiqc_files.mix(ch_collated_versions)
 
-    CUSTOM_DUMPSOFTWAREVERSIONS(
-        ch_collated_versions
-    )
+    // software_versions.yml for MultiQC / the results folder. Display-only: the HTML
+    // report's Admin dialog reads ch_versions directly. --skip_versions_dump turns it off.
+    if (!params.skip_versions_dump) {
+        CUSTOM_DUMPSOFTWAREVERSIONS(
+            ch_collated_versions
+        )
+    }
     // // //
     // // // MODULE: MultiQC Pt 2
     // // //

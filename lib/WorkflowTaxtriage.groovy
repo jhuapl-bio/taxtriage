@@ -412,7 +412,7 @@ class WorkflowTaxtriage {
         'auto_score_power', 'fuzzy', 'refresh_download', 'igenomes_ignore',
         'recursive_reference', 'decompress_pre_megahit', 'skip_plots', 'enable_plots',
         'skip_stats', 'enable_fastp', 'skip_kraken2', 'skip_refpull',
-        'skip_krona', 'skip_features', 'skip_pathogens', 'unknown_sample',
+        'skip_krona', 'skip_kraken_summaries', 'skip_versions_dump', 'skip_features', 'skip_pathogens', 'unknown_sample',
         'ignore_missing', 'reference_assembly', 'pathogenicity', 'get_features',
         'get_variants', 'compress_species', 'fast', 'enable_matrix', 'no_subkey',
         'sort_alphabetical', 'show_potentials', 'show_opportunistics',

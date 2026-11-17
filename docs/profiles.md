@@ -28,17 +28,18 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 
 ## Workload profiles at a glance
 
-| Profile                 | CPUs / RAM / time ceiling   | Default `--db`              | Built for                                                                                                 |
-| ----------------------- | --------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `test`                  | 2 / 7 GB / 10 h             | `test` (112 MB)             | CI and install verification. Pulls a tiny bundled samplesheet.                                            |
-| `test_viral`            | 2 / 3 GB / 10 h             | `viral` (~550 MB)           | Same, but exercising the viral database path.                                                             |
-| `low`                   | 4 / 8 GB / 20 h             | `standard8` (~7.5 GB)       | Laptops and small VMs. `low_memory = true`, so Kraken2 reads the DB from disk instead of RAM.             |
-| `viral`                 | 4 / 8 GB / 20 h             | `viral` (~550 MB)           | Virus-only triage on modest hardware. `min_reads_align = 1`, `sensitive = true`.                          |
-| `desktop`               | 6 / 24 GB / 12 h            | `pluspfp16` (~16 GB)        | Mid-tier workstation doing routine bacterial + fungal + protozoan triage. Annotation on, de novo off.     |
-| `local`                 | 4 / 100 GB / 24 h           | `standard` (~80 GB)         | A workstation or HPC node with real memory behind it. Annotation on, full standard DB in RAM.             |
-| `deep`                  | 32 / 256 GB / 72 h          | `standard` (~80 GB)         | Multi-GB FASTQ (deep WGS, high-output NovaSeq, PromethION). Turns on read reduction see below.            |
-| `mce`                   | 16 CPUs / 24 h (no RAM cap) | `standard` + pathogen FASTA | MCE-style runs that align against the curated pathogen reference set. `min_conf = 0.4`, `strains = true`. |
-| `seqera` / `mce_seqera` | 32 / 500 GB / 32 h          | S3-hosted prebuilt DB       | Seqera Platform / AWS Batch. Reads databases and the host reference from S3 rather than downloading.      |
+| Profile                 | CPUs / RAM / time ceiling   | Default `--db`              | Built for                                                                                                           |
+| ----------------------- | --------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `test`                  | 2 / 7 GB / 10 h             | `test` (112 MB)             | CI and install verification. Pulls a tiny bundled samplesheet.                                                      |
+| `test_viral`            | 2 / 3 GB / 10 h             | `viral` (~550 MB)           | Same, but exercising the viral database path.                                                                       |
+| `low`                   | 4 / 8 GB / 20 h             | `standard8` (~7.5 GB)       | Laptops and small VMs. `low_memory = true`, so Kraken2 reads the DB from disk instead of RAM.                       |
+| `viral`                 | 4 / 8 GB / 20 h             | `viral` (~550 MB)           | Virus-only triage on modest hardware. `min_reads_align = 1`, `sensitive = true`.                                    |
+| `desktop`               | 6 / 24 GB / 12 h            | `pluspfp16` (~16 GB)        | Mid-tier workstation doing routine bacterial + fungal + protozoan triage. Annotation on, de novo off.               |
+| `local`                 | 4 / 100 GB / 24 h           | `standard` (~80 GB)         | A workstation or HPC node with real memory behind it. Annotation on, full standard DB in RAM.                       |
+| `deep`                  | 32 / 256 GB / 72 h          | `standard` (~80 GB)         | Multi-GB FASTQ (deep WGS, high-output NovaSeq, PromethION). Turns on read reduction see below.                      |
+| `mce`                   | 16 CPUs / 24 h (no RAM cap) | `standard` + pathogen FASTA | MCE-style runs that align against the curated pathogen reference set. `min_conf = 0.4`, `strains = true`.           |
+| `lite`                  | 16 / 128 GB / 48 h          | `standard` (~80 GB)         | MCE detection settings, Kraken2 references only (no FASTA, no host removal, no read QC) → minimap2 → TASS → report. |
+| `seqera` / `mce_seqera` | 32 / 500 GB / 32 h          | S3-hosted prebuilt DB       | Seqera Platform / AWS Batch. Reads databases and the host reference from S3 rather than downloading.                |
 
 The ceilings above are `resourceLimits` a cap, not a request. A process asking
 for 4 CPUs still gets 4 on the `deep` profile; the cap only stops a process from
@@ -59,6 +60,52 @@ asking for more than the machine has.
 | Aligning against the curated pathogen sheet         | `mce,docker`        | Adds `--reference_fasta` for the pathogen set and strain-level output.                                                               |
 | Seqera Platform / AWS Batch                         | `seqera`            | Points at S3-hosted databases so nothing is re-downloaded per run.                                                                   |
 | SLURM cluster                                       | add `slurm`         | e.g. `-profile deep,singularity,slurm`.                                                                                              |
+| Just the TASS score + report, nothing optional      | `light,docker`      | Samplesheet check, Kraken2 and/or your FASTA, minimap2, TASS, report. See [`light`](#light-tass-only) below.                         |
+| Same, on the standard DB with MCE settings          | `lite,docker`       | `light` plus Kraken2 `standard`, MCE thresholds and 16 CPU / 128 GB caps. Needs ~90 GB RAM, or add `--low_memory true`.              |
+
+---
+
+## `light`: TASS only
+
+`-profile light` keeps only the steps that feed the TASS score and the report, and
+turns every optional module off. It sets no resources or database, so combine it
+with a container profile (and a workload profile if you want its resource caps).
+
+| Input                    | Command                                                                             |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| Kraken2 picks references | `-profile light,docker --db <k2_db>`                                                |
+| Local FASTA only         | `-profile light,docker --skip_kraken2 --reference_fasta refs/`                      |
+| Both                     | `-profile light,docker --db <k2_db> --reference_fasta refs/`                        |
+| Air-gapped               | add `--taxdump <dir> --assembly assembly_summary_refseq.txt` (skips both downloads) |
+
+What runs (minimap2 aligner):
+
+| Stage          | Processes                                                                                                                                      |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Inputs         | `SAMPLESHEET_CHECK`, `COUNT_READS`                                                                                                             |
+| Reference data | `GET_ASSEMBLIES` (unless `--assembly`), `DOWNLOAD_TAXDUMP` (unless `--taxdump`)                                                                |
+| Classification | `KRAKEN2_KRAKEN2`, `TOP_HITS` (not with `--skip_kraken2`)                                                                                      |
+| References     | `DOWNLOAD_ASSEMBLY` (Kraken2 top hits), `MAP_LOCAL_ASSEMBLY_TO_FASTA` (`--reference_fasta`), `COMBINE_MAPFILES`, `MAP_TAXID_ASSEMBLY`          |
+| Alignment      | `MINIMAP2_ALIGN`, `SAMTOOLS_MERGE` (only when a sample has >1 reference file), `SAMTOOLS_INDEX`, `SAMTOOLS_COVERAGE`, `SAMTOOLS_HIST_COVERAGE` |
+| TASS           | `ALIGNMENT_PER_SAMPLE` (`match_paths.py`), plus `ALIGNMENT_PER_SAMPLE_CONTROLS` for control rows                                               |
+| Report         | `SINGLE_REPORT`, `ORGANISM_MERGE_REPORT`, `COMBINE_SAMPLES_JSON`, `CREATE_COMPARISON_REPORT`                                                   |
+
+Turned off: trimming (`--skip_trimming`, overriding `trim=TRUE`), fastp, FastQC /
+NanoPlot, bbnorm / seqtk, Krona (`--skip_krona`), the merged Kraken2 tables
+(`--skip_kraken_summaries`), MultiQC, `software_versions.yml`
+(`--skip_versions_dump`), alignment trends, variants / consensus, de novo, DIAMOND,
+annotation, novelty, MicrobeRT, FCS / product masking and simulation. Host removal
+is not part of the minimal path either, but `--genome` is left to you: add it if
+your samples need de-hosting. Every setting is a plain param, so any of them can be
+turned back on from the command line.
+
+To list (and pre-pull) the images a mode needs, see
+`scripts/image_manifest.py --help`:
+
+```bash
+python3 scripts/image_manifest.py --engine singularity --mode light-k2 --mode light-fasta \
+    --core-only --offline --pull --cache-dir $NXF_SINGULARITY_CACHEDIR
+```
 
 ---
 
