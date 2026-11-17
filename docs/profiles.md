@@ -103,7 +103,7 @@ To list (and pre-pull) the images a mode needs, see
 `scripts/image_manifest.py --help`:
 
 ```bash
-python3 scripts/image_manifest.py --engine singularity --mode light-k2 --mode light-fasta \
+python3 scripts/image_manifest.py --engine singularity --mode lite-k2 --mode lite-fasta \
     --core-only --offline --pull --cache-dir $NXF_SINGULARITY_CACHEDIR
 ```
 
