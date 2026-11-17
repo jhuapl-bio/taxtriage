@@ -657,6 +657,9 @@
     step("index hopping", () => {
       if (typeof ttHopOnDataChanged === "function") ttHopOnDataChanged();
     });
+    step("crossover check", () => {
+      if (typeof ttCtOnDataChanged === "function") ttCtOnDataChanged();
+    });
     // Newly loaded control samples follow the "Show controls" switch.
     step("controls", () => {
       if (typeof ttControlsOnDataChanged === "function") ttControlsOnDataChanged();
@@ -1182,6 +1185,7 @@
     _computeBslLevels();
     // Index hopping loaded in this browser: recompute over the remaining rows.
     if (typeof ttHopOnDataChanged === "function") ttHopOnDataChanged();
+    if (typeof ttCtOnDataChanged === "function") ttCtOnDataChanged();
     if (typeof ttControlsOnDataChanged === "function") ttControlsOnDataChanged();
 
     buildSampleList();

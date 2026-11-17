@@ -187,6 +187,9 @@
       if (typeof TT_CONTROLS_VIEW !== "undefined") app.controlsView = TT_CONTROLS_VIEW;
     } catch (e) {}
     try {
+      if (typeof ttCtCaptureConfig === "function") app.crossover = ttCtCaptureConfig();
+    } catch (e) {}
+    try {
       app.sortCol = sortCol;
       app.sortAsc = sortAsc;
     } catch (e) {}
@@ -252,6 +255,10 @@
       if (typeof ttControlsInit === "function") ttControlsInit(app.controlsView);
     } catch (e) {}
     try {
+      // Sessions saved before the crossover check have no block: settings stay as they are.
+      if (typeof ttCtLoadConfig === "function") ttCtLoadConfig(app.crossover);
+    } catch (e) {}
+    try {
       if (typeof ttOFlagLoadConfig === "function") {
         ttOFlagLoadConfig(app.organismFlags || (BOOT && BOOT.organism_flags) || null);
         ttOFlagInvalidate();
@@ -284,6 +291,7 @@
     } catch (e) {}
     try {
       if (typeof activeTab !== "undefined") ui.activeTab = activeTab;
+      if (typeof ttSummaryInner === "function") ui.summaryInner = ttSummaryInner();
     } catch (e) {}
     return ui;
   }
@@ -329,10 +337,21 @@
       if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
     } catch (e) {}
     // Restore the active tab (only if visible + enabled).
+    // The Summary sub-tab first, without leaving the current tab. Sessions saved
+    // before Heatmap / Sunburst moved under Summary have no summaryInner.
+    try {
+      if (ui.summaryInner && typeof ttOpenSummaryInner === "function")
+        ttOpenSummaryInner(ui.summaryInner, { tab: false });
+    } catch (e) {}
     if (ui.activeTab) {
       var _tabId = typeof ttCanonicalTabId === "function" ? ttCanonicalTabId(ui.activeTab) : ui.activeTab;
-      var btn = document.querySelector('.tab-btn[data-tab="' + _tabId + '"]');
-      if (btn && !btn.classList.contains("hidden") && !btn.classList.contains("tab-disabled")) btn.click();
+      if (typeof ttIsSubTabId === "function" && ttIsSubTabId(_tabId)) {
+        // An older session saved on the Heatmap / Sunburst TAB.
+        if (typeof ttOpenSummaryInner === "function") ttOpenSummaryInner(_tabId);
+      } else {
+        var btn = document.querySelector('.tab-btn[data-tab="' + _tabId + '"]');
+        if (btn && !btn.classList.contains("hidden") && !btn.classList.contains("tab-disabled")) btn.click();
+      }
     }
   }
 

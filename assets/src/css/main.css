@@ -8748,3 +8748,491 @@ body.tt-tab-drag-active * {
 body.report-pdf-printing #tabbar .tab-order-reset {
   display: none;
 }
+
+/* ── Summary sub-tabs: Heatmap + Sunburst (formerly top-level tabs) ──
+   Hidden / disabled through the report config or the Admin dialog
+   (51_admin_panel.js) → the sub-tab button is removed. */
+#sum-inner-tabs {
+  flex-wrap: wrap;
+}
+.sum-inner-tab.tab-admin-hidden {
+  display: none;
+}
+/* PDF export: each offered sub-tab view prints as its own section
+   (_renderTabsForPdf adds .pdf-include after drawing it). */
+body.report-pdf-printing .sum-inner-pane.pdf-include {
+  display: block !important;
+  page-break-before: always;
+}
+
+/* ── Crossover check (59_contamination.js) ───────────────────────────── */
+#banner .banner-ct {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2em 0.65em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px dashed rgba(255, 255, 255, 0.55);
+  color: #eceff1;
+  font-size: 0.7em;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+#banner .banner-ct[hidden] {
+  display: none;
+}
+#banner .banner-ct.on {
+  border-style: solid;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.85);
+  color: #fff;
+}
+#banner .banner-ct.on.has-flags {
+  background: #fff;
+  border-color: #fff;
+  color: #0d47a1;
+}
+#banner .banner-ct.filtering {
+  box-shadow: 0 0 0 2px rgba(144, 202, 249, 0.75);
+}
+#banner .banner-ct:hover,
+#banner .banner-ct:focus-visible,
+#banner .banner-ct.open {
+  background: rgba(255, 255, 255, 0.3);
+  outline: none;
+}
+#banner .banner-ct.on.has-flags:hover,
+#banner .banner-ct.on.has-flags:focus-visible,
+#banner .banner-ct.on.has-flags.open {
+  background: #e3f2fd;
+}
+.banner-ct-pop .bmp-title {
+  color: #90caf9;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+.banner-ct-pop .ct-pop-lbl {
+  color: #90a4ae;
+  font-size: 0.88em;
+  min-width: 6.5em;
+}
+.banner-ct-pop .bhp-controls button {
+  border-color: #42a5f5;
+  background: #1e3a5f;
+  color: #e3f2fd;
+}
+.banner-ct-pop .bhp-controls button.active {
+  background: #1565c0;
+  border-color: #90caf9;
+  color: #fff;
+}
+.ct-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  margin-left: auto;
+  padding: 0.1em 0.55em 0.1em 0.2em;
+  border: 1px solid #78909c;
+  border-radius: 999px;
+  background: #37474f;
+  color: #cfd8dc;
+  font: inherit;
+  font-size: 0.82em;
+  cursor: pointer;
+}
+.ct-switch span {
+  width: 1.6em;
+  height: 0.9em;
+  border-radius: 999px;
+  background: #607d8b;
+  position: relative;
+}
+.ct-switch span::after {
+  content: "";
+  position: absolute;
+  left: 0.1em;
+  top: 0.1em;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  background: #eceff1;
+  transition: left 0.15s;
+}
+.ct-switch.on {
+  border-color: #90caf9;
+  color: #e3f2fd;
+}
+.ct-switch.on span {
+  background: #1e88e5;
+}
+.ct-switch.on span::after {
+  left: 0.8em;
+}
+body.report-pdf-printing .banner-ct-pop {
+  display: none !important;
+}
+/* row markers */
+.ct-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid #1565c0;
+  background: #e3f2fd;
+  color: #0d47a1;
+  font-size: 8.5px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1.45;
+  vertical-align: middle;
+  cursor: help;
+}
+.ct-mark.ct-bg {
+  border-color: #5e35b1;
+  background: #ede7f6;
+  color: #4527a0;
+}
+.ct-mark i {
+  font-size: 8px;
+}
+.ct-src-mark {
+  margin-left: 4px;
+  font-size: 9px;
+  color: #42a5f5;
+  vertical-align: middle;
+  cursor: help;
+}
+.ct-tbar {
+  display: inline-block;
+  width: 46px;
+  height: 6px;
+  border-radius: 3px;
+  background: #455a64;
+  vertical-align: middle;
+  overflow: hidden;
+}
+.ct-tbar span {
+  display: block;
+  height: 100%;
+  background: #64b5f6;
+}
+/* heatmap */
+.hm-ct-corner {
+  fill: #0b2545;
+  stroke: #fff;
+  stroke-width: 1;
+}
+.hm-ct-corner.bg {
+  fill: #5e35b1;
+}
+.hm-ct-note {
+  font-size: 0.74rem;
+  color: #6c757d;
+  margin: -0.2em 0 0.4em;
+}
+.hm-ct-note[hidden] {
+  display: none;
+}
+.hm-ct-key {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-top: 9px solid #0b2545;
+  border-right: 9px solid transparent;
+  vertical-align: -1px;
+}
+.hm-ct-key.bg {
+  border-top-color: #5e35b1;
+}
+/* the analysis view */
+.ct-wrap .ct-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45em;
+  margin: 0.5em 0 0.6em;
+  font-size: 0.8rem;
+  color: #37474f;
+}
+.ct-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em 0.8em;
+}
+.ct-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+.ct-row select,
+.ct-row input[type="search"],
+.ct-num input,
+.ct-num select {
+  padding: 0.18em 0.4em;
+  border: 1px solid #cfd8dc;
+  border-radius: 5px;
+  font: inherit;
+  background: #fff;
+}
+.ct-row input[type="search"] {
+  width: 14em;
+}
+.ct-spacer {
+  flex: 1;
+}
+.ct-lbl {
+  font-weight: 600;
+  color: #546e7a;
+}
+.ct-dim {
+  color: #90a4ae;
+  font-weight: 400;
+}
+.ct-seg {
+  display: inline-flex;
+  border: 1px solid #90caf9;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ct-seg button {
+  padding: 0.22em 0.65em;
+  border: none;
+  border-right: 1px solid #cfd8dc;
+  background: #fff;
+  color: #37474f;
+  font: inherit;
+  cursor: pointer;
+}
+.ct-seg button:last-child {
+  border-right: none;
+}
+.ct-seg button:hover {
+  background: #e3f2fd;
+}
+.ct-seg button.active {
+  background: #1565c0;
+  color: #fff;
+}
+.ct-btn {
+  padding: 0.22em 0.7em;
+  border: 1px solid #1565c0;
+  border-radius: 5px;
+  background: #fff;
+  color: #1565c0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ct-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #1565c0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.ct-slider input[type="range"] {
+  width: 140px;
+  accent-color: #1565c0;
+}
+.ct-marktoggle {
+  padding: 0.15em 0.55em;
+  border: 1px solid #90caf9;
+  border-radius: 5px;
+  background: #f3f8fe;
+  color: #0d47a1;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.ct-adv {
+  border: 1px solid #d6e6f7;
+  border-radius: 6px;
+  padding: 0.3em 0.7em 0.5em;
+  background: #f7fbff;
+}
+.ct-adv summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #1565c0;
+}
+.ct-adv summary .ct-link {
+  margin-left: 0.8em;
+  font-weight: 400;
+  font-size: 0.92em;
+}
+.ct-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 0.6em 1.4em;
+  margin-top: 0.45em;
+}
+.ct-box-h {
+  font-weight: 700;
+  color: #1565c0;
+  margin-bottom: 0.25em;
+  font-size: 0.92em;
+}
+.ct-w {
+  display: grid;
+  grid-template-columns: 11.5em 1fr 3.2em;
+  align-items: center;
+  gap: 0.5em;
+  margin: 0.12em 0;
+}
+.ct-w input[type="range"] {
+  width: 100%;
+  accent-color: #1565c0;
+}
+.ct-w b {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ct-w.ct-na {
+  opacity: 0.45;
+}
+.ct-num {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6em;
+  margin: 0.12em 0;
+}
+.ct-num input {
+  width: 6.5em;
+}
+.ct-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em 1.1em;
+  align-items: center;
+  font-size: 0.82rem;
+  color: #37474f;
+  margin: 0.2em 0 0.3em;
+}
+.ct-summary .ct-kpi {
+  padding: 0.12em 0.65em;
+  border: 1px solid #d6e6f7;
+  border-radius: 999px;
+  background: #f7fbff;
+}
+.ct-summary .ct-kpi.ct-dim {
+  border-color: transparent;
+  background: none;
+}
+.ct-summary .ct-kpi b {
+  font-size: 1.15em;
+}
+.ct-focus {
+  padding: 0 0.5em;
+  border-radius: 4px;
+  background: #e3f2fd;
+}
+.ct-legend {
+  line-height: 1.55;
+}
+.ct-lg-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+.ct-lg-d {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  vertical-align: 0;
+}
+.ct-plot {
+  overflow-x: auto;
+}
+.ct-empty {
+  padding: 1.4em;
+  text-align: center;
+  color: #78909c;
+  font-size: 0.85rem;
+}
+.ct-samples-wrap {
+  margin-top: 0.8em;
+  font-size: 0.8rem;
+}
+.ct-samples-wrap summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #1565c0;
+}
+.ct-samples-scroll {
+  max-height: 360px;
+  overflow: auto;
+  margin-top: 0.35em;
+}
+table.ct-samples {
+  border-collapse: collapse;
+  width: 100%;
+}
+table.ct-samples th,
+table.ct-samples td {
+  padding: 0.2em 0.6em;
+  border-bottom: 1px solid #eef1f4;
+  text-align: left;
+  white-space: nowrap;
+}
+table.ct-samples th {
+  position: sticky;
+  top: 0;
+  background: #e3f2fd;
+  color: #0d47a1;
+  font-weight: 600;
+  z-index: 1;
+}
+table.ct-samples .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+table.ct-samples tr.ct-out td {
+  color: #b0bec5;
+}
+table.ct-samples tr.ct-focus-row td {
+  background: #e3f2fd;
+}
+.ct-sbar {
+  display: inline-flex;
+  width: 110px;
+  height: 8px;
+  border-radius: 4px;
+  background: #e3eef9;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.ct-sbar .x {
+  background: #1565c0;
+}
+.ct-sbar .b {
+  background: #5e35b1;
+}
+.ct-ctl {
+  font-size: 0.75em;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+}
+.ct-ctl-neg {
+  color: #c62828;
+}
+.ct-ctl-pos {
+  color: #2e7d32;
+}
+body.report-pdf-printing .ct-controls,
+body.report-pdf-printing .ct-samples-wrap summary .ct-dim {
+  display: none;
+}

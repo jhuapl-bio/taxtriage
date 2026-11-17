@@ -67,6 +67,10 @@
       <span class="banner-hop" id="banner-hop" hidden tabindex="0"
         ><i class="fas fa-shuffle" aria-hidden="true"></i><span id="banner-hop-label"></span
       ></span>
+      <!-- Crossover check pill (59_contamination.js): click = marking on / off, hover = summary + settings; hidden with < 2 samples -->
+      <span class="banner-ct" id="banner-ct" hidden tabindex="0" role="button" aria-pressed="false"
+        ><i class="fas fa-vials" aria-hidden="true"></i><span id="banner-ct-label"></span
+      ></span>
       <button id="pipeline-info-btn" type="button" aria-label="Show pipeline run metadata">
         <i class="fas fa-circle-info"></i><span class="info-btn-label">Run info</span>
       </button>
@@ -116,10 +120,6 @@
         title="Group samples into 2–4 sets (by metadata, Group by, collection date or hand-picked) and compare what was detected in each: mirrored bars, change, radar, scatter and a stats table."
       >
         <i class="fas fa-scale-balanced"></i> Contrast
-      </button>
-      <button class="tab-btn" data-tab="heatmap"><i class="fas fa-th"></i> Heatmap</button>
-      <button class="tab-btn" data-tab="sunburst" title="Radial taxonomy view sized by selected metric.">
-        <i class="fas fa-circle-nodes"></i> Sunburst
       </button>
       <button
         class="tab-btn tab-optional hidden"
@@ -289,6 +289,25 @@
               <i class="fas fa-chart-bar"></i> Genera Comparison
             </button>
             <button class="sum-inner-tab" data-inner="vfamr"><i class="fas fa-dna"></i> VF / AMR</button>
+            <!-- Heatmap + Sunburst were top-level tabs; they keep their ids ("heatmap" / "sunburst") for
+                 report configs, saved sessions and the Admin dialog (see TT_SUMMARY_SUBTABS). -->
+            <button
+              class="sum-inner-tab"
+              data-inner="heatmap"
+              title="Sample × organism grid coloured by the selected metric."
+            >
+              <i class="fas fa-th"></i> Heatmap
+            </button>
+            <button class="sum-inner-tab" data-inner="sunburst" title="Radial taxonomy view sized by selected metric.">
+              <i class="fas fa-circle-nodes"></i> Sunburst
+            </button>
+            <button
+              class="sum-inner-tab"
+              data-inner="crossover"
+              title="Run-wide crossover check: every organism compared across all samples (from another sample / background), with adjustable weights and cutoffs."
+            >
+              <i class="fas fa-vials"></i> Crossover
+            </button>
           </div>
 
           <div class="sum-inner-pane active" id="sum-inner-detections">
@@ -311,6 +330,13 @@
                   >Ⓡ</span
                 >
                 = DNA / RNA ·
+                <span id="sum-ct-legend" hidden
+                  ><span class="ct-mark" aria-hidden="true"><i class="fas fa-right-left"></i> crossover?</span> /
+                  <span class="ct-mark ct-bg" aria-hidden="true"><i class="fas fa-flask"></i> background?</span> =
+                  possible crossover from another sample / background also in the negative control ·
+                  <i class="fas fa-arrow-right-from-bracket ct-src-mark" aria-hidden="true"></i> = possible source ·
+                  hover for details ·
+                </span>
                 <span id="sum-hop-legend" hidden
                   ><i class="fas fa-shuffle hop-sus-mark" aria-hidden="true"></i> = possible index hop (reads may have
                   come from another sample in the lane) · <i class="fas fa-share hop-src-mark" aria-hidden="true"></i> =
@@ -703,89 +729,102 @@
             </div>
           </div>
           <!-- end sum-inner-xs -->
-        </div>
-
-        <!-- HEATMAP -->
-        <div class="pane" id="pane-heatmap">
-          <div class="chart-wrap">
-            <div class="chart-title">
-              Sample × Organism — value heat
-              <span id="hm-mcmp-badge" class="mcmp-badge" hidden></span>
-            </div>
-            <div class="tab-controls">
-              <label>Value</label>
-              <select id="hm-value-col">
-                <option value="TASS Score" selected>TASS Score</option>
-                <option value="# Reads Aligned"># Reads Aligned</option>
-                <option value="% Reads">% Reads</option>
-                <option value="Coverage">Coverage</option>
-                <option value="K2 Reads">K2 Reads</option>
-              </select>
-              <label>Group rows by</label>
-              <select id="hm-rank">
-                <option value="Phylum">Phylum</option>
-                <option value="Class">Class</option>
-                <option value="Order">Order</option>
-                <option value="Family">Family</option>
-                <option value="Genus">Genus</option>
-                <option value="Species" selected>Species (organism)</option>
-              </select>
-              <label>Scale</label>
-              <select id="hm-scale">
-                <option value="linear" selected>Linear</option>
-                <option value="log">Log</option>
-                <option value="sqrt">Sqrt</option>
-              </select>
-              <label style="display: flex; align-items: center; gap: 0.3em">
-                <input type="checkbox" id="hm-show-vals" checked /> Show values
-              </label>
-              <label
-                style="display: flex; align-items: center; gap: 0.3em"
-                title="Show full organism names on the y-axis instead of truncating long ones. When off, truncated names show a dotted underline — hover to reveal the full name."
-              >
-                <input type="checkbox" id="hm-full-labels" /> Full row labels
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.3em">
-                <input type="color" id="hm-cell-color" value="#ffffff" /> Label colour
-              </label>
-            </div>
-            <div
-              id="heatmap-svg-wrap"
-              class="hm-freeze-scroll"
-              style="overflow: auto; max-height: calc(100vh - 250px); min-height: 340px; overscroll-behavior: contain"
-            ></div>
-          </div>
-        </div>
-
-        <!-- SUNBURST -->
-        <div class="pane" id="pane-sunburst">
-          <div class="chart-wrap">
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.6rem; flex-wrap: wrap">
-              <div class="chart-title" style="margin: 0">Taxonomic Sunburst</div>
-              <div style="display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap; margin-left: auto">
-                <label style="font-size: 0.8em; color: #6c757d">Metric</label>
-                <select
-                  id="sun-metric"
+          <!-- HEATMAP (Summary sub-tab) -->
+          <div class="sum-inner-pane" id="sum-inner-heatmap">
+            <div id="pane-heatmap">
+              <div class="chart-wrap">
+                <div class="chart-title">
+                  Sample × Organism — value heat
+                  <span id="hm-mcmp-badge" class="mcmp-badge" hidden></span>
+                </div>
+                <div id="hm-ct-note" class="hm-ct-note" hidden></div>
+                <div class="tab-controls">
+                  <label>Value</label>
+                  <select id="hm-value-col">
+                    <option value="TASS Score" selected>TASS Score</option>
+                    <option value="# Reads Aligned"># Reads Aligned</option>
+                    <option value="% Reads">% Reads</option>
+                    <option value="Coverage">Coverage</option>
+                    <option value="K2 Reads">K2 Reads</option>
+                  </select>
+                  <label>Group rows by</label>
+                  <select id="hm-rank">
+                    <option value="Phylum">Phylum</option>
+                    <option value="Class">Class</option>
+                    <option value="Order">Order</option>
+                    <option value="Family">Family</option>
+                    <option value="Genus">Genus</option>
+                    <option value="Species" selected>Species (organism)</option>
+                  </select>
+                  <label>Scale</label>
+                  <select id="hm-scale">
+                    <option value="linear" selected>Linear</option>
+                    <option value="log">Log</option>
+                    <option value="sqrt">Sqrt</option>
+                  </select>
+                  <label style="display: flex; align-items: center; gap: 0.3em">
+                    <input type="checkbox" id="hm-show-vals" checked /> Show values
+                  </label>
+                  <label
+                    style="display: flex; align-items: center; gap: 0.3em"
+                    title="Show full organism names on the y-axis instead of truncating long ones. When off, truncated names show a dotted underline — hover to reveal the full name."
+                  >
+                    <input type="checkbox" id="hm-full-labels" /> Full row labels
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 0.3em">
+                    <input type="color" id="hm-cell-color" value="#ffffff" /> Label colour
+                  </label>
+                </div>
+                <div
+                  id="heatmap-svg-wrap"
+                  class="hm-freeze-scroll"
                   style="
-                    padding: 0.3em 0.5em;
-                    border: 1px solid #dee2e6;
-                    border-radius: 8px;
-                    font-size: 0.82em;
-                    outline: none;
-                    background: #fff;
+                    overflow: auto;
+                    max-height: calc(100vh - 250px);
+                    min-height: 340px;
+                    overscroll-behavior: contain;
                   "
-                >
-                  <option value="# Reads Aligned" selected># Reads Aligned</option>
-                  <option value="K2 Reads">K2 Reads</option>
-                </select>
-                <button id="sun-add-panel-btn" class="sun-btn-ghost">＋ Add panel</button>
+                ></div>
               </div>
             </div>
-            <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
-              Radial view of taxonomy sized by the selected metric. Click arc to zoom · center ring = up one level · ↺ =
-              reset to root
+          </div>
+
+          <!-- SUNBURST (Summary sub-tab) -->
+          <div class="sum-inner-pane" id="sum-inner-sunburst">
+            <div id="pane-sunburst">
+              <div class="chart-wrap">
+                <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.6rem; flex-wrap: wrap">
+                  <div class="chart-title" style="margin: 0">Taxonomic Sunburst</div>
+                  <div style="display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap; margin-left: auto">
+                    <label style="font-size: 0.8em; color: #6c757d">Metric</label>
+                    <select
+                      id="sun-metric"
+                      style="
+                        padding: 0.3em 0.5em;
+                        border: 1px solid #dee2e6;
+                        border-radius: 8px;
+                        font-size: 0.82em;
+                        outline: none;
+                        background: #fff;
+                      "
+                    >
+                      <option value="# Reads Aligned" selected># Reads Aligned</option>
+                      <option value="K2 Reads">K2 Reads</option>
+                    </select>
+                    <button id="sun-add-panel-btn" class="sun-btn-ghost">＋ Add panel</button>
+                  </div>
+                </div>
+                <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
+                  Radial view of taxonomy sized by the selected metric. Click arc to zoom · center ring = up one level ·
+                  ↺ = reset to root
+                </div>
+                <div id="sun-panels-container"></div>
+              </div>
             </div>
-            <div id="sun-panels-container"></div>
+          </div>
+          <!-- CROSSOVER (Summary sub-tab; built by 59_contamination.js) -->
+          <div class="sum-inner-pane" id="sum-inner-crossover">
+            <div id="pane-crossover"><div id="ct-root"></div></div>
           </div>
         </div>
 
@@ -4698,6 +4737,7 @@
     <script src="src/js/55_controls.js"></script>
     <script src="src/js/57_tab_contrast.js"></script>
     <script src="src/js/58_tab_reorder.js"></script>
+    <script src="src/js/59_contamination.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

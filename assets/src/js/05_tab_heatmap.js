@@ -298,6 +298,7 @@ function drawHeatmap() {
               v !== null ? (_isDelta ? (v > 0 ? "+" : "") + v.toFixed(1) : v.toLocaleString()) : "n/a"
             }</b><br>TASS: ${tass.toFixed(1)} · ${rankLabel(r, rank)}` +
               (typeof ttMaskCmpTipHTML === "function" ? ttMaskCmpTipHTML(r) : "") +
+              (typeof ttCtTipLineHTML === "function" ? ttCtTipLineHTML(r) : "") +
               (_of
                 ? `<br><span style="color:#ffcc80"><i class="fas fa-flag"></i> Organism QC: ${_of.hits
                     .map((h) => _ttOFlagEsc(h.text))
@@ -376,6 +377,9 @@ function drawHeatmap() {
       });
     });
   }
+
+  // ── Crossover check corners (59_contamination.js; top-left) ──────
+  if (typeof ttCtHeatmapMarks === "function") ttCtHeatmapMarks(svg, organisms, samples, lookup, xScale, yScale);
 
   // ── Flagged-sample column marker ───────────────────────────────────
   // Deliberately an OUTLINE plus a solid cap, not a translucent wash: the

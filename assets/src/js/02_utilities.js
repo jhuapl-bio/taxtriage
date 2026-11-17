@@ -129,6 +129,7 @@ function filteredData(opts) {
     watchFilterMode === "all" ? "" : Array.from(watchlist).sort().join(","),
     typeof _hashSpecimenMerge === "function" ? _hashSpecimenMerge() : "",
     typeof ttOFlagFilterKey === "function" ? ttOFlagFilterKey() : "",
+    typeof ttCtFilterKey === "function" ? ttCtFilterKey() : "",
   ].join("\u0001");
   const _slot = _ignoreThr ? _FD_CACHE_ALL : _FD_CACHE;
   if (_slot.key === cacheKey && _slot.value) return _slot.value;
@@ -153,10 +154,13 @@ function filteredData(opts) {
 
   // Base (non-level, non-threshold) predicates shared by every view.
   const _oflagGate = typeof ttOFlagFilterKey === "function" && ttOFlagFilterKey() !== "";
+  // Crossover check (59_contamination.js): Only / Hide flagged.
+  const _ctGate = typeof ttCtFilterKey === "function" && ttCtFilterKey() !== "";
   function _basePass(r) {
     if (sampleHidden[r["Specimen ID"]]) return false;
     // Organism QC rules (48_organism_flags.js) with a hide action / view.
     if (_oflagGate && ttOFlagRowHidden(r)) return false;
+    if (_ctGate && ttCtRowHidden(r)) return false;
     if (rx) {
       // Match both the raw library id and its current specimen label. Without
       // this, a user-created merged name could be displayed but not searched.
@@ -1501,8 +1505,25 @@ function _hidePdfProgress() {
 }
 
 function _tabLabel(tab) {
-  const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+  const btn =
+    document.querySelector(`.tab-btn[data-tab="${tab}"]`) ||
+    document.querySelector(`.sum-inner-tab[data-inner="${tab}"]`);
   return btn ? btn.textContent.replace(/\s+/g, " ").trim() : tab;
+}
+
+/** Summary sub-tabs that are full views of their own (Heatmap, Sunburst) and
+ *  are currently offered — the PDF export prints each as its own section. */
+function _pdfSummarySubTabs() {
+  if (typeof TT_SUMMARY_SUBTABS === "undefined") return [];
+  return Object.keys(TT_SUMMARY_SUBTABS).filter((id) => {
+    const b = document.querySelector(`.sum-inner-tab[data-inner="${id}"]`);
+    return (
+      b &&
+      b.style.display !== "none" &&
+      !b.classList.contains("tab-admin-hidden") &&
+      document.getElementById(`sum-inner-${id}`)
+    );
+  });
 }
 
 /** Renders all enabled metadata sub-tabs so their charts appear in the PDF. */
@@ -1614,6 +1635,19 @@ async function _renderTabsForPdf() {
     if (tab === "summary") {
       _setPdfProgress("Rendering Cross-Sample plots…", i, tabs.length + 1);
       await _renderXsForPdf();
+      // Heatmap + Sunburst sub-tabs: draw each while it is the visible one (they
+      // measure their container), then let the print CSS show them all.
+      const _inner0 = typeof ttSummaryInner === "function" ? ttSummaryInner() : null;
+      for (const sub of _pdfSummarySubTabs()) {
+        _setPdfProgress(`Rendering ${_tabLabel(sub)}…`, i, tabs.length + 1);
+        if (typeof ttOpenSummaryInner === "function") ttOpenSummaryInner(sub, { tab: false });
+        const sp = document.getElementById(`pane-${sub}`);
+        if (_TAB_DIRTY[sub] || !(sp && sp.querySelector("svg,table"))) _drawTab(sub);
+        await _pdfDelay(sub === "sunburst" ? 950 : 120);
+        const ip = document.getElementById(`sum-inner-${sub}`);
+        if (ip) ip.classList.add("pdf-include");
+      }
+      if (_inner0 && typeof ttOpenSummaryInner === "function") ttOpenSummaryInner(_inner0, { tab: false });
     }
 
     _setPdfProgress(`Finished ${_tabLabel(tab)}.`, i + 1, tabs.length);
@@ -1872,6 +1906,11 @@ const PDF_SECTION_INFO = {
     what: "A samples × organisms grid in which each cell's colour encodes the selected metric (TASS score, reads, or coverage).",
     how: "Darker cells are higher values. Scan across a row to see which samples share an organism; scan down a column to profile one sample. Empty cells mean the organism was not detected there.",
   },
+  crossover: {
+    group: "Quality Control",
+    what: "A run-wide crossover check: every organism compared across all samples, scoring low-level detections that crossover from a much stronger sample, or background shared with the negative control, could explain.",
+    how: "Each row is one organism. Dots are samples placed by abundance relative to the strongest other sample (right edge); blue = possible crossover, violet = possible background, grey = not flagged, diamonds = controls. The score panel shows each sample's crossover score against the flag cutoff (red line). Flags never change TASS or calls.",
+  },
   sunburst: {
     group: "Taxonomic Composition",
     what: "A radial view of the taxonomy: inner rings are higher ranks (kingdom→genus), outer rings are species/strains, sized by the chosen metric.",
@@ -2018,6 +2057,10 @@ function _clearPdfSections() {
   _pdfInjectedNodes.forEach((n) => n.parentNode && n.parentNode.removeChild(n));
   _pdfInjectedNodes = [];
 }
+/** After printing: the Summary sub-tab panes go back to "only the active one". */
+function _clearPdfSubTabPanes() {
+  document.querySelectorAll(".sum-inner-pane.pdf-include").forEach((p) => p.classList.remove("pdf-include"));
+}
 
 /* Prepend a numbered section header + "what / how" explainer to each
          visible pane so the printed output is grouped and annotated. */
@@ -2048,6 +2091,31 @@ function _injectPdfSections() {
       head.insertAdjacentElement("afterend", exp);
       _pdfInjectedNodes.push(exp);
     }
+    // Summary's Heatmap / Sunburst sub-tabs print as sub-sections (1.1, 1.2 …).
+    if (tab !== "summary") return;
+    _pdfSummarySubTabs().forEach((sub, k) => {
+      const sp = document.getElementById(`pane-${sub}`);
+      if (!sp) return;
+      const si = PDF_SECTION_INFO[sub] || {};
+      const sh = document.createElement("div");
+      sh.className = "pdf-section-head";
+      sh.innerHTML =
+        (si.group ? `<div class="pdf-section-group">${_esc(si.group)}</div>` : "") +
+        `<div class="pdf-section-title"><span class="pdf-section-num">${i + 1}.${k + 1}</span>${_esc(
+          _tabLabel(sub),
+        )}</div>`;
+      sp.insertBefore(sh, sp.firstChild);
+      _pdfInjectedNodes.push(sh);
+      if (si.what || si.how) {
+        const se = document.createElement("div");
+        se.className = "pdf-explainer";
+        se.innerHTML =
+          (si.what ? `<div><div class="pdf-explainer-h">What this shows</div>${_esc(si.what)}</div>` : "") +
+          (si.how ? `<div><div class="pdf-explainer-h">How to read it</div>${_esc(si.how)}</div>` : "");
+        sh.insertAdjacentElement("afterend", se);
+        _pdfInjectedNodes.push(se);
+      }
+    });
   });
 }
 
@@ -2084,6 +2152,7 @@ async function _exportReportPdf() {
     document.body.classList.remove("report-pdf-printing");
     document.body.classList.remove("pdf-legend-footer-on");
     _clearPdfSections();
+    _clearPdfSubTabPanes();
     // Hide the cmp analysis snapshots again after printing
     const snap = document.getElementById("cmp-print-snapshots");
     if (snap) snap.style.display = "none";
