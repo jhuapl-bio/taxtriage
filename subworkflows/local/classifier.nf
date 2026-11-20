@@ -70,43 +70,49 @@ workflow CLASSIFIER {
                 ch_db
             )
             ch_kraken2_report = CENTRIFUGE_KREPORT.out.kreport
-            KREPORT_TO_KRONATXT(
-                ch_kraken2_report
-            )
+            // Krona plot: display-only (nothing downstream reads it). --skip_krona turns it off.
+            if (!params.skip_krona) {
+                KREPORT_TO_KRONATXT(
+                    ch_kraken2_report
+                )
 
-            ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
+                ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
 
-            ch_combined = ch_krona_txt
-                        .map{ it[1] }        // Get the file path
-                        .collect()            // Collect all file parts into a list
-                        .map { files ->
-                            // Join the files with single quotes and space
-                            // String joinedFiles = files.collect { "'$it'" }.join(' ')
-                            // if single file then make it [files] otherwise just files
-                            [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
-                        }
-            KRONA_KTIMPORTTEXT(
-                ch_combined
-            )
-            ch_krona_plot = KRONA_KTIMPORTTEXT.out.html
+                ch_combined = ch_krona_txt
+                            .map{ it[1] }        // Get the file path
+                            .collect()            // Collect all file parts into a list
+                            .map { files ->
+                                // Join the files with single quotes and space
+                                // String joinedFiles = files.collect { "'$it'" }.join(' ')
+                                // if single file then make it [files] otherwise just files
+                                [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
+                            }
+                KRONA_KTIMPORTTEXT(
+                    ch_combined
+                )
+                ch_krona_plot = KRONA_KTIMPORTTEXT.out.html
+            }
 
             TOP_HITS(
                 ch_kraken2_report.combine(distributions).combine(ch_pathogens)
             )
             ch_tops = TOP_HITS.out.tops
-            MERGEDSUBSPECIES(
-                ch_kraken2_report.map{
-                    meta, report -> report
-                }.collect(),
-                ch_pathogens
-            )
+            // Run-wide merged Kraken2 summary tables: published outputs only, not used for TASS. --skip_kraken_summaries turns them off.
+            if (!params.skip_kraken_summaries) {
+                MERGEDSUBSPECIES(
+                    ch_kraken2_report.map{
+                        meta, report -> report
+                    }.collect(),
+                    ch_pathogens
+                )
 
-            MERGEDKRAKENREPORT(
-                TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
-            )
-            FILTERKRAKEN(
-                MERGEDKRAKENREPORT.out.krakenreport
-            )
+                MERGEDKRAKENREPORT(
+                    TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
+                )
+                FILTERKRAKEN(
+                    MERGEDKRAKENREPORT.out.krakenreport
+                )
+            }
 
             if (ch_save_fastq_classified){
                 ch_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
@@ -152,25 +158,28 @@ workflow CLASSIFIER {
             // ch_taxnames = KREPORT_TO_TAXONOMY.out.names
             // ch_taxnodes = KREPORT_TO_TAXONOMY.out.nodes
 
-            KREPORT_TO_KRONATXT(
-                ch_kraken2_report
-            )
+            // Krona plot: display-only (nothing downstream reads it). --skip_krona turns it off.
+            if (!params.skip_krona) {
+                KREPORT_TO_KRONATXT(
+                    ch_kraken2_report
+                )
 
-            ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
+                ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
 
-            ch_combined = ch_krona_txt
-                        .map{ it[1] }        // Get the file path
-                        .collect()            // Collect all file parts into a list
-                        .map { files ->
-                            // Join the files with single quotes and space
-                            // String joinedFiles = files.collect { "'$it'" }.join(' ')
-                            // if single file then make it [files] otherwise just files
-                            [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
-                        }
-            KRONA_KTIMPORTTEXT(
-                ch_combined
-            )
-            ch_krona_plot = KRONA_KTIMPORTTEXT.out.html
+                ch_combined = ch_krona_txt
+                            .map{ it[1] }        // Get the file path
+                            .collect()            // Collect all file parts into a list
+                            .map { files ->
+                                // Join the files with single quotes and space
+                                // String joinedFiles = files.collect { "'$it'" }.join(' ')
+                                // if single file then make it [files] otherwise just files
+                                [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
+                            }
+                KRONA_KTIMPORTTEXT(
+                    ch_combined
+                )
+                ch_krona_plot = KRONA_KTIMPORTTEXT.out.html
+            }
 
             if (params.remove_taxids) {
                 remove_input = ch_kraken2_report.map {
@@ -188,19 +197,22 @@ workflow CLASSIFIER {
                 ch_kraken2_report.combine(distributions).combine(ch_pathogens)
             )
             ch_tops = TOP_HITS.out.tops
-            MERGEDSUBSPECIES(
-                ch_kraken2_report.map{
-                    meta, report -> report
-                }.collect(),
-                ch_pathogens
-            )
+            // Run-wide merged Kraken2 summary tables: published outputs only, not used for TASS. --skip_kraken_summaries turns them off.
+            if (!params.skip_kraken_summaries) {
+                MERGEDSUBSPECIES(
+                    ch_kraken2_report.map{
+                        meta, report -> report
+                    }.collect(),
+                    ch_pathogens
+                )
 
-            MERGEDKRAKENREPORT(
-                TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
-            )
-            FILTERKRAKEN(
-                MERGEDKRAKENREPORT.out.krakenreport
-            )
+                MERGEDKRAKENREPORT(
+                    TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
+                )
+                FILTERKRAKEN(
+                    MERGEDKRAKENREPORT.out.krakenreport
+                )
+            }
 
             if (ch_save_fastq_classified){
                 ch_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }

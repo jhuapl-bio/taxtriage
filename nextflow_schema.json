@@ -1002,6 +1002,16 @@
                     "description": "Skip Krona Plots",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "skip_kraken_summaries": {
+                    "type": "boolean",
+                    "description": "Skip the run-wide merged Kraken2 summary tables (MERGEDSUBSPECIES, MERGEDKRAKENREPORT, FILTERKRAKEN). Not used for TASS.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "skip_versions_dump": {
+                    "type": "boolean",
+                    "description": "Skip CUSTOM_DUMPSOFTWAREVERSIONS (software_versions.yml). The HTML report's Admin dialog still lists versions.",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "skip_features": {
                     "type": "boolean",
                     "description": "Skip the feature download step(s). Used during the protein alignment step",
