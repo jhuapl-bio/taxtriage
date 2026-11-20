@@ -392,9 +392,21 @@
           hiddenCols: (TT_ANNOT.hiddenCols || []).slice(),
         },
       };
+      // Who wrote this file, so a later report can tell what it is reading
+      // (60_version_compat.js). version = the envelope format.
+      var revs = {};
+      Object.keys(boot.sample_meta || {}).forEach(function (s) {
+        var r = (boot.sample_meta[s] || {}).workflow_revision;
+        if (r && !/^(na|null|none)$/i.test(String(r))) revs[r] = 1;
+      });
       var state = {
         __taxtriage_state__: true,
-        version: 2,
+        version: typeof TT_STATE_FORMAT !== "undefined" ? TT_STATE_FORMAT : 3,
+        report_format: typeof TT_STATE_FORMAT !== "undefined" ? TT_STATE_FORMAT : 3,
+        saved_by: {
+          report_pipeline_revision: (BOOT && BOOT.pipeline_revision) || null,
+          data_revisions: Object.keys(revs),
+        },
         exported_at: new Date().toISOString(),
         boot: boot,
         ui: _ttCaptureUi(),
@@ -420,10 +432,15 @@
   };
 
   // ── Apply a parsed state envelope (or a bare BOOT-shaped object) ──────
+  // Envelope formats: 1 = boot + ui, 2 = + app, 3 = + report_format / saved_by.
+  // A bare BOOT object (an older report's data block) is accepted as-is.
   window.ttLoadState = function (state) {
     if (!state || typeof state !== "object") throw new Error("Not a valid state file");
     var boot = state.boot || (Array.isArray(state.records) ? state : null);
     if (!boot) throw new Error("State file has no data payload");
+    if (!Array.isArray(boot.records)) throw new Error("State file has no detection records");
+    // Older outputs inside the state: same 0–1 scale repair as uploads.
+    if (typeof ttCompatFixScales === "function") ttCompatFixScales(boot.records);
     _ttApplyBoot(boot);
     _ttRestoreAppState(state.app);
     if (state.ui) _ttRestoreUi(state.ui);
@@ -450,14 +467,83 @@
     if (!f) return;
     _ttSetStateStatus("Loading state…", false);
     var reader = new FileReader();
+    var isHtml = /\.html?$/i.test(f.name);
+    var fail = function (msg) {
+      _ttSetStateStatus("Load failed: " + msg, true);
+      if (typeof ttCompatDialog === "function")
+        ttCompatDialog([{ name: f.name, kind: "state", version: "unknown", era: "", status: "failed", notes: [msg] }], {
+          title: "This file could not be opened",
+          lead: "Load State opens a saved report state (.json) or an older TaxTriage interactive report (.html).",
+        });
+    };
     reader.onload = function (e) {
+      var state;
       try {
-        var state = JSON.parse(e.target.result);
-        window.ttLoadState(state);
-        _ttSetStateStatus("✓ State loaded from " + f.name + ".", false);
+        if (isHtml) {
+          // An older interactive report: open its embedded data in this report.
+          state = typeof ttExtractReportBoot === "function" ? ttExtractReportBoot(e.target.result) : null;
+          if (!state || !Array.isArray(state.records))
+            return fail(
+              "This HTML has no embedded TaxTriage data (a static or pre-interactive report). Upload the run's *.organisms.report.txt or *.paths.json instead.",
+            );
+        } else {
+          state = JSON.parse(e.target.result);
+        }
       } catch (err) {
-        _ttSetStateStatus("Load failed: " + (err && err.message ? err.message : err), true);
+        return fail("Not valid JSON (" + (err && err.message ? err.message : err) + ").");
       }
+      // Detections files dropped here by mistake go to the normal upload.
+      if (
+        state &&
+        !state.__taxtriage_state__ &&
+        !Array.isArray(state.records) &&
+        (Array.isArray(state.organisms) || state.taxtriage_combined === true)
+      ) {
+        _ttSetStateStatus(f.name + " is a detections file: added through Upload Data instead.", false);
+        if (typeof window.handleUploadFiles === "function") window.handleUploadFiles([f]);
+        return;
+      }
+      var fmt = state && state.__taxtriage_state__ ? Number(state.version) || 1 : 0;
+      var supported = typeof TT_STATE_FORMAT !== "undefined" ? TT_STATE_FORMAT : 3;
+      try {
+        window.ttLoadState(state);
+      } catch (err) {
+        return fail(
+          (err && err.message ? err.message : String(err)) +
+            (fmt > supported
+              ? " It was saved by a newer report (state format " + fmt + "; this report reads up to " + supported + ")."
+              : ""),
+        );
+      }
+      _ttSetStateStatus("✓ " + (isHtml ? "Report data" : "State") + " loaded from " + f.name + ".", false);
+      // Tell the user when the file is newer than this report, or old.
+      var entries = [];
+      if (fmt > supported) {
+        entries.push({
+          name: f.name,
+          kind: "state",
+          version: "state format " + fmt,
+          era: "saved by a newer report",
+          status: "newer",
+          notes: [
+            "Saved by a newer TaxTriage report (state format " +
+              fmt +
+              "; this one reads up to " +
+              supported +
+              "). The data loaded; settings this report does not know were skipped.",
+            "Open it in a report built by the newer pipeline for everything.",
+          ],
+        });
+      } else if (typeof ttCompatAssess === "function") {
+        var boot = state.boot || state;
+        var revs = Object.keys(boot.sample_meta || {}).map(function (s) {
+          return (boot.sample_meta[s] || {}).workflow_revision;
+        });
+        if (boot.pipeline_revision) revs.push(boot.pipeline_revision);
+        var ce = ttCompatAssess(isHtml ? "report" : "state", { name: f.name, rows: boot.records, revisions: revs });
+        if (ce && ce.status !== "ok") entries.push(ce);
+      }
+      if (entries.length && typeof ttCompatDialog === "function") ttCompatDialog(entries);
     };
     reader.onerror = function () {
       _ttSetStateStatus("Could not read " + f.name, true);

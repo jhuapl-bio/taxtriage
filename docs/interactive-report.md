@@ -526,7 +526,8 @@ Hover any dot or name for the numbers and the per-term breakdown.
 Controls:
 
 - **Sensitivity** presets (Sensitive / Balanced / Strict), the **Flag at score ≥** slider, the four weight sliders, and the cutoffs.
-- **Compare within**: only compare samples that share a metadata value, e.g. the same run, plate or batch.
+- **Same run only**: crossover is only called between samples of the same sequencing run, and a negative control only counts as evidence for its own run. The run comes from the metadata. **Run from: auto** picks the first of `run_id`, `run`, `sequencing_run`, `run_name`, `flowcell`, `batch`, `plate` that has values. You can also pick any other metadata column, or choose **sample name pattern…** and type a regular expression; the first `( … )` group is the run, e.g. `-(VH\d+-\d{6})$` for names like `5_resp_RNA-UT-VH01885-241127`. One chip per run shows its sample count, and clicking a chip leaves that whole run out of the comparison. Samples with no run are compared only with each other. If the report has no run information, the box says so, and every sample counts as one run until you pick a column or a pattern.
+- **Compare within**: only compare samples that share another metadata value, e.g. a plate or batch. It combines with **Same run only**.
 - The **per-sample burden** table: untick a sample to leave it out of the comparison, or click a sample to highlight it.
 - **Scores** downloads every detection's terms and score as TSV.
 
@@ -535,6 +536,21 @@ Controls:
 ### Index-hopping flags
 
 Runs with `--index_hopping` (or a samplesheet `index_hopping` column) add _Index Hop …_ columns, a default organism rule `Index Hop Suspect == true → flag`, and a purple _Index hop_ badge in the banner. You can also drop an Illumina index-hopping table (CSV / TSV / XLSX) on the upload zone of any report to compute the same flags in the browser. See [Index Hopping](index-hopping.md#in-the-html-report).
+
+## Older TaxTriage outputs and saved states
+
+The report reads output from earlier pipeline versions, so older runs can be opened in the current report:
+
+| Input                                                        | Versions          | Notes                                                                                                                                                                                                                     |
+| ------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `*.paths.json`, `all.odr.json`                               | 3.x (e.g. 3.3.11) | Full detail. The producing version (`workflow_revision`) is kept and shown in Run info.                                                                                                                                   |
+| An older interactive report (`all.odr.html` / `report.html`) | 3.x               | Drop it on **Upload Data** to add its samples, or open it with **Load State** to replace the current data. The report reads the data block embedded in the old file.                                                      |
+| `*.organisms.report.txt` / `.tsv` / `.xlsx`                  | any (1.x – 3.x)   | Detections only, with no coverage histograms or metadata. 1.x tables stored TASS (and coverage) on a 0–1 scale, which is rescaled to 0–100 on load so the cutoffs apply. Species / genus rows are rebuilt in the browser. |
+| PDF or static HTML reports                                   | —                 | No data to import. Use that run's report tables or JSON instead.                                                                                                                                                          |
+
+When a file comes from an older version and loads with limits (for example a rescaled 1.x table), or cannot be read at all, a **dialog** lists each file with the version that produced it, what loaded, and what is missing. A line under the upload status reopens it. Files from current 3.x versions load without a dialog.
+
+**Export State** saves the whole report: data, filters, tab and sub-tab, sample QC and organism QC rules, crossover settings and so on. **Load State** restores it. The saved file records its format (currently 3) and the pipeline version that built the report. Saved states from any earlier report (formats 1 and 2) still load. A state saved by a _newer_ report loads as far as this one can, and a dialog says it is newer. A detections file opened through **Load State** is added through Upload Data instead, and a state file dropped on **Upload Data** points you to Load State.
 
 ## Export
 

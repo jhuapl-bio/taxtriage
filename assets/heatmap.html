@@ -4203,7 +4203,7 @@
             type="file"
             id="file-upload-input"
             multiple
-            accept=".json,.xlsx,.xls,.tsv,.txt,.csv"
+            accept=".json,.xlsx,.xls,.tsv,.txt,.csv,.html,.htm"
             style="display: none"
             onchange="handleUploadFiles(this.files)"
           />
@@ -4278,7 +4278,7 @@
           <input
             type="file"
             id="state-load-input"
-            accept=".json"
+            accept=".json,.html,.htm"
             style="display: none; color: #f0f7ff"
             onchange="window.ttLoadStateFiles && window.ttLoadStateFiles(this.files)"
           />
@@ -4738,6 +4738,7 @@
     <script src="src/js/57_tab_contrast.js"></script>
     <script src="src/js/58_tab_reorder.js"></script>
     <script src="src/js/59_contamination.js"></script>
+    <script src="src/js/60_version_compat.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

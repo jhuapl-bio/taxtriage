@@ -33,6 +33,11 @@
        -     r ≤ 1/minFold and the organism is in ≥ minSamples samples; else as
        -     background when its score ≥ cutoff and neg ≥ 0.5. The score shown
        -     is the flagged pattern's, or the higher of the two.
+       -     Same-run mode (TT_CT.run): samples are only compared with samples
+       -     of the same sequencing run, so nothing is ever called crossover
+       -     across runs, and negative controls only count for their own run.
+       -     The run comes from a metadata column (auto: run_id, run,
+       -     sequencing_run, flowcell, …) or a regex on the sample name.
        -     Libraries of one specimen are never each other's source; controls
        -     are never flagged (positive controls can be a source, negative
        -     controls are evidence); in-silico samples are left out. "Compare
@@ -82,6 +87,9 @@ const TT_CT = {
   p: Object.assign({}, TT_CT_DEFAULTS),
   scope: "", // metadata column the comparison stays within ("" = whole run)
   excluded: new Set(), // units left out of the pool (session only)
+  // Same-run mode: field "" = auto-detect, a metadata column, or "__name__"
+  // with `pattern` (a regex on the sample name; group 1 if any is the run).
+  run: { on: false, field: "", pattern: "" },
   ui: { q: "", sort: "flags", only: true, topN: 30, focus: null },
   _cache: { key: null, value: null },
   _rev: 0,
@@ -166,6 +174,8 @@ function ttCtCompute(rows, opts) {
   const skip = o.skip || (() => false);
   const ctlType = o.ctlType || (() => "");
   const depthOf = o.depthOf || (() => null);
+  // Negative controls count only within this group (the run, in same-run mode).
+  const ncGroupOf = o.ncGroupOf || (() => "");
   const SEP = _TT_CT_SEP;
 
   // 1. per sample: the strongest row of each (level, taxon)
@@ -219,6 +229,7 @@ function ttCtCompute(rows, opts) {
         id,
         specimen: String(specOf(s)),
         group: String(groupOf(s) || ""),
+        ncGroup: String(ncGroupOf(s) || ""),
         members: [],
         depth: 0,
         taxa: new Map(),
@@ -250,10 +261,16 @@ function ttCtCompute(rows, opts) {
   let hasNeg = false;
   let hasBreadth = false;
   const lists = new Map(); // group␁key → { k, group, items }
-  const ncMax = new Map(); // key → strongest negative control
+  const ncMax = new Map(); // ncGroup␁key → strongest negative control there
+  const ncAll = new Map(); // key → strongest negative control anywhere (summaries)
   const topAll = new Map(); // key → strongest non-negative unit, run-wide
+  const topNc = new Map(); // ncGroup␁key → strongest non-negative unit in that run
+  const negGroups = new Set(); // ncGroups that have a negative control
   units.forEach((U) => {
-    if (U.ctl === "negative") hasNeg = true;
+    if (U.ctl === "negative") {
+      hasNeg = true;
+      negGroups.add(U.ncGroup);
+    }
     if (!U.ctl) nPool.set(U.group, (nPool.get(U.group) || 0) + 1);
     U.taxa.forEach((t, k) => {
       t.rpm = (t.reads / U.depth) * 1e6;
@@ -262,12 +279,18 @@ function ttCtCompute(rows, opts) {
       if (!U.ctl) U.nDet[lvl] = (U.nDet[lvl] || 0) + 1;
       if (t.reads <= 0) return;
       if (U.ctl === "negative") {
-        const c = ncMax.get(k);
-        if (!c || t.rpm > c.rpm) ncMax.set(k, { rpm: t.rpm, unit: U.id, reads: t.reads });
+        const nk = U.ncGroup + SEP + k;
+        const c = ncMax.get(nk);
+        if (!c || t.rpm > c.rpm) ncMax.set(nk, { rpm: t.rpm, unit: U.id, reads: t.reads });
+        const ca = ncAll.get(k);
+        if (!ca || t.rpm > ca.rpm) ncAll.set(k, { rpm: t.rpm, unit: U.id, reads: t.reads });
         return;
       }
       const a = topAll.get(k);
       if (!a || t.rpm > a.rpm) topAll.set(k, { rpm: t.rpm, unit: U.id, reads: t.reads });
+      const tk = U.ncGroup + SEP + k;
+      const b = topNc.get(tk);
+      if (!b || t.rpm > b.rpm) topNc.set(tk, { rpm: t.rpm, unit: U.id, reads: t.reads });
       const gk = U.group + SEP + k;
       let L = lists.get(gk);
       if (!L) lists.set(gk, (L = { k, group: U.group, items: [] }));
@@ -297,7 +320,7 @@ function ttCtCompute(rows, opts) {
     if (!O) {
       const i = k.indexOf(SEP);
       const ta = topAll.get(k);
-      const nc = ncMax.get(k);
+      const nc = ncAll.get(k);
       O = {
         key: k,
         level: k.slice(0, i),
@@ -332,10 +355,12 @@ function ttCtCompute(rows, opts) {
     O.nWith += nWith;
     O.nPool += pool;
     const srcs = items.filter((it) => it.t.reads >= minSrc).sort((a, b) => b.t.rpm - a.t.rpm);
-    const nc = ncMax.get(k);
+    // The strongest sample of this comparison group (drawn as its source).
+    const groupTop = items.reduce((m, it) => (!m || it.t.rpm > m.t.rpm ? it : m), null);
     items.forEach((it) => {
       const U = it.U,
         t = it.t;
+      const nc = ncMax.get(U.ncGroup + SEP + k);
       let top = null;
       for (const s of srcs) {
         if (s.U !== U && s.U.specimen !== U.specimen) {
@@ -361,6 +386,7 @@ function ttCtCompute(rows, opts) {
         nWith,
         nAll,
         nPool: pool,
+        groupTop: it === groupTop,
         ncUnit: nc ? nc.unit : null,
         ncRpm: nc ? nc.rpm : 0,
         terms: null,
@@ -373,7 +399,12 @@ function ttCtCompute(rows, opts) {
           ab: r != null && r < 1 ? _ttCtClamp01(Math.log10(1 / r) / lFull) : 0,
           prev: pool > 1 ? _ttCtClamp01((nWith - 1) / (pool - 1) / prevFull) : 0,
           cov: W.cov > 0 && t.breadth != null ? _ttCtClamp01(1 - t.breadth / bRef) : null,
-          neg: hasNeg ? (nc && nc.rpm > 0 && t.rpm > 0 ? _ttCtClamp01(nc.rpm / (TT_CT_NC_REF * t.rpm)) : 0) : null,
+          // null (term drops out) when this sample's run has no negative control
+          neg: negGroups.has(U.ncGroup)
+            ? nc && nc.rpm > 0 && t.rpm > 0
+              ? _ttCtClamp01(nc.rpm / (TT_CT_NC_REF * t.rpm))
+              : 0
+            : null,
         };
         const mean = (names) => {
           let sw = 0,
@@ -387,10 +418,13 @@ function ttCtCompute(rows, opts) {
           return sw > 0 ? s / sw : 0;
         };
         rec.terms = c;
-        rec.scores = { crossover: mean(["ab", "prev", "cov"]), background: hasNeg ? mean(["neg", "prev", "cov"]) : 0 };
+        rec.scores = {
+          crossover: mean(["ab", "prev", "cov"]),
+          background: c.neg != null ? mean(["neg", "prev", "cov"]) : 0,
+        };
         const crossOk =
           t.reads > 0 && rec.scores.crossover >= cutoff && r != null && r <= 1 / minFold && nAll >= minSamples;
-        const bgOk = t.reads > 0 && hasNeg && W.neg > 0 && rec.scores.background >= cutoff && c.neg >= 0.5;
+        const bgOk = t.reads > 0 && c.neg != null && W.neg > 0 && rec.scores.background >= cutoff && c.neg >= 0.5;
         rec.suspect = crossOk || bgOk;
         rec.kind = crossOk ? "crossover" : bgOk ? "background" : null;
         rec.score = rec.kind ? rec.scores[rec.kind] : Math.max(rec.scores.crossover, rec.scores.background);
@@ -400,6 +434,8 @@ function ttCtCompute(rows, opts) {
           U.nFlag[lvl] = (U.nFlag[lvl] || 0) + 1;
           if (rec.kind === "crossover") {
             O.nCross++;
+            O.crossFrom = O.crossFrom || {};
+            O.crossFrom[top.U.id] = (O.crossFrom[top.U.id] || 0) + 1;
             U.nCross[lvl] = (U.nCross[lvl] || 0) + 1;
             const dk = top.U.id + SEP + k;
             let list = sent.get(dk);
@@ -424,7 +460,7 @@ function ttCtCompute(rows, opts) {
     if (U.ctl !== "negative") return;
     U.taxa.forEach((t, k) => {
       if (t.reads <= 0) return;
-      const ta = topAll.get(k);
+      const ta = topNc.get(U.ncGroup + SEP + k); // plotted against its own run's top
       const O = orgOf(k, t.name);
       const rec = {
         unit: U.id,
@@ -502,6 +538,114 @@ function _ttCtDepthOf(sample) {
 }
 /** Cheap: called for every row by the markers and the filteredData() gate.
  *  Every settings change bumps TT_CT._rev (_ttCtChanged / ttCtInvalidate). */
+/* ── sequencing run of a sample (same-run mode) ────────────────────────── */
+// Metadata columns tried, in order, when the run field is "auto".
+const TT_CT_RUN_FIELDS = [
+  "run_id",
+  "run",
+  "sequencing_run",
+  "sequencing_run_id",
+  "run_name",
+  "flowcell",
+  "flow_cell",
+  "flowcell_id",
+  "batch",
+  "sequencing_batch",
+  "plate",
+  "library_batch",
+];
+const TT_CT_NAME_FIELD = "__name__";
+const TT_CT_UNASSIGNED = "(no run)";
+function _ttCtAllSamples() {
+  const ids = new Set();
+  (typeof DATA !== "undefined" && DATA ? DATA : []).forEach((r) => r && r["Specimen ID"] && ids.add(r["Specimen ID"]));
+  return Array.from(ids);
+}
+/** Metadata columns that could hold a run: scalar, at least one value. */
+function _ttCtRunFieldChoices() {
+  const samples = _ttCtAllSamples();
+  const seen = new Map(); // key → samples with a value
+  // Pipeline bookkeeping and per-sample numbers are never a run.
+  const skip =
+    /^(__|latitude$|longitude$|depth$|salinity$|total_|aligned_|num_|sample_name$|sample_id$|insilico|best_cutoffs|mapq|minmapq$|min_conf|preferred_granularity$|weights$|commit_id$|workflow_revision$|control_|negative_|positive_|missing_|masking$|index_hopping$|parent_id$|input_data$|reference_db$)/i;
+  samples.forEach((s) => {
+    const recs = [];
+    if (typeof RUN_META !== "undefined" && Array.isArray(RUN_META)) {
+      _ttCtMetaValue(s, "__warm__"); // builds the index
+      const r = _ttCtMetaValue._idx && _ttCtMetaValue._idx[s];
+      if (r) recs.push(r);
+    }
+    if (typeof SAMPLE_META !== "undefined" && SAMPLE_META && SAMPLE_META[s]) recs.push(SAMPLE_META[s]);
+    const keys = new Set();
+    recs.forEach((r) =>
+      Object.keys(r).forEach((k) => {
+        const v = r[k];
+        if (skip.test(k) || v == null || typeof v === "object" || String(v).trim() === "") return;
+        keys.add(k);
+      }),
+    );
+    keys.forEach((k) => seen.set(k, (seen.get(k) || 0) + 1));
+  });
+  const runish = (k) => TT_CT_RUN_FIELDS.indexOf(String(k).toLowerCase());
+  return Array.from(seen.entries())
+    .map(([key, n]) => ({ key, n }))
+    .sort((a, b) => {
+      const ra = runish(a.key),
+        rb = runish(b.key);
+      if (ra >= 0 || rb >= 0) return (ra < 0 ? 99 : ra) - (rb < 0 ? 99 : rb);
+      return a.key.localeCompare(b.key);
+    });
+}
+/** The field auto mode uses: the first run-like column with a value. */
+function _ttCtRunFieldAuto() {
+  const have = new Set(_ttCtRunFieldChoices().map((c) => c.key.toLowerCase()));
+  const hit = TT_CT_RUN_FIELDS.find((f) => have.has(f));
+  if (!hit) return "";
+  return _ttCtRunFieldChoices().find((c) => c.key.toLowerCase() === hit).key;
+}
+function _ttCtRunPattern() {
+  const src = String(TT_CT.run.pattern || "").trim();
+  if (!src) return null;
+  try {
+    return new RegExp(src);
+  } catch (e) {
+    return null;
+  }
+}
+/** { field, label } actually in use ("" field = no run information). */
+function _ttCtRunSource() {
+  const f = TT_CT.run.field;
+  if (f === TT_CT_NAME_FIELD) return { field: f, label: "sample-name pattern", ok: !!_ttCtRunPattern() };
+  if (f) return { field: f, label: f, ok: true };
+  const auto = _ttCtRunFieldAuto();
+  return { field: auto, label: auto ? `auto: ${auto}` : "auto: none found", ok: !!auto };
+}
+/** The run a sample belongs to ("(no run)" when unknown). */
+function _ttCtRunOf(sample, src) {
+  src = src || _ttCtRunSource();
+  if (!src.field) return TT_CT_UNASSIGNED;
+  if (src.field === TT_CT_NAME_FIELD) {
+    const rx = _ttCtRunPattern();
+    const m = rx ? String(sample).match(rx) : null;
+    return m ? String(m[1] != null ? m[1] : m[0]) : TT_CT_UNASSIGNED;
+  }
+  return _ttCtMetaValue(sample, src.field) || TT_CT_UNASSIGNED;
+}
+/** run → { units: [unit], samples: n } over every loaded sample (chips). */
+function _ttCtRunSummary() {
+  const src = _ttCtRunSource();
+  const out = new Map();
+  _ttCtAllSamples().forEach((s) => {
+    if (_ttCtIsInsilico(s)) return;
+    const run = _ttCtRunOf(s, src);
+    let R = out.get(run);
+    if (!R) out.set(run, (R = { units: new Set(), samples: 0 }));
+    R.units.add(_ttCtUnitOf(s));
+    R.samples++;
+  });
+  return out;
+}
+
 function _ttCtStateKey() {
   const merge = typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled;
   return (
@@ -527,11 +671,21 @@ function ttCtResult() {
   try {
     const scope = TT_CT.scope;
     const ex = TT_CT.excluded;
+    const runOn = TT_CT.run.on;
+    const src = runOn ? _ttCtRunSource() : null;
+    const runMemo = new Map();
+    const runOf = (s) => {
+      if (!runMemo.has(s)) runMemo.set(s, _ttCtRunOf(s, src));
+      return runMemo.get(s);
+    };
+    const groupOf =
+      runOn || scope ? (s) => (runOn ? runOf(s) : "") + (scope ? _TT_CT_SEP + _ttCtMetaValue(s, scope) : "") : null;
     value = ttCtCompute(DATA, {
       params: TT_CT.p,
       unitOf: _ttCtUnitOf,
       specimenOf: typeof specimenOf === "function" ? specimenOf : null,
-      groupOf: scope ? (s) => _ttCtMetaValue(s, scope) : null,
+      groupOf,
+      ncGroupOf: runOn ? runOf : null,
       skip: (s) => _ttCtIsInsilico(s) || (ex.size > 0 && (ex.has(s) || ex.has(_ttCtUnitOf(s)))),
       ctlType: _ttCtCtlType,
       depthOf: _ttCtDepthOf,
@@ -688,6 +842,12 @@ function ttCtSuspectTipHTML(r, x) {
       x.top
         ? `<br>Top other sample: ${esc(x.top)} · ${_ttCtFmt(x.topReads, 0)} reads · ${_ttCtFmt(x.topRpm, 1)} RPM`
         : ""
+    }${
+      TT_CT.run.on
+        ? `<br>Run: ${esc(
+            String(x.group || "").split(_TT_CT_SEP)[0] || TT_CT_UNASSIGNED,
+          )} (compared within this run only)`
+        : ""
     }</div>` +
     _ttCtTermsTable(x) +
     `<span style="font-size:0.85em;color:#ccc">Score <b style="color:#fff">${x.score.toFixed(2)}</b> (flag at ≥ ${
@@ -822,7 +982,10 @@ function ttCtHeatmapMarks(svg, organisms, samples, lookup, xScale, yScale) {
 /* ── saved settings ──────────────────────────────────────────────────────── */
 function _ttCtSave() {
   try {
-    localStorage.setItem(TT_CT_STORE_KEY, JSON.stringify({ on: TT_CT.on, p: TT_CT.p, scope: TT_CT.scope }));
+    localStorage.setItem(
+      TT_CT_STORE_KEY,
+      JSON.stringify({ on: TT_CT.on, p: TT_CT.p, scope: TT_CT.scope, run: TT_CT.run }),
+    );
   } catch (e) {
     /* storage blocked: the setting still holds for this page view */
   }
@@ -841,6 +1004,11 @@ function _ttCtApplyConfig(cfg) {
   if (typeof cfg.scope === "string") TT_CT.scope = cfg.scope;
   if (cfg.view === "all" || cfg.view === "only" || cfg.view === "hide") TT_CT.view = cfg.view;
   if (Array.isArray(cfg.excluded)) TT_CT.excluded = new Set(cfg.excluded.map(String));
+  if (cfg.run && typeof cfg.run === "object") {
+    if (typeof cfg.run.on === "boolean") TT_CT.run.on = cfg.run.on;
+    if (typeof cfg.run.field === "string") TT_CT.run.field = cfg.run.field;
+    if (typeof cfg.run.pattern === "string") TT_CT.run.pattern = cfg.run.pattern;
+  }
 }
 function _ttCtLoad() {
   try {
@@ -860,6 +1028,7 @@ function ttCtCaptureConfig() {
     scope: TT_CT.scope,
     view: TT_CT.view,
     excluded: Array.from(TT_CT.excluded),
+    run: Object.assign({}, TT_CT.run),
   };
 }
 function ttCtLoadConfig(cfg) {
@@ -1196,6 +1365,18 @@ function _ttCtBuildSkeleton(root) {
         </div>
         <button type="button" class="ct-btn" id="ct-tsv" title="Every detection's score and terms at this level (TSV)"><i class="fas fa-download"></i> Scores</button>
       </div>
+      <div class="ct-runs" id="ct-runs-box">
+        <div class="ct-row">
+          <label class="ct-marktoggle" title="Only compare samples from the same sequencing run: nothing is called crossover between runs, and negative controls only count for their own run">
+            <input type="checkbox" id="ct-run-on"> <i class="fas fa-layer-group"></i> Same run only</label>
+          <label class="ct-num-inline" title="Where the run of each sample comes from">Run from
+            <select id="ct-run-field"></select></label>
+          <label class="ct-num-inline" id="ct-run-pattern-wrap" hidden title="Regular expression on the sample name; the first (…) group is the run, else the whole match">Pattern
+            <input type="text" id="ct-run-pattern" placeholder="e.g. -(VH\\d+-\\d{6})$" spellcheck="false"></label>
+          <span class="ct-dim" id="ct-run-note"></span>
+        </div>
+        <div class="ct-run-chips" id="ct-run-chips" aria-label="Runs"></div>
+      </div>
       <details class="ct-adv" id="ct-adv" open>
         <summary>Weights &amp; thresholds <button type="button" class="ct-link" id="ct-reset">reset to defaults</button></summary>
         <div class="ct-grid">
@@ -1282,6 +1463,87 @@ function _ttCtBuildSkeleton(root) {
   </div>`;
 }
 
+const _TT_CT_RUN_COLORS = ["#1565c0", "#00838f", "#5e35b1", "#2e7d32", "#ad1457", "#6d4c41", "#455a64", "#ef6c00"];
+function _ttCtSyncRunControls() {
+  if (typeof document === "undefined") return;
+  const $ = (id) => document.getElementById(id);
+  const on = $("ct-run-on"),
+    fld = $("ct-run-field"),
+    pw = $("ct-run-pattern-wrap"),
+    pat = $("ct-run-pattern"),
+    note = $("ct-run-note"),
+    chips = $("ct-run-chips");
+  if (!on || !fld) return;
+  const esc = _ttCtEsc;
+  const act = document.activeElement;
+  on.checked = TT_CT.run.on;
+  const choices = _ttCtRunFieldChoices();
+  const auto = _ttCtRunFieldAuto();
+  const known =
+    TT_CT.run.field === "" || TT_CT.run.field === TT_CT_NAME_FIELD || choices.some((c) => c.key === TT_CT.run.field);
+  if (!known) TT_CT.run.field = ""; // a saved column this report does not have
+  if (fld !== act) {
+    fld.innerHTML =
+      `<option value="">auto${auto ? ` (${esc(auto)})` : " — none found"}</option>` +
+      choices
+        .map(
+          (c) =>
+            `<option value="${esc(c.key)}"${c.key === TT_CT.run.field ? " selected" : ""}>${esc(c.key)} (${
+              c.n
+            })</option>`,
+        )
+        .join("") +
+      `<option value="${TT_CT_NAME_FIELD}"${
+        TT_CT.run.field === TT_CT_NAME_FIELD ? " selected" : ""
+      }>sample name pattern…</option>`;
+  }
+  const byName = TT_CT.run.field === TT_CT_NAME_FIELD;
+  if (pw) pw.hidden = !byName;
+  if (pat && pat !== act) pat.value = TT_CT.run.pattern || "";
+  if (pat) pat.classList.toggle("ct-bad", byName && !!TT_CT.run.pattern && !_ttCtRunPattern());
+  const box = $("ct-runs-box");
+  if (box) box.classList.toggle("on", TT_CT.run.on);
+  const src = _ttCtRunSource();
+  const runs = _ttCtRunSummary();
+  const named = Array.from(runs.keys()).filter((r) => r !== TT_CT_UNASSIGNED);
+  if (note) {
+    note.textContent = !src.ok
+      ? byName
+        ? "Enter a pattern that captures the run from the sample names."
+        : "No run information in this report's metadata: pick a column, use a sample-name pattern, or upload metadata with a run column. Until then every sample counts as one run."
+      : `${named.length} run${named.length === 1 ? "" : "s"} found` +
+        (runs.has(TT_CT_UNASSIGNED)
+          ? ` · ${runs.get(TT_CT_UNASSIGNED).samples} sample(s) with no run (compared only with each other)`
+          : "") +
+        (TT_CT.run.on ? "" : " — tick Same run only to stop crossover calls between runs");
+  }
+  if (chips) {
+    const list = Array.from(runs.entries()).sort(
+      (a, b) =>
+        (a[0] === TT_CT_UNASSIGNED) - (b[0] === TT_CT_UNASSIGNED) ||
+        String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }),
+    );
+    chips.hidden = !src.ok || !list.length;
+    chips.innerHTML = list
+      .map(([run, R], i) => {
+        const units = Array.from(R.units);
+        const out = units.every((u) => TT_CT.excluded.has(u));
+        const part = !out && units.some((u) => TT_CT.excluded.has(u));
+        const col = run === TT_CT_UNASSIGNED ? "#90a4ae" : _TT_CT_RUN_COLORS[i % _TT_CT_RUN_COLORS.length];
+        return (
+          `<button type="button" class="ct-run-chip${out ? " out" : ""}${part ? " part" : ""}" data-ct-run="${esc(
+            run,
+          )}" ` +
+          `title="${esc(run)}: ${R.samples} sample(s). Click to ${
+            out ? "put this run back in" : "leave this run out of"
+          } the comparison" aria-pressed="${!out}">` +
+          `<span class="ct-run-dot" style="background:${col}"></span>${esc(run)} <b>${units.length}</b></button>`
+        );
+      })
+      .join("");
+  }
+}
+
 function _ttCtSyncControls() {
   const root = typeof document !== "undefined" ? document.getElementById("ct-root") : null;
   if (!root || !root.dataset.built) return;
@@ -1354,6 +1616,7 @@ function _ttCtSyncControls() {
   root.querySelectorAll("#ct-preset button").forEach((b) => b.classList.toggle("active", b.dataset.v === preset));
   root.querySelectorAll("#ct-view button").forEach((b) => b.classList.toggle("active", b.dataset.v === TT_CT.view));
   if ($("ct-on")) $("ct-on").checked = TT_CT.on;
+  _ttCtSyncRunControls();
   const u = TT_CT.ui;
   setv($("ct-q"), u.q);
   setv($("ct-sort"), u.sort);
@@ -1409,6 +1672,38 @@ function _ttCtWire(root) {
     _ttCtChanged();
   });
   $("ct-tsv").addEventListener("click", () => ttCtDownloadTsv());
+  $("ct-run-on").addEventListener("change", (e) => {
+    TT_CT.run.on = e.target.checked;
+    _ttCtSyncRunControls();
+    _ttCtChanged();
+  });
+  $("ct-run-field").addEventListener("change", (e) => {
+    TT_CT.run.field = e.target.value;
+    // Picking a source implies the mode.
+    if (TT_CT.run.field) TT_CT.run.on = true;
+    _ttCtSyncRunControls();
+    _ttCtChanged();
+  });
+  let pTimer = null;
+  $("ct-run-pattern").addEventListener("input", (e) => {
+    TT_CT.run.pattern = e.target.value;
+    clearTimeout(pTimer);
+    pTimer = setTimeout(() => {
+      _ttCtSyncRunControls();
+      _ttCtChanged();
+    }, 300);
+  });
+  $("ct-run-chips").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-ct-run]");
+    if (!b) return;
+    const R = _ttCtRunSummary().get(b.dataset.ctRun);
+    if (!R) return;
+    const units = Array.from(R.units);
+    const allOut = units.every((u) => TT_CT.excluded.has(u));
+    units.forEach((u) => (allOut ? TT_CT.excluded.delete(u) : TT_CT.excluded.add(u)));
+    _ttCtSyncRunControls();
+    _ttCtChanged({ save: false });
+  });
   let qTimer = null;
   $("ct-q").addEventListener("input", (e) => {
     TT_CT.ui.q = e.target.value;
@@ -1534,6 +1829,7 @@ function ttCtRenderResults() {
     `<span class="ct-kpi"><b>${c.units}</b> / ${c.compared} samples affected</span>` +
     `<span class="ct-kpi"><b>${c.orgs}</b> organism${c.orgs === 1 ? "" : "s"}</span>` +
     (TT_CT.excluded.size ? `<span class="ct-kpi ct-dim">${TT_CT.excluded.size} left out of the pool</span>` : "") +
+    (TT_CT.run.on ? `<span class="ct-kpi ct-dim">same run only (${esc(_ttCtRunSource().label)})</span>` : "") +
     (TT_CT.scope ? `<span class="ct-kpi ct-dim">compared within ${esc(TT_CT.scope)}</span>` : "") +
     (focus
       ? `<span class="ct-kpi ct-focus">highlighting <b>${esc(
@@ -1582,6 +1878,7 @@ function ttCtRenderResults() {
     }
   }
   _ttCtRenderSamples(sampEl, res, lvl);
+  _ttCtSyncRunControls();
 }
 
 function _ttCtDrawPlot(wrap, rows, res) {
@@ -1787,11 +2084,12 @@ function _ttCtDrawPlot(wrap, rows, res) {
     // abundance dots
     const sorted = O.recs.slice().sort((a, b) => (a.suspect ? 1 : 0) - (b.suspect ? 1 : 0));
     sorted.forEach((x) => {
-      const isTop = x.role !== "neg" && O.top === x.unit;
+      const isTop = x.role !== "neg" && (x.groupTop || (!TT_CT.run.on && !TT_CT.scope && O.top === x.unit));
       const r = isTop ? 1 : x.ratio == null ? 1 : x.ratio;
       const px = xa(r);
       const jit = (_ttCtHash(x.unit) - 0.5) * (rowH - 12);
-      const py = cy + (isTop ? 0 : jit);
+      // One top per run / group in same-run mode: spread them so they do not stack.
+      const py = cy + (isTop && !TT_CT.run.on && !TT_CT.scope ? 0 : jit);
       const col =
         x.role === "neg"
           ? _TT_CT_COLORS.neg
@@ -1891,8 +2189,11 @@ function _ttCtDrawPlot(wrap, rows, res) {
       : O.ncRpm
       ? "only in the negative control"
       : "single sample";
+    const from = O.crossFrom ? Object.keys(O.crossFrom).sort((a, b) => O.crossFrom[b] - O.crossFrom[a]) : [];
     const v2 = O.nCross
-      ? `from ${O.top}` + (O.nBg ? ` · ${O.nBg} background` : "")
+      ? `from ${from[0] || O.top}` +
+        (from.length > 1 ? ` +${from.length - 1}` : "") +
+        (O.nBg ? ` · ${O.nBg} background` : "")
       : O.top
       ? `top: ${O.top} (${_ttCtFmt(O.topReads, 0)} reads)`
       : "";
