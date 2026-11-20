@@ -136,9 +136,9 @@
       ],
     },
     {
-      tab: "heatmap",
+      inner: "heatmap", // a Summary sub-tab (was a top-level tab)
       icon: "fa-th",
-      title: "Heatmap",
+      title: "Summary → Heatmap",
       fig: FIG.heatmap,
       desc: "A samples × organisms grid where cell colour encodes the selected metric (TASS, reads, coverage…). It's the fastest way to spot which organisms are shared across samples and which are unique.",
       tips: [
@@ -147,14 +147,26 @@
       ],
     },
     {
-      tab: "sunburst",
+      inner: "sunburst", // a Summary sub-tab (was a top-level tab)
       icon: "fa-circle-nodes",
-      title: "Sunburst",
+      title: "Summary → Sunburst",
       fig: FIG.sunburst,
       desc: "A radial taxonomy view — inner rings are higher ranks (kingdom→genus), outer rings are species/strains, sized by the metric you choose. Great for seeing taxonomic composition at a glance.",
       tips: [
         "Click a wedge to zoom into that branch; click the centre to zoom out.",
         "Switch the sizing metric from the controls above.",
+      ],
+    },
+    {
+      inner: "crossover", // a Summary sub-tab
+      icon: "fa-vials",
+      title: "Summary → Crossover",
+      fig: FIG.heatmap,
+      desc: "A run-wide crossover check. Every organism is compared across all samples: a low-level detection of something far more abundant in another sample scores as possible crossover, one also in the negative control as possible background. Weights, cutoffs and the sample pool are all adjustable.",
+      tips: [
+        "Each dot is a sample, placed by abundance relative to the strongest other sample; blue = crossover?, violet = background?, grey = not flagged.",
+        "Tick “Mark flagged across the report” (or click the Crossover pill in the banner) to mark flags in every tab, then Only / Hide flagged to filter.",
+        "Untick a sample in the per-sample table to leave it out of the comparison.",
       ],
     },
     {
@@ -284,8 +296,16 @@
     const b = tabBtn(tab);
     return b && !b.classList.contains("hidden") && b.offsetParent !== null;
   }
+  function innerBtn(id) {
+    return document.querySelector(`.sum-inner-tab[data-inner="${id}"]`);
+  }
+  function innerAvailable(id) {
+    const b = innerBtn(id);
+    return tabAvailable("summary") && b && b.style.display !== "none" && !b.classList.contains("tab-admin-hidden");
+  }
   function buildSteps() {
     return STEPS.filter((s) => {
+      if (s.inner) return innerAvailable(s.inner);
       if (s.tab) return tabAvailable(s.tab);
       if (s.sel) return !!document.querySelector(s.sel);
       return true;
@@ -310,14 +330,20 @@
     if (!s) return;
     clearSpot();
     // spotlight + activate target
-    if (s.tab) {
+    if (s.inner) {
+      // A Summary sub-tab: open Summary, switch to the sub-tab, spotlight its button.
+      gotoTab("summary");
+      if (typeof ttOpenSummaryInner === "function") ttOpenSummaryInner(s.inner, { tab: false });
+      const ib = innerBtn(s.inner);
+      if (ib) ib.classList.add("help-spot-el");
+    } else if (s.tab) {
       const b = gotoTab(s.tab);
       if (b) b.classList.add("help-spotlight");
     } else if (s.sel) {
       const t = document.querySelector(s.sel);
       if (t) t.classList.add("help-spot-el");
     }
-    elBadge.textContent = s.badge || (s.tab ? "Tab guide" : "Guide");
+    elBadge.textContent = s.badge || (s.tab || s.inner ? "Tab guide" : "Guide");
     elFig.innerHTML = s.fig || "";
     elIcon.innerHTML = `<i class="fas ${s.icon || "fa-circle-question"}"></i>`;
     elTitle.textContent = s.title || "";
@@ -661,7 +687,7 @@
         sel: "#sum-inner-tabs",
         icon: "fa-folder-tree",
         title: "Summary sub-views",
-        desc: "Switch between <b>Detections</b>, <b>Genera</b>, <b>VF/AMR</b> and <b>Cross-Sample</b> without leaving this tab.",
+        desc: "Switch between <b>Detections</b>, <b>Cross-Sample</b>, <b>Genera</b>, <b>VF/AMR</b>, the <b>Heatmap</b> and the <b>Sunburst</b> without leaving this tab.",
         tips: ["Each sub-view answers a different first-look question."],
       },
       {
@@ -969,10 +995,16 @@
 
     function currentTab() {
       const active = document.querySelector(".tab-btn.active");
-      return active ? active.dataset.tab : typeof activeTab !== "undefined" ? activeTab : "summary";
+      const tab = active ? active.dataset.tab : typeof activeTab !== "undefined" ? activeTab : "summary";
+      // On Summary, the Heatmap / Sunburst sub-tabs carry their own help.
+      if (tab === "summary" && typeof ttSummaryInner === "function" && typeof ttIsSubTabId === "function") {
+        const inner = ttSummaryInner();
+        if (ttIsSubTabId(inner)) return inner;
+      }
+      return tab;
     }
     function stepFor(tab) {
-      return STEPS.find((s) => s.tab === tab) || null;
+      return STEPS.find((s) => s.tab === tab || s.inner === tab) || null;
     }
     // Steps for the stepped Spotlight walkthrough (current scope).
     function walkStepsFor() {
@@ -1067,5 +1099,23 @@
           startWalk();
         }, 90);
       });
+    // Same for the Summary sub-tabs that have help of their own (Heatmap,
+    // Sunburst): moving onto or off one swaps the panel.
+    const innerBar = document.getElementById("sum-inner-tabs");
+    if (innerBar) {
+      let lastView = currentTab();
+      innerBar.addEventListener("click", () => {
+        setTimeout(() => {
+          const cur = currentTab();
+          const changed = cur !== lastView;
+          lastView = cur;
+          if (!on || !changed) return;
+          scope = "tab";
+          syncButtons();
+          renderPanel();
+          startWalk();
+        }, 90);
+      });
+    }
   })();
 })();

@@ -367,9 +367,17 @@ let visibleCols = [];
 let activeTab = "summary";
 // Tab ids that were merged into another tab. Saved sessions, Admin-dialog
 // localStorage and report configs may still name the old ids.
-const TT_LEGACY_TAB_IDS = { tass: "metrics", coverage: "metrics", explore: "metrics" };
+const TT_LEGACY_TAB_IDS = { tass: "metrics", coverage: "metrics", explore: "metrics", contamination: "crossover" };
 function ttCanonicalTabId(id) {
   return (id && TT_LEGACY_TAB_IDS[id]) || id;
+}
+// Views that used to be top-level tabs and now live as sub-tabs of another tab
+// (id → host tab). Their ids stay valid everywhere an id can be stored — report
+// configs (tabs.hidden / default), the Admin dialog, saved sessions — and
+// address the sub-tab, so hiding "heatmap" never hides Summary itself.
+const TT_SUMMARY_SUBTABS = { heatmap: "summary", sunburst: "summary", crossover: "summary" };
+function ttIsSubTabId(id) {
+  return !!id && Object.prototype.hasOwnProperty.call(TT_SUMMARY_SUBTABS, id);
 }
 
 /* ── Follow-up / watchlist ─────────────────────────────────────────────

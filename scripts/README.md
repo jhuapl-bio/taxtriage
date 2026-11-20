@@ -20,13 +20,13 @@ Many workflow scripts in `../bin/` also work standalone (`download_fastas.py`, `
 
 ## Containers
 
-| Script              | Purpose                                                                                                                                                                               |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `image_manifest.py` | Images a run mode needs (Docker / Singularity / Apptainer / Podman), resolved by `nextflow run -preview` + `nextflow inspect`; writes a manifest and a pull script, `--pull` runs it. |
+| Script              | Purpose                                                                                                                                                                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `image_manifest.py` | Images a run mode needs (Docker / Singularity / Apptainer / Podman), resolved by `nextflow run -preview` + `nextflow inspect`; writes `manifest.xlsx` (images × mode, and a red/green module × mode grid incl. `mce` and `all`) plus a pull script; `--pull` runs it. |
 
 ```bash
-python3 scripts/image_manifest.py                                  # full + light-k2/fasta/both, docker
-python3 scripts/image_manifest.py --engine singularity --mode light-k2 --core-only --offline --pull
+python3 scripts/image_manifest.py                                  # full, lite-k2/fasta/both, mce, all -> manifest.xlsx
+python3 scripts/image_manifest.py --engine singularity --mode lite-k2 --core-only --offline --pull
 python3 scripts/image_manifest.py --custom "denovo=--db {DB} --use_denovo"   # any param combination
 ```
 
