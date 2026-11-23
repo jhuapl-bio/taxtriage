@@ -11,13 +11,16 @@ function drawHeatmap() {
   wrap.innerHTML = "";
   const fd = filteredData();
   const col = document.getElementById("hm-value-col").value || "# Reads Aligned";
-  // Adaptive TASS (56_adaptive_tass.js, right panel): with the value set to
-  // TASS the cells can show the adaptive score or its change from standard.
-  // Region masking before/after (53_mask_compare.js, right panel): likewise
-  // the unmasked TASS or the change. One alternative view at a time.
-  const _adMode = col === "TASS Score" && typeof ttAdaptMode === "function" ? ttAdaptMode() : "standard";
+  // Adaptive TASS (56_adaptive_tass.js, right panel): "adaptive" when the
+  // report uses adaptive TASS, "delta" for the change view (adaptive − default).
+  // Region masking before/after (53_mask_compare.js, right panel): the
+  // unmasked TASS or the change, both on TASS (default); a masking view takes
+  // precedence over the report-wide adaptive score, the change views are
+  // exclusive.
+  const _adMode0 = col === "TASS Score" && typeof ttAdaptMode === "function" ? ttAdaptMode() : "standard";
   const _mcMode =
-    _adMode === "standard" && col === "TASS Score" && typeof ttMaskCmpMode === "function" ? ttMaskCmpMode() : "masked";
+    _adMode0 !== "delta" && col === "TASS Score" && typeof ttMaskCmpMode === "function" ? ttMaskCmpMode() : "masked";
+  const _adMode = _mcMode !== "masked" ? "standard" : _adMode0;
   const _isDelta = _mcMode === "delta" || _adMode === "delta";
   const _val = (r) =>
     _adMode !== "standard" ? ttAdaptValue(r, _adMode) : _mcMode === "masked" ? num(r[col]) : ttMaskCmpValue(r, _mcMode);
@@ -25,7 +28,7 @@ function drawHeatmap() {
     _adMode === "adaptive"
       ? "TASS (adaptive)"
       : _adMode === "delta"
-      ? "TASS change (adaptive \u2212 standard)"
+      ? "TASS change (adaptive \u2212 default)"
       : _mcMode === "unmasked"
       ? "TASS (unmasked)"
       : _isDelta
@@ -313,6 +316,7 @@ function drawHeatmap() {
             }</b><br>TASS: ${tass.toFixed(1)} · ${rankLabel(r, rank)}` +
               (typeof ttMaskCmpTipHTML === "function" ? ttMaskCmpTipHTML(r) : "") +
               (typeof ttAdaptTipHTML === "function" ? ttAdaptTipHTML(r) : "") +
+              (typeof ttCtTipLineHTML === "function" ? ttCtTipLineHTML(r) : "") +
               (_of
                 ? `<br><span style="color:#ffcc80"><i class="fas fa-flag"></i> Organism QC: ${_of.hits
                     .map((h) => _ttOFlagEsc(h.text))
@@ -391,6 +395,9 @@ function drawHeatmap() {
       });
     });
   }
+
+  // ── Crossover check corners (59_contamination.js; top-left) ──────
+  if (typeof ttCtHeatmapMarks === "function") ttCtHeatmapMarks(svg, organisms, samples, lookup, xScale, yScale);
 
   // ── Flagged-sample column marker ───────────────────────────────────
   // Deliberately an OUTLINE plus a solid cap, not a translucent wash: the
@@ -473,7 +480,7 @@ function drawHeatmap() {
     .attr("fill", "#666")
     .text(
       _adMode === "delta"
-        ? "TASS change (adaptive \u2212 standard)"
+        ? "TASS change (adaptive \u2212 default)"
         : _adMode === "adaptive"
         ? `Adaptive TASS \u00b7 ${scaleMode}`
         : _isDelta

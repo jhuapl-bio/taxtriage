@@ -163,19 +163,69 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   syncA11y();
 })();
 
-/* ── Summary inner sub-tab switching (Detections / Cross-Sample) ── */
+/* ── Summary inner sub-tab switching (Detections / Cross-Sample / Genera /
+      VF-AMR / Heatmap / Sunburst).
+      Heatmap and Sunburst were top-level tabs: they keep their own entries in
+      _TAB_DIRTY / _drawTab and are drawn lazily, only while their sub-tab is
+      the visible one (_drawTab("summary") forwards to the active one). ── */
+/** Id of the Summary sub-tab currently shown ("detections", "heatmap", …). */
+function ttSummaryInner() {
+  const b = document.querySelector(".sum-inner-tab.active");
+  return b ? b.dataset.inner : "detections";
+}
+function _ttSumInnerUsable(btn) {
+  return !!btn && btn.style.display !== "none" && !btn.classList.contains("tab-admin-hidden");
+}
+/** Draw a Summary sub-tab that has its own draw function, if it is stale. */
+function _ttDrawSummaryInner(target) {
+  if (typeof ttIsSubTabId !== "function" || !ttIsSubTabId(target)) return;
+  if (!(_TAB_DIRTY[target] || !_TAB_RENDERED[target])) return;
+  if (typeof ttBusyRun === "function") ttBusyRun("Rendering " + target + "…", () => _drawTab(target));
+  else _drawTab(target);
+}
+/** Show one Summary sub-tab. `opts.tab` (default true) also switches to the
+ *  Summary tab first. Returns false when that sub-tab is hidden / missing. */
+function ttOpenSummaryInner(target, opts) {
+  const o = Object.assign({ tab: true }, opts || {});
+  const btn = document.querySelector(`.sum-inner-tab[data-inner="${target}"]`);
+  if (!_ttSumInnerUsable(btn)) return false;
+  if (o.tab && activeTab !== "summary") {
+    const sb = document.querySelector('.tab-btn[data-tab="summary"]');
+    if (sb) sb.click();
+    if (activeTab !== "summary") return false; // Summary itself is hidden / disabled
+  }
+  document.querySelectorAll(".sum-inner-tab").forEach((b) => b.classList.remove("active"));
+  document.querySelectorAll(".sum-inner-pane").forEach((p) => p.classList.remove("active"));
+  btn.classList.add("active");
+  const pane = document.getElementById(`sum-inner-${target}`);
+  if (pane) pane.classList.add("active");
+  // Trigger xs redraw if switching to cross-sample for the first time
+  if (target === "xs" && typeof _drawXS === "function") _drawXS();
+  // The pane is visible now, so the chart can measure itself.
+  if (activeTab === "summary") _ttDrawSummaryInner(target);
+  if (typeof _scheduleExportEnhance === "function") _scheduleExportEnhance();
+  return true;
+}
+/** Activate a tab OR a sub-tab by id (old ids such as "heatmap" included). */
+function ttActivateTabId(id) {
+  const tid = typeof ttCanonicalTabId === "function" ? ttCanonicalTabId(id) : id;
+  if (typeof ttIsSubTabId === "function" && ttIsSubTabId(tid)) return ttOpenSummaryInner(tid);
+  const btn = document.querySelector(`.tab-btn[data-tab="${tid}"]`);
+  if (
+    !btn ||
+    btn.classList.contains("hidden") ||
+    btn.classList.contains("tab-disabled") ||
+    btn.classList.contains("tab-admin-hidden") ||
+    btn.classList.contains("tab-admin-disabled")
+  )
+    return false;
+  btn.click();
+  return true;
+}
 (function () {
   document.querySelectorAll(".sum-inner-tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const target = btn.dataset.inner;
-      document.querySelectorAll(".sum-inner-tab").forEach((b) => b.classList.remove("active"));
-      document.querySelectorAll(".sum-inner-pane").forEach((p) => p.classList.remove("active"));
-      btn.classList.add("active");
-      const pane = document.getElementById(`sum-inner-${target}`);
-      if (pane) pane.classList.add("active");
-      // Trigger xs redraw if switching to cross-sample for the first time
-      if (target === "xs" && typeof _drawXS === "function") _drawXS();
-    });
+    btn.setAttribute("type", "button");
+    btn.addEventListener("click", () => ttOpenSummaryInner(btn.dataset.inner, { tab: false }));
   });
 })();
 

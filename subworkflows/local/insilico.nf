@@ -155,7 +155,7 @@ workflow INSILICO {
         } else {
             def iss_nreads = params.sim_nreads ?: 100000
             def ont_divisor = params.sim_ont_divisor ?: 40
-            def ont_nreads  = Math.max(1, (int)(iss_nreads / ont_divisor))
+            def ont_nreads  = Math.max(1, ((iss_nreads as long).intdiv(ont_divisor as long)) as int)  // NF 26 strict syntax: no (int)(...) casts
 
             ch_nanosim_prep_input = ch_samples.combine(ch_merged_taxid, by: 0)
 

@@ -1,8 +1,8 @@
 # Adaptive TASS Weighting (opt-in)
 
-By default TaxTriage scores every organism in a sample with **one** weight vector, chosen per sample type and platform from `assets/sampletype_best_thresholds.json` (or set on the command line). This **standard TASS** is always computed. `--adaptive_tass` adds a second, **adaptive TASS** per organism: its weights are shifted according to the situation the organism is in **within that sample**, and ambiguous calls with weak unique support are marked down.
+By default TaxTriage scores every organism in a sample with **one** weight vector, chosen per sample type and platform from `assets/sampletype_best_thresholds.json` (or set on the command line). This **TASS (default)** is always computed. `--adaptive_tass` adds a second, **adaptive TASS** per organism: its weights are shifted according to the situation the organism is in **within that sample**, and ambiguous calls with weak unique support are marked down.
 
-The standard TASS stays the score that drives cutoffs, filtering and every view in the report. The adaptive score is computed beside it and shown next to it for comparison; it does not change any call.
+In the pipeline outputs (`tass_score`, cutoffs, `.odr.txt` / PDF reports) TASS (default) stays the score; the adaptive score is written beside it. In the HTML report you can switch the whole report to the adaptive score (see below).
 
 It is **off by default**. With it off, the pipeline's command lines, its `-resume` cache and every output are unchanged.
 
@@ -56,14 +56,14 @@ The shifts and penalty are ported from the `adaptive_tass_weighting` prototype (
 
 ## Parameters
 
-| Parameter                     | Default      | Meaning                                                                                                                                                                                                                  |
-| ----------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--adaptive_tass`             | `false`      | Also compute the adaptive score.                                                                                                                                                                                         |
-| `--adaptive_tass_strength`    | `1.0`        | Scale of every shift and the penalty, 0–1. `0` makes the adaptive score equal the standard score.                                                                                                                        |
-| `--adaptive_tass_terms`       | `all`        | Comma-separated subset of `complexity,ani,sibling,low_abundance,rollup`, or `all` / `none`.                                                                                                                              |
-| `--adaptive_tass_base`        | `sampletype` | Starting weights for the adaptive score from the thresholds JSON: `sampletype` (same `type\|platform` entry as the standard score), `platform` (`all\|<platform>`), `global` (`all\|all`, as in the prototype).          |
-| `--adaptive_tass_high_ani`    | `null`       | ANI fraction for competitors; `null` = `--ani_threshold`. Needs `--enable_matrix`.                                                                                                                                       |
-| `--adaptive_tass_max_penalty` | `0.35`       | Largest multiplicative mark-down at strength 1 (max 0.9).                                                                                                                                                                |
+| Parameter                     | Default      | Meaning                                                                                                                                                                                                         |
+| ----------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--adaptive_tass`             | `false`      | Also compute the adaptive score.                                                                                                                                                                                |
+| `--adaptive_tass_strength`    | `1.0`        | Scale of every shift and the penalty, 0–1. `0` makes the adaptive score equal the standard score.                                                                                                               |
+| `--adaptive_tass_terms`       | `all`        | Comma-separated subset of `complexity,ani,sibling,low_abundance,rollup`, or `all` / `none`.                                                                                                                     |
+| `--adaptive_tass_base`        | `sampletype` | Starting weights for the adaptive score from the thresholds JSON: `sampletype` (same `type\|platform` entry as the standard score), `platform` (`all\|<platform>`), `global` (`all\|all`, as in the prototype). |
+| `--adaptive_tass_high_ani`    | `null`       | ANI fraction for competitors; `null` = `--ani_threshold`. Needs `--enable_matrix`.                                                                                                                              |
+| `--adaptive_tass_max_penalty` | `0.35`       | Largest multiplicative mark-down at strength 1 (max 0.9).                                                                                                                                                       |
 
 Out-of-range values stop the run immediately with a message (they are never silently clamped).
 
@@ -82,13 +82,14 @@ Nothing is removed or renamed, and every existing value is what a run without `-
 
 ### In the HTML report
 
-When any sample was run with `--adaptive_tass`, the report shows an **Adaptive TASS** section in the right-hand filter panel. Standard TASS stays the score everywhere; the section only adds a way to look at the adaptive one:
+When any sample was run with `--adaptive_tass`, the report shows an **Adaptive TASS** section in the right-hand filter panel:
 
-- **Heatmap TASS**: switch the heatmap (Value = TASS Score) between the standard score, the adaptive score and the change (adaptive − standard).
-- **Show adaptive TASS in tables**: a small `A▴/A▾` adaptive value after each TASS in the Summary table, green / red when the call would flip at the current cutoff.
-- **Hover**: any TASS in the Summary or Table tab, or a heatmap cell, shows both scores, the ambiguity mark-down and the reasons.
-- A one-line summary: how many strains score higher / lower adaptively, and how many calls adaptive TASS would add or drop at the current cutoffs.
-- **Standard vs adaptive** opens a comparison: what the adaptive terms do, per-sample settings and change counts, a scatter of standard (x) against adaptive (y) TASS with the cutoff, and a sortable table (pass / fail under each score, ambiguity mark-down, suggested cutoff shift, reasons) with CSV export.
+- **TASS used in report**: `TASS (default)` or `Adaptive TASS`. This applies to the **whole report**: every tab, table, chart, filter, cutoff check, species / genus roll-up and data export uses the chosen score. With `Adaptive TASS`, each organism that has an adaptive score uses it; organisms (or samples) without one keep TASS (default). The cutoffs do not change (the suggested cutoff shift is never applied). An **Adaptive TASS** pill shows in the banner while it is in use (click it for the comparison). Saved sessions remember the choice; the records inside a session file are always stored with TASS (default).
+- **Heatmap: show change (adaptive − default)**: colours the heatmap (Value = TASS Score) by the difference. A masking before / after heatmap view, when present, turns this off and is always computed on TASS (default).
+- **Show adaptive TASS beside TASS in tables** (or **Show TASS (default) beside TASS** while adaptive is in use): a small chip with the other score after each TASS in the Summary table (`A▴/A▾` = adaptive, `D▴/D▾` = default), green / red when that score would flip the call at the current cutoff.
+- **Hover**: any TASS in the Summary or Table tab, or a heatmap cell, shows both scores (marking the one in use), the ambiguity mark-down and the reasons.
+- A one-line summary: how many strains score higher / lower adaptively, and how many calls adaptive TASS adds or drops at the current cutoffs.
+- **Adaptive vs TASS (default)** opens a comparison: what the adaptive terms do, per-sample settings and change counts, a scatter of TASS (default) (x) against adaptive (y) with the cutoff, and a sortable table (pass / fail under each score, ambiguity mark-down, suggested cutoff shift, reasons) with CSV export.
 
 The Table tab also gets **TASS (adaptive)**, **TASS Change (adaptive)**, **Adaptive Penalty**, **Adaptive Cutoff Shift** and **Adaptive Reasons** columns. Samples run without the flag have none of these values, and the section is hidden when no sample has them.
 

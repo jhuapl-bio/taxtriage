@@ -1306,6 +1306,7 @@ const _TAB_DIRTY = {
   summary: false,
   heatmap: false,
   sunburst: false,
+  crossover: false,
   proteins: false,
   histogram: false,
   metrics: false,

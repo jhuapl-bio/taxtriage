@@ -4106,12 +4106,26 @@ function _drawTab(tab) {
   switch (tab) {
     case "summary":
       drawSummary();
+      // Heatmap / Sunburst are Summary sub-tabs: keep the visible one current.
+      {
+        const _in = typeof ttSummaryInner === "function" ? ttSummaryInner() : "";
+        if (typeof ttIsSubTabId === "function" && ttIsSubTabId(_in)) {
+          try {
+            _drawTab(_in);
+          } catch (e) {
+            console.error("[summary] " + _in + " failed:", e);
+          }
+        }
+      }
       break;
     case "heatmap":
       drawHeatmap();
       break;
     case "sunburst":
       if (window.drawSunburst) window.drawSunburst();
+      break;
+    case "crossover":
+      if (typeof ttCtRender === "function") ttCtRender();
       break;
     case "proteins":
       if (HAS_PROT) drawProteins();
@@ -4166,6 +4180,9 @@ function _drawTab(tab) {
   _scheduleExportEnhance();
 }
 function redraw() {
+  // Adaptive TASS (56_adaptive_tass.js): make every row carry the TASS the
+  // report is set to use before anything reads it.
+  if (typeof ttAdaptEnsure === "function") ttAdaptEnsure();
   _invalidateFilterCache();
   // The below-cutoff VF/AMR toggle + legends are only meaningful with
   // annotation data present.
@@ -4209,4 +4226,6 @@ function redraw() {
   _updateCapabilityNotice();
   // Organism QC counts follow the Strain / Species / Genus view level.
   if (typeof ttOFlagRenderSummary === "function") ttOFlagRenderSummary();
+  // Crossover pill counts follow the view level too (59_contamination.js).
+  if (typeof ttCtSyncUi === "function") ttCtSyncUi();
 }

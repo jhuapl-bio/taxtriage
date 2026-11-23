@@ -157,8 +157,17 @@
     }
 
     const prot_data = protHits.length ? { per_gene_hits: _applyProtColRemap(protHits) } : {};
+    // Older .paths.json stored TASS as 0–1 (60_version_compat.js).
+    const scale = typeof ttCompatFixScales === "function" ? ttCompatFixScales(rows) : null;
+    const compat = {
+      kind: "paths",
+      scale,
+      revisions: [meta.workflow_revision],
+      hasDepth: Number(meta.total_reads) > 0,
+      fatal: data && !Array.isArray(data.organisms) ? "No “organisms” list: not a TaxTriage .paths.json." : null,
+    };
 
-    return { rows, contigs, prot_data, sampleName, meta };
+    return { rows, contigs, prot_data, sampleName, meta, compat };
   }
 
   /* ── novelty JSON (NOVELTY_COLLECT output) ───────────────────────────────
@@ -355,6 +364,56 @@
     });
   }
 
+  /* ── older outputs: fix 0–1 scales and describe the file (60_version_compat.js) ── */
+  function _tableResult(rows, extra) {
+    const out = _normalizeAltFormatRows(rows);
+    const scale = typeof ttCompatFixScales === "function" ? ttCompatFixScales(out) : null;
+    return Object.assign({ rows: out, contigs: [], compat: { kind: "table", scale } }, extra || {});
+  }
+  /** An older interactive report (.html): its embedded data block, loaded like
+   *  a combined all.odr.json. Rejects with { message, compat } when there is none. */
+  function _parseReportHtml(text, filename) {
+    const boot = typeof ttExtractReportBoot === "function" ? ttExtractReportBoot(text) : null;
+    if (!boot || !Array.isArray(boot.records)) {
+      const fatal = /<html|<!doctype/i.test(String(text).slice(0, 2000))
+        ? "This HTML has no embedded TaxTriage data (a static or pre-interactive report). Load the run's *.organisms.report.txt or *.paths.json instead."
+        : "Not a TaxTriage report.";
+      throw { message: `${filename}: ${fatal}`, compat: { kind: "report", fatal } };
+    }
+    const sm = boot.sample_meta && typeof boot.sample_meta === "object" ? boot.sample_meta : {};
+    const rows = boot.records.map((r) => Object.assign({}, r));
+    const scale = typeof ttCompatFixScales === "function" ? ttCompatFixScales(rows) : null;
+    const contigs = (Array.isArray(boot.contig_data) ? boot.contig_data : []).map((cd) =>
+      Object.assign({}, cd, { breadth_histogram: _decodeBreadthHist(cd && cd.breadth_histogram) }),
+    );
+    const prot_data = {};
+    _PROT_KEYS.forEach((k) => {
+      const v = boot.prot_data && boot.prot_data[k];
+      if (Array.isArray(v) && v.length) prot_data[k] = v;
+    });
+    const out = {
+      rows,
+      contigs,
+      prot_data,
+      metas: Object.keys(sm).map((sn) => ({ sampleName: sn, meta: sm[sn] || {} })),
+      metaRecords: Array.isArray(boot.run_metadata_records) ? boot.run_metadata_records : [],
+      compat: {
+        kind: "report",
+        scale,
+        revisions: [boot.pipeline_revision].concat(Object.values(sm).map((m) => m && m.workflow_revision)),
+        hasDepth: Object.values(sm).some((m) => m && Number(m.total_reads) > 0),
+      },
+    };
+    const nov = boot.novelty && boot.novelty.samples ? boot.novelty : null;
+    if (nov && Object.keys(nov.samples).length)
+      out.novelty = {
+        samples: nov.samples,
+        classifier: nov.classifier || "",
+        gene_mode: nov.gene_mode != null ? nov.gene_mode : null,
+      };
+    return out;
+  }
+
   /* ── parse an XLSX / TSV file using SheetJS ─────────────────────────────── */
   function _parseXlsx(ab, filename) {
     const wb = XLSX.read(ab, { type: "array" });
@@ -435,7 +494,7 @@
       return { rows: [], contigs: [], prot_data };
     }
 
-    return { rows: _normalizeAltFormatRows(rows), contigs: [], prot_data };
+    return _tableResult(rows, { prot_data });
   }
 
   /* ── derive ALL_COLS and NUMERIC from rows ──────────────────────────────── */
@@ -657,6 +716,9 @@
     step("index hopping", () => {
       if (typeof ttHopOnDataChanged === "function") ttHopOnDataChanged();
     });
+    step("crossover check", () => {
+      if (typeof ttCtOnDataChanged === "function") ttCtOnDataChanged();
+    });
     // Newly loaded control samples follow the "Show controls" switch.
     step("controls", () => {
       if (typeof ttControlsOnDataChanged === "function") ttControlsOnDataChanged();
@@ -722,6 +784,13 @@
         reader.onload = (e) => {
           try {
             const data = JSON.parse(e.target.result);
+            // A saved report state belongs in "Load state" (it replaces the data).
+            if (data && (data.__taxtriage_state__ === true || (data.boot && data.ui))) {
+              const fatal =
+                "This is a saved report state, not detections. Use “Load State” below the upload zone to open it.";
+              reject({ message: `${file.name}: ${fatal}`, compat: { kind: "state", fatal } });
+              return;
+            }
             // ── Novelty payload (all.novelty.json / <sample>.novelty.json) ──
             // Checked before the detections parsers: it has no `organisms`
             // array, so those would return an empty result and drop the file.
@@ -732,7 +801,13 @@
             }
             // ── Combined all.samples.json: iterate over every sample ─────
             if (data.taxtriage_combined === true && Array.isArray(data.samples)) {
-              const merged = { rows: [], contigs: [], prot_data: {}, metas: [] };
+              const merged = {
+                rows: [],
+                contigs: [],
+                prot_data: {},
+                metas: [],
+                compat: { kind: "combined", revisions: [], scale: { tass: false, coverage: false }, hasDepth: false },
+              };
               const _PROT_KEYS_LOCAL = ["genus_summary", "per_gene_hits", "sample_overview", "amr_genes"];
               _PROT_KEYS_LOCAL.forEach((k) => {
                 merged.prot_data[k] = [];
@@ -748,6 +823,12 @@
                 }
                 if (r.sampleName && r.meta) {
                   merged.metas.push({ sampleName: r.sampleName, meta: r.meta });
+                }
+                if (r.compat) {
+                  merged.compat.revisions.push(...(r.compat.revisions || []));
+                  if (r.compat.scale && r.compat.scale.tass) merged.compat.scale.tass = true;
+                  if (r.compat.scale && r.compat.scale.coverage) merged.compat.scale.coverage = true;
+                  if (r.compat.hasDepth) merged.compat.hasDepth = true;
                 }
               }
               // ── Blocks embedded by combine_samples_json.py (v1.1+) ────
@@ -811,12 +892,26 @@
               resolve({ rows: [], contigs: [], prot_data: _parseAnnotateReport(rows, file.name) });
               return;
             }
-            resolve({ rows: _normalizeAltFormatRows(rows), contigs: [] });
+            resolve(_tableResult(rows));
           } catch (err) {
             reject(`${file.name}: parse error – ${err.message}`);
           }
         };
         reader.readAsText(file);
+      } else if (name.endsWith(".html") || name.endsWith(".htm")) {
+        // An older interactive report: import its embedded data.
+        reader.onload = (e) => {
+          try {
+            resolve(_parseReportHtml(e.target.result, file.name));
+          } catch (err) {
+            reject(err && err.compat ? err : `${file.name}: ${err && err.message ? err.message : err}`);
+          }
+        };
+        reader.readAsText(file);
+      } else if (name.endsWith(".pdf")) {
+        const fatal =
+          "PDF reports carry no data to import. Load the run's *.organisms.report.txt, *.paths.json or all.odr.json.";
+        reject({ message: `${file.name}: ${fatal}`, compat: { kind: "report", fatal } });
       } else {
         reject(`${file.name}: unsupported file type`);
       }
@@ -901,9 +996,21 @@
     };
 
     const errors = [];
+    const _compat = []; // one entry per file (60_version_compat.js)
+    const _assess = (name, c, rows) =>
+      typeof ttCompatAssess === "function" && c
+        ? ttCompatAssess(c.kind || "unknown", Object.assign({ name, rows: rows || [] }, c))
+        : null;
     for (const file of fileArr) {
       try {
         const result = await _processFile(file);
+        if (result.compat && result.compat.fatal) {
+          // e.g. a .json that is not a TaxTriage file: nothing usable in it.
+          throw { message: `${file.name}: ${result.compat.fatal}`, compat: result.compat };
+        }
+        const _ce = _assess(file.name, result.compat, result.rows);
+        if (_ce && _ce.status === "failed") throw { message: `${file.name}: ${_ce.notes[0]}`, entry: _ce };
+        if (_ce) _compat.push(_ce);
         _ttPushAll(_uploadedRows, result.rows || []);
         _ttPushAll(_uploadedContigs, result.contigs || []);
         if (result.prot_data) {
@@ -975,7 +1082,7 @@
               metaRec[k] = String(v);
             }
           });
-          if (Object.values(metaRec).some((v, i) => i > 0 && v != null)) {
+          if (!result.metaRecords && Object.values(metaRec).some((v, i) => i > 0 && v != null)) {
             _uploadedMetaRecords.push(metaRec);
           }
           // Always update SAMPLE_META with read-count fields so the
@@ -990,15 +1097,26 @@
             control_type: m.control_type != null ? m.control_type : existing.control_type || null,
             index_hopping: m.index_hopping || existing.index_hopping || undefined,
           });
+          // Provenance + context, kept when the file carries them (Run info,
+          // the version dialog, the crossover check's run detection).
+          ["workflow_revision", "commit_id", "sample_type", "platform", "run_id", "run", "insilico"].forEach((k) => {
+            if (m[k] != null && m[k] !== "" && SAMPLE_META[sn][k] == null) SAMPLE_META[sn][k] = m[k];
+          });
           if (BOOT && BOOT.sample_meta) {
             BOOT.sample_meta[sn] = SAMPLE_META[sn];
           }
           if (typeof _noteSampleMetaChanged === "function") _noteSampleMetaChanged();
         }
+        // An older report's full metadata table (one record per sample).
+        if (Array.isArray(result.metaRecords) && result.metaRecords.length)
+          _ttPushAll(_uploadedMetaRecords, result.metaRecords);
         _uploadedNames.push(file.name);
         _markRow(file.name, true, "loaded");
       } catch (err) {
-        errors.push(err);
+        const msg = err && typeof err === "object" && err.message ? err.message : String(err);
+        errors.push(msg);
+        if (err && err.entry) _compat.push(err.entry);
+        else if (err && err.compat) _compat.push(_assess(file.name, err.compat, []));
         _markRow(file.name, false, "failed");
       }
     }
@@ -1025,6 +1143,8 @@
       }
       _statEl.appendChild(summary);
     }
+    // Older TaxTriage versions / unreadable files: a line + the version dialog.
+    if (typeof ttCompatAfterUpload === "function") ttCompatAfterUpload(_compat, _statEl);
 
     const hasUpload =
       _uploadedRows.length > 0 ||
@@ -1182,6 +1302,7 @@
     _computeBslLevels();
     // Index hopping loaded in this browser: recompute over the remaining rows.
     if (typeof ttHopOnDataChanged === "function") ttHopOnDataChanged();
+    if (typeof ttCtOnDataChanged === "function") ttCtOnDataChanged();
     if (typeof ttControlsOnDataChanged === "function") ttControlsOnDataChanged();
 
     buildSampleList();

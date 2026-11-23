@@ -1405,7 +1405,9 @@ function _renderSummaryTable(fd) {
         r,
       )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_oflagBadge}${
         typeof ttHopBadgesHTML === "function" ? ttHopBadgesHTML(r) : ""
-      }${typeof ttPosCtlBadgeHTML === "function" ? ttPosCtlBadgeHTML(r) : ""}${
+      }${typeof ttCtBadgeHTML === "function" ? ttCtBadgeHTML(r) : ""}${
+        typeof ttPosCtlBadgeHTML === "function" ? ttPosCtlBadgeHTML(r) : ""
+      }${
         typeof ttHmpMarkerHTML === "function"
           ? ttHmpMarkerHTML(r).replace('data-hmp-mark="1"', `data-hmp-key="${key}"`)
           : ""

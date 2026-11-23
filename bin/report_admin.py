@@ -39,7 +39,9 @@ Report config (--report_config, JSON or YAML)
       redact: [paths, userName]       # blank these run-info fields / param values
 
 Tab ids: see TABS below (aliases such as "vfamr", "metadata", "mapping" work;
-the retired ids "tass", "coverage" and "explore" map to "metrics").
+the retired ids "tass", "coverage" and "explore" map to "metrics"). "heatmap",
+"sunburst" and "crossover" are sub-tabs of Summary: they can be hidden, disabled (same as
+hidden) or set as the default view, but have no place in tabs.order.
 """
 
 import argparse
@@ -51,8 +53,7 @@ import sys
 # (id, label) in tab-bar order. Must match the data-tab values in assets/heatmap.html.
 TABS = [
     ("summary", "Summary"),
-    ("heatmap", "Heatmap"),
-    ("sunburst", "Sunburst"),
+    ("contrast", "Contrast"),
     ("proteins", "VF / AMR"),
     ("histogram", "Histograms"),
     ("novelty", "Novelty"),
@@ -65,6 +66,12 @@ TABS = [
     ("insilico", "In-Silico"),
 ]
 TAB_IDS = [t for t, _ in TABS]
+
+# Views that were top-level tabs and are now sub-tabs (id -> host tab). Must
+# match TT_SUMMARY_SUBTABS in assets/src/js/01_global_state.js. Their ids stay
+# valid in hidden / disabled / show / default / labels, so configs written for
+# older reports keep working and address the sub-tab (never the host tab).
+SUBTABS = {"heatmap": "summary", "sunburst": "summary", "crossover": "summary"}
 
 TAB_ALIASES = {
     "vfamr": "proteins", "vf_amr": "proteins", "vf/amr": "proteins", "amr": "proteins",
@@ -83,6 +90,8 @@ TAB_ALIASES = {
     "contrasts": "contrast", "compare_sets": "contrast", "sets": "contrast",
     "in_silico": "insilico", "in-silico": "insilico", "simulation": "insilico",
     "detections": "table",
+    "contamination": "crossover", "contam": "crossover", "cross_contamination": "crossover",
+    "carryover": "crossover", "carry_over": "crossover",
 }
 
 ADMIN_SECTIONS = ["tabs", "params", "run", "versions", "config"]
@@ -142,12 +151,17 @@ def load_config_file(path):
     return yaml.safe_load(text)
 
 
-def _tab_id(name, warnings, where):
+def _tab_id(name, warnings, where, subtabs=True):
     key = str(name).strip().lower().replace(" ", "_")
     key = TAB_ALIASES.get(key, key)
     if key in TAB_IDS:
         return key
-    warnings.append(f"{where}: unknown tab '{name}' (known: {', '.join(TAB_IDS)})")
+    if key in SUBTABS:
+        # A sub-tab: fine wherever a view can be hidden / shown / opened;
+        # silently skipped where only top-level tabs make sense (tabs.order).
+        return key if subtabs else None
+    warnings.append(
+        f"{where}: unknown tab '{name}' (known: {', '.join(TAB_IDS + list(SUBTABS))})")
     return None
 
 
@@ -241,7 +255,7 @@ def normalize_config(raw, source=None):
     t["disabled"] = _uniq(_tab_id(x, warnings, "tabs.disabled") for x in disabled)
     if show is not None:
         keep = set(_uniq(_tab_id(x, warnings, "tabs.show") for x in _as_list(show)))
-        t["hidden"] = _uniq(t["hidden"] + [x for x in TAB_IDS if x not in keep])
+        t["hidden"] = _uniq(t["hidden"] + [x for x in TAB_IDS + list(SUBTABS) if x not in keep])
     t["disabled"] = [x for x in t["disabled"] if x not in t["hidden"]]
 
     dflt = tabs.get("default", raw.get("default_tab"))
@@ -251,7 +265,8 @@ def normalize_config(raw, source=None):
             warnings.append(f"tabs.default '{dflt}' is hidden/disabled; the first available tab is used")
             tid = None
         t["default"] = tid
-    t["order"] = _uniq(_tab_id(x, warnings, "tabs.order") for x in _as_list(tabs.get("order")))
+    t["order"] = _uniq(_tab_id(x, warnings, "tabs.order", subtabs=False)
+                       for x in _as_list(tabs.get("order")))
     labels = tabs.get("labels", tabs.get("rename")) or {}
     if isinstance(labels, dict):
         for k, v in labels.items():
@@ -260,7 +275,7 @@ def normalize_config(raw, source=None):
                 t["labels"][tid] = str(v)
     else:
         warnings.append("tabs.labels must be a mapping of tab -> label; ignored")
-    if len(t["hidden"]) >= len(TAB_IDS):
+    if len([x for x in t["hidden"] if x in TAB_IDS]) >= len(TAB_IDS):
         warnings.append("every tab is hidden; un-hiding 'summary' so the report is usable")
         t["hidden"].remove("summary")
 

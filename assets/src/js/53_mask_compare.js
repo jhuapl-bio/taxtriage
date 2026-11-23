@@ -36,8 +36,13 @@ function ttMaskCmpShowInTables() {
 }
 // Value of a row under a mode. Rows from samples scored without a mask have
 // no unmasked field: their TASS is the same either way (change 0).
+// Masked TASS = TASS (default), also while the report uses adaptive TASS
+// (56_adaptive_tass.js swaps "TASS Score"), so before / after stay comparable.
+function _mcAfter(r) {
+  return typeof ttTassDefault === "function" ? ttTassDefault(r) : num(r["TASS Score"]);
+}
 function ttMaskCmpValue(r, mode) {
-  const after = num(r["TASS Score"]);
+  const after = _mcAfter(r);
   if (!ttMaskCmpHas(r)) return mode === "delta" ? 0 : after;
   const before = num(r["TASS (unmasked)"]);
   return mode === "unmasked" ? before : mode === "delta" ? after - before : after;
@@ -58,7 +63,7 @@ function _mcCall(r, before, after) {
 function ttMaskCmpTipHTML(r) {
   if (!ttMaskCmpHas(r)) return "";
   const before = num(r["TASS (unmasked)"]),
-    after = num(r["TASS Score"]);
+    after = _mcAfter(r);
   const c = _mcCall(r, before, after);
   const rb = num(r["Reads (unmasked)"]),
     ra = num(r["# Reads Aligned"]);
@@ -80,7 +85,7 @@ function ttMaskCmpTipHTML(r) {
 function ttMaskCmpTitle(r) {
   if (!ttMaskCmpHas(r)) return "";
   const before = num(r["TASS (unmasked)"]),
-    after = num(r["TASS Score"]);
+    after = _mcAfter(r);
   const c = _mcCall(r, before, after);
   return (
     `Before masking: TASS ${before.toFixed(1)}  →  after: ${after.toFixed(1)} (${_mcSigned(after - before)})\n` +
@@ -93,8 +98,8 @@ function ttMaskCmpTitle(r) {
 function ttMaskCmpInlineHTML(r) {
   if (!ttMaskCmpShowInTables() || !ttMaskCmpHas(r)) return "";
   const before = num(r["TASS (unmasked)"]),
-    d = num(r["TASS Score"]) - before;
-  const c = _mcCall(r, before, num(r["TASS Score"]));
+    d = _mcAfter(r) - before;
+  const c = _mcCall(r, before, _mcAfter(r));
   const col = c && c.changed ? (c.a ? "#2e7d32" : "#c62828") : "#8a8f98";
   const arrow = Math.abs(d) < 0.05 ? "=" : d > 0 ? "▴" : "▾";
   return (
@@ -112,7 +117,7 @@ function _mcRows(level) {
     if (!ttMaskCmpHas(r)) return;
     if ((r["Level"] || "Strain") !== lvl) return;
     const before = num(r["TASS (unmasked)"]),
-      after = num(r["TASS Score"]);
+      after = _mcAfter(r);
     const c = _mcCall(r, before, after);
     seen.add(r["Specimen ID"]);
     out.push({

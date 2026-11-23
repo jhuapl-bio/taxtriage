@@ -85,6 +85,13 @@ const TTAdmin = (function () {
 
   const tabButtons = () => Array.from(document.querySelectorAll("#tabbar .tab-btn"));
   const tabBtn = (id) => document.querySelector(`#tabbar .tab-btn[data-tab="${id}"]`);
+  // Sub-tabs with an id of their own (Heatmap / Sunburst under Summary, see
+  // TT_SUMMARY_SUBTABS): hidden / disabled / default address the sub-tab button.
+  const SUBTABS = typeof TT_SUMMARY_SUBTABS !== "undefined" ? TT_SUMMARY_SUBTABS : {};
+  const isSub = (id) => Object.prototype.hasOwnProperty.call(SUBTABS, id);
+  const subBtn = (id) => document.querySelector(`.sum-inner-tab[data-inner="${id}"]`);
+  const subButtons = () => Object.keys(SUBTABS).map(subBtn).filter(Boolean);
+  const entryId = (btn) => btn.dataset.tab || btn.dataset.inner;
 
   // Label text = the button's first non-blank text node (icons are <i> siblings).
   function labelNode(btn) {
@@ -94,12 +101,12 @@ const TTAdmin = (function () {
   function originalLabel(btn) {
     if (btn.dataset.ttLabel === undefined) {
       const n = labelNode(btn);
-      btn.dataset.ttLabel = n ? n.textContent.trim() : btn.dataset.tab;
+      btn.dataset.ttLabel = n ? n.textContent.trim() : entryId(btn);
     }
     return btn.dataset.ttLabel;
   }
   function tabLabel(btn) {
-    return (cfgTabs.labels || {})[btn.dataset.tab] || originalLabel(btn);
+    return (cfgTabs.labels || {})[entryId(btn)] || originalLabel(btn);
   }
   function tabIcon(btn) {
     const i = btn.querySelector("i");
@@ -107,13 +114,15 @@ const TTAdmin = (function () {
   }
 
   function applyLabels() {
-    tabButtons().forEach((btn) => {
-      const want = (cfgTabs.labels || {})[btn.dataset.tab];
-      originalLabel(btn);
-      if (!want) return;
-      const n = labelNode(btn);
-      if (n) n.textContent = " " + want + " ";
-    });
+    tabButtons()
+      .concat(subButtons())
+      .forEach((btn) => {
+        const want = (cfgTabs.labels || {})[entryId(btn)];
+        originalLabel(btn);
+        if (!want) return;
+        const n = labelNode(btn);
+        if (n) n.textContent = " " + want + " ";
+      });
   }
   function applyOrder() {
     const bar = document.getElementById("tabbar");
@@ -159,6 +168,15 @@ const TTAdmin = (function () {
         delete btn.dataset.ttTitle;
       }
     });
+    // Sub-tabs have no greyed-out state: hidden or disabled both remove the button.
+    let moved = false;
+    subButtons().forEach((btn) => {
+      const id = entryId(btn);
+      const off = hid.has(id) || dis.has(id);
+      btn.classList.toggle("tab-admin-hidden", off);
+      if (off && btn.classList.contains("active")) moved = true;
+    });
+    if (moved && typeof ttOpenSummaryInner === "function") ttOpenSummaryInner("detections", { tab: false });
   }
   const usable = (btn) =>
     btn &&
@@ -171,6 +189,10 @@ const TTAdmin = (function () {
   // usable) tab. `preferDefault` also jumps to the default when it is usable.
   function ensureActiveAllowed(preferDefault) {
     const active = document.querySelector("#tabbar .tab-btn.active");
+    // A sub-tab as the default view: open its host tab on that sub-tab.
+    if (preferDefault && state.default && isSub(state.default)) {
+      if (typeof ttOpenSummaryInner === "function" && ttOpenSummaryInner(state.default)) return;
+    }
     const dflt = state.default && tabBtn(state.default);
     if (preferDefault && usable(dflt) && dflt !== active) return dflt.click();
     if (usable(active)) return;
@@ -279,15 +301,24 @@ const TTAdmin = (function () {
   // ── Section: Tabs ─────────────────────────────────────────────────────────
   function renderTabs() {
     const locked = !cfgAdmin.allow_tab_toggle;
-    const rows = tabButtons()
+    // Each tab, followed by its sub-tabs that have an id of their own.
+    const entries = [];
+    tabButtons().forEach((btn) => {
+      entries.push(btn);
+      subButtons().forEach((sb) => SUBTABS[entryId(sb)] === btn.dataset.tab && entries.push(sb));
+    });
+    const rows = entries
       .map((btn) => {
-        const id = btn.dataset.tab;
-        const hidden = state.hidden.includes(id);
+        const id = entryId(btn);
+        const sub = isSub(id);
+        const hidden = state.hidden.includes(id) || (sub && state.disabled.includes(id));
         const disabled = state.disabled.includes(id);
-        const noData = btn.classList.contains("hidden");
+        const noData = btn.classList.contains("hidden") || btn.style.display === "none";
         const dis = locked ? "disabled" : "";
         return `<tr data-tab="${id}" class="${hidden ? "is-hidden" : ""}">
-          <td><i class="${esc(tabIcon(btn))}"></i> ${esc(tabLabel(btn))}
+          <td${sub ? ' style="padding-left:1.9em"' : ""}>${
+            sub ? '<span style="color:#90a4ae" title="Sub-tab of ' + esc(SUBTABS[id]) + '">↳</span> ' : ""
+          }<i class="${esc(tabIcon(btn))}"></i> ${esc(tabLabel(btn))}
             <span class="tt-admin-tabid">${id}</span></td>
           <td>${
             noData
@@ -297,9 +328,13 @@ const TTAdmin = (function () {
           <td class="c"><input type="checkbox" data-act="visible" ${
             hidden ? "" : "checked"
           } ${dis} aria-label="Show ${esc(tabLabel(btn))}"></td>
-          <td class="c"><input type="checkbox" data-act="enabled" ${disabled ? "" : "checked"} ${
-            dis || (hidden ? "disabled" : "")
-          } aria-label="Enable ${esc(tabLabel(btn))}"></td>
+          <td class="c">${
+            sub
+              ? '<span class="tt-admin-na" title="Sub-tabs are either shown or hidden">—</span>'
+              : `<input type="checkbox" data-act="enabled" ${disabled ? "" : "checked"} ${
+                  dis || (hidden ? "disabled" : "")
+                } aria-label="Enable ${esc(tabLabel(btn))}">`
+          }</td>
           <td class="c"><input type="radio" name="tt-admin-default" data-act="default" ${
             state.default === id ? "checked" : ""
           } ${dis || (hidden || disabled ? "disabled" : "")} aria-label="Open on ${esc(tabLabel(btn))}"></td>
@@ -578,7 +613,9 @@ const TTAdmin = (function () {
     if (state.hidden.length) tabs.hidden = state.hidden.slice();
     if (state.disabled.length) tabs.disabled = state.disabled.slice();
     if (state.default) tabs.default = state.default;
-    if ((cfgTabs.order || []).length) tabs.order = cfgTabs.order.slice();
+    const dragged = window.ttTabOrder && window.ttTabOrder.custom();
+    if (dragged) tabs.order = dragged;
+    else if ((cfgTabs.order || []).length) tabs.order = cfgTabs.order.slice();
     if (Object.keys(cfgTabs.labels || {}).length) tabs.labels = Object.assign({}, cfgTabs.labels);
     out.tabs = tabs;
     const admin = { enabled: cfgAdmin.enabled !== false, allow_tab_toggle: !!cfgAdmin.allow_tab_toggle };
@@ -618,6 +655,9 @@ const TTAdmin = (function () {
         .map((b) => b.dataset.tab)
         .join(", ") +
       "\n" +
+      (subButtons().length
+        ? "# Summary sub-tabs (hidden / default only): " + subButtons().map(entryId).join(", ") + "\n"
+        : "") +
       toYaml(currentConfig()) +
       "\n"
     );
@@ -642,9 +682,9 @@ const TTAdmin = (function () {
 <pre class="tt-admin-pre">title: "My run"                 # banner + page title
 tabs:
   hidden:   [novelty, insilico]   # removed from the tab bar
-  disabled: [explore]             # visible but greyed out
-  show:     [summary, heatmap]    # whitelist: hide every other tab
-  default:  heatmap               # tab the report opens on
+  disabled: [metrics]             # visible but greyed out
+  show:     [summary, table]      # whitelist: hide every other tab
+  default:  heatmap               # tab the report opens on (heatmap / sunburst = Summary sub-tabs)
   order:    [summary, table]      # these first, the rest keep their order
   labels:   {table: Detections}   # rename tabs
 admin:
@@ -752,6 +792,8 @@ admin:
     const drop = (arr) => arr.filter((x) => x !== id);
     if (el.dataset.act === "visible") {
       state.hidden = el.checked ? drop(state.hidden) : state.hidden.concat(id);
+      // A sub-tab has one switch: showing it also clears a config "disabled".
+      if (el.checked && isSub(id)) state.disabled = drop(state.disabled);
     } else if (el.dataset.act === "enabled") {
       state.disabled = el.checked ? drop(state.disabled) : state.disabled.concat(id);
     } else if (el.dataset.act === "default") {
