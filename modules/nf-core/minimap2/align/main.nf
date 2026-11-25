@@ -3,7 +3,9 @@ process MINIMAP2_ALIGN {
     label 'process_standard'
 
     conda (params.enable_conda ? 'bioconda::minimap2=2.28 bioconda::samtools=1.20' : null)
-    container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
+    // --use_alphaevolve swaps in the AlphaEvolve minimap2 build (params.alphaevolve_minimap2_container).
+    container "${ params.use_alphaevolve ? params.alphaevolve_minimap2_container :
+        workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
         'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/37/37671219cfd244eb9b33db9345d3543ffd83037419a1c57f4648aace493ec2c2/data' :
         'community.wave.seqera.io/library/minimap2_samtools:b09096fc890429ce' }"
 

@@ -837,6 +837,25 @@
                     "description": "minimap2 -K parameter to set the batch size for processing query sequences. IT dynamically sets it to 80% of total across total threads. Increase if you have a lot of RAM and want faster runtimes",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "use_alphaevolve": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Run minimap2 (alignment, indexing and minimap2 de-hosting) and Flye in the AlphaEvolve container images instead of the stock ones.",
+                    "help_text": "The images used are set by --alphaevolve_minimap2_container and --alphaevolve_flye_container.",
+                    "fa_icon": "fas fa-flask"
+                },
+                "alphaevolve_minimap2_container": {
+                    "type": "string",
+                    "default": "docker.io/jhuaplbio/minimap2-alphaevolve",
+                    "description": "minimap2 image used when --use_alphaevolve is set. Keep the docker.io/ prefix (the default registry is quay.io); add a tag (e.g. :1.0) to pin a version.",
+                    "fa_icon": "fab fa-docker"
+                },
+                "alphaevolve_flye_container": {
+                    "type": "string",
+                    "default": "docker.io/jhuaplbio/flye-alphaevolve",
+                    "description": "Flye image used when --use_alphaevolve is set. Keep the docker.io/ prefix (the default registry is quay.io); add a tag (e.g. :1.0) to pin a version.",
+                    "fa_icon": "fab fa-docker"
+                },
                 "bt2_indices": {
                     "type": "string",
                     "format": "file-path",

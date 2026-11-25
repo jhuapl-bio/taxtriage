@@ -3,7 +3,9 @@ process FLYE {
     label 'process_high'
 
     conda (params.enable_conda ? "bioconda::flye=2.9" : null)
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    // --use_alphaevolve swaps in the AlphaEvolve Flye build (params.alphaevolve_flye_container).
+    container "${ params.use_alphaevolve ? params.alphaevolve_flye_container :
+        workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/flye:2.9--py39h6935b12_1' :
         'biocontainers/flye:2.9--py39h6935b12_1' }"
 
