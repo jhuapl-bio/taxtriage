@@ -2,12 +2,12 @@ process MINIMAP2_INDEX {
     label 'process_high'
     tag "$meta.id"
 
-    conda (params.enable_conda ? 'bioconda::minimap2=2.21' : null)
+    conda (params.enable_conda ? 'bioconda::minimap2=2.31' : null)
     // --use_alphaevolve: build the index with the same minimap2 that will align against it.
     container "${ params.use_alphaevolve ? params.alphaevolve_minimap2_container :
         workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/minimap2:2.21--h5bf99c6_0' :
-        'biocontainers/minimap2:2.21--h5bf99c6_0' }"
+        'https://depot.galaxyproject.org/singularity/minimap2:2.31--h118bc1c_0' :
+        'biocontainers/minimap2:2.31--h118bc1c_0' }"
 
     input:
     tuple val(meta), path(fasta)

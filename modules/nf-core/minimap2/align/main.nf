@@ -2,12 +2,12 @@ process MINIMAP2_ALIGN {
     tag "$meta.id"
     label 'process_standard'
 
-    conda (params.enable_conda ? 'bioconda::minimap2=2.28 bioconda::samtools=1.20' : null)
+    conda (params.enable_conda ? 'bioconda::minimap2=2.31 bioconda::samtools=1.24' : null)
     // --use_alphaevolve swaps in the AlphaEvolve minimap2 build (params.alphaevolve_minimap2_container).
     container "${ params.use_alphaevolve ? params.alphaevolve_minimap2_container :
         workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/37/37671219cfd244eb9b33db9345d3543ffd83037419a1c57f4648aace493ec2c2/data' :
-        'community.wave.seqera.io/library/minimap2_samtools:b09096fc890429ce' }"
+        'https://depot.galaxyproject.org/singularity/mulled-v2-66534bcbb7031a148b13e2ad42583020b9cd25c4:ad4c240457048f1d3cc0bd8c8fa39bf27d222eb7-0' :
+        'biocontainers/mulled-v2-66534bcbb7031a148b13e2ad42583020b9cd25c4:ad4c240457048f1d3cc0bd8c8fa39bf27d222eb7-0' }"
 
     input:
     tuple val(meta), path(reads), path(reference)

@@ -2,12 +2,12 @@ process FLYE {
     tag "$meta.id"
     label 'process_high'
 
-    conda (params.enable_conda ? "bioconda::flye=2.9" : null)
+    conda (params.enable_conda ? "bioconda::flye=2.9.6" : null)
     // --use_alphaevolve swaps in the AlphaEvolve Flye build (params.alphaevolve_flye_container).
     container "${ params.use_alphaevolve ? params.alphaevolve_flye_container :
         workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/flye:2.9--py39h6935b12_1' :
-        'biocontainers/flye:2.9--py39h6935b12_1' }"
+        'https://depot.galaxyproject.org/singularity/flye:2.9.6--py311h2de2dd3_0' :
+        'biocontainers/flye:2.9.6--py311h2de2dd3_0' }"
 
     input:
     tuple val(meta), path(reads)
