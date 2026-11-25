@@ -889,7 +889,7 @@ workflow TAXTRIAGE {
         .map { meta, reads -> [meta.id, meta, reads] }
         .join(readCountChannel.map { meta, countFile -> [meta.id, countFile] }, by: 0)
         .map { id, meta, reads, countFile ->
-            def count = countFile.text.trim().toInteger()
+            def count = countFile.text.trim().toLong()
             meta.read_count = count
             return [meta, reads]
         }
@@ -1367,7 +1367,7 @@ workflow TAXTRIAGE {
                 .map { id, items, countfile ->
                     if (!countfile) { return items }
                     def mm = items[0].collectEntries { k, v -> [k, v] }
-                    mm.read_count = countfile.text.trim().toInteger()
+                    mm.read_count = countfile.text.trim().toLong()
                     return [mm] + items[1..-1]
                 }
 
